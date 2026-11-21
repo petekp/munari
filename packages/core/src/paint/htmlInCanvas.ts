@@ -106,6 +106,7 @@ function createHtmlInCanvasSource(
   // takes the paint request as a constructor argument — the first re-cut it
   // could run happens long after this line.
   let trial: TrialCanvas | null = null
+  let disposed = false
   let live = options.live === true
   // The compositor decides WHEN to paint; `live` decides whether this engine
   // takes the paint it is handed. `owed` is how the two meet: everything that
@@ -123,6 +124,7 @@ function createHtmlInCanvasSource(
   let missed = false
   const input = createInputWindow(() => performance.now())
   const requestPaint = () => {
+    if (disposed) return
     owed = true
     trial?.requestPaint()
   }
@@ -147,7 +149,6 @@ function createHtmlInCanvasSource(
   // paint independently and would be excluded from this capture (platform.md #32).
   const addedDrawable = !element.hasAttribute('drawable')
   if (addedDrawable) element.setAttribute('drawable', '')
-  let disposed = false
   // Must stay in-document AND on-screen to get paint records — off-screen
   // (left:-10000px) canvases are skipped by the compositor and never paint.
   // Parking it behind the page (z-index:-1) keeps it painted but unseen, and
@@ -162,6 +163,7 @@ function createHtmlInCanvasSource(
   let ctx: TrialContext2D | null = null
 
   canvas.onpaint = () => {
+    if (disposed) return
     // The one place this engine spends a paint. Declining leaves the canvas
     // holding the bitmap it already had, so nothing is re-uploaded and the
     // picture stays as it was — which is what `live: false` means on every
@@ -267,6 +269,7 @@ function createHtmlInCanvasSource(
     dispose: () => {
       if (disposed) return
       disposed = true
+      trial = null
       canvas.onpaint = null
       listeners.abort()
       stopHearingElement()

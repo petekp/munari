@@ -445,30 +445,35 @@ function clampRawScale(k: number): number {
  * canvas on an M4 Max. A context's storage is fixed when it is created, so
  * the choice has to be made before any capture canvas first draws.
  *
- * The kernel asks the adapter itself, at the first capture. A capture starts
- * before the renderer that would otherwise ask: in a Linux container, Genie's
- * four capture canvases took their contexts 120 ms before SurfaceCanvas
- * requested its adapter, and all four kept GPU storage (2026-10-09).
+ * Checked at first capture before `SurfaceCanvas` requests its adapter (in a
+ * Linux container, Genie's four canvases beat the renderer by 120 ms, 2026-10-09).
  */
 type CaptureCanvasMemory = 'gpu' | 'cpu'
 
 let captureMemory: CaptureCanvasMemory | null = null
 let choosing: Promise<void> | null = null
 
-// A request that never settles would hold every capture back. Past this,
-// captures take GPU storage, as they did before decisions.md #74. The
-// container's adapter answered 1.1 s after it was asked, under emulation.
+// Past this wait, captures take GPU storage as they did before decisions.md #74.
 const ADAPTER_WAIT_MS = 3000
 
 async function chooseCaptureMemory(): Promise<void> {
-  const gpu = globalThis.navigator?.gpu
-  if (!gpu) {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    const gpu = globalThis.navigator?.gpu
+    if (!gpu) {
+      captureMemory = 'gpu'
+      return
+    }
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), ADAPTER_WAIT_MS)
+    })
+    const adapter = await Promise.race([gpu.requestAdapter().catch(() => null), timeout])
+    captureMemory = adapter?.info?.isFallbackAdapter ? 'cpu' : 'gpu'
+  } catch {
     captureMemory = 'gpu'
-    return
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
   }
-  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), ADAPTER_WAIT_MS))
-  const adapter = await Promise.race([gpu.requestAdapter().catch(() => null), timeout])
-  captureMemory = adapter?.info.isFallbackAdapter ? 'cpu' : 'gpu'
 }
 
 /**
