@@ -20,12 +20,19 @@ const requested = new URLSearchParams(window.location.search).get('capture')
 export const CAPTURE_MODE: CaptureMode | null =
   requested === 'snapdom' || requested === 'auto' ? requested : null
 
+const SHELL_PARAMS = new Set(['scene', 'capture', 'framed', 'bare'])
+
 // A destination installs its capture engine before mounting any Surface.
-// Preserve the selection across full-page links, history changes, and frames.
-// The overview's links ask for `auto` themselves, so a visitor without
-// HTML-in-canvas still gets every demo drawn through snapDOM.
+// Preserve the selection across full-page links, history changes, and frames,
+// along with any extra query parameters targeting the same scene.
 export function sceneUrl(scene: string, options: { framed?: boolean; bare?: boolean; capture?: CaptureMode } = {}): string {
+  const current = new URLSearchParams(window.location.search)
   const query = new URLSearchParams({ scene })
+  if (current.get('scene') === scene) {
+    for (const [key, value] of current) {
+      if (!SHELL_PARAMS.has(key)) query.append(key, value)
+    }
+  }
   const capture = options.capture ?? CAPTURE_MODE
   if (capture) query.set('capture', capture)
   if (options.framed) query.set('framed', '')

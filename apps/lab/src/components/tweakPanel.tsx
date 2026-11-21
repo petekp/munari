@@ -208,6 +208,8 @@ export function TweakPanel<T extends object>({
     writeStoredTuning(window.localStorage, storageKey, tuning)
   }, [tuning, storageKey])
 
+  useEffect(() => () => window.clearTimeout(feedbackTimeout.current), [])
+
   function setOpenState(next: boolean) {
     setOpen(next)
     onOpenChange?.(next)
@@ -352,6 +354,13 @@ function TweakGroupDisclosure({ group }: { readonly group: TweakGroup }) {
   )
 }
 
+function snapTweakNumber(raw: number, min: number, max: number, step: number, decimals: number): number | null {
+  if (!Number.isFinite(raw)) return null
+  const clamped = Math.min(max, Math.max(min, raw))
+  const stepped = step > 0 ? min + Math.round((clamped - min) / step) * step : clamped
+  return Number(Math.min(max, Math.max(min, stepped)).toFixed(decimals))
+}
+
 export function TweakNumberField({ id, label, min, max, step, unit, value, onChange, numberAttrs, rangeAttrs }: TweakControl) {
   // A draft keeps '-' and an empty field editable without publishing NaN.
   // Blur either commits a bounded, snapped value or restores the live one.
@@ -380,7 +389,8 @@ export function TweakNumberField({ id, label, min, max, step, unit, value, onCha
               if (next >= min && next <= max) commit(next)
             }}
             onBlur={(event) => {
-              commit(event.currentTarget.valueAsNumber)
+              const snapped = snapTweakNumber(event.currentTarget.valueAsNumber, min, max, step, decimals)
+              if (snapped !== null && snapped !== value) commit(snapped)
               setDraft(null)
             }}
             onKeyDown={(event) => {

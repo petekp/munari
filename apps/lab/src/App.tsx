@@ -235,6 +235,7 @@ function SceneHud({ scene }: { scene: SceneId }) {
 export default function App() {
   const unsupported = !useSurfaceSupport()
   const [scene, setScene] = useState(readScene)
+  const [, setSearch] = useState(() => window.location.search)
 
   // index.html paints the overview's white while this document is still
   // empty. Framed lab scenes keep their bench; the shell stays white.
@@ -255,7 +256,10 @@ export default function App() {
   // put — the same screenshot twice, which is a very quiet way to draw the
   // wrong conclusion about a change you just made.
   useEffect(() => {
-    const onPop = () => setScene(readScene())
+    const onPop = () => {
+      setScene(readScene())
+      setSearch(window.location.search)
+    }
     window.addEventListener('popstate', onPop)
     return () => {
       window.removeEventListener('popstate', onPop)
@@ -331,13 +335,14 @@ export default function App() {
   // navigation. Replacing a frame on navigation avoids an extra joint-history
   // entry.
   if (showShell && scene === 'home') {
-    return <SceneBoundary scene={scene}><HomeApp onReady={revealSite} /></SceneBoundary>
+    return <SceneBoundary key={scene} scene={scene}><HomeApp onReady={revealSite} /></SceneBoundary>
   }
   // The style guide is a page of the site, like the overview, not a demo.
   if (showShell && scene === 'style') {
-    return <SceneBoundary scene={scene}><Suspense fallback={null}><StyleApp onReady={revealSite} /></Suspense></SceneBoundary>
+    return <SceneBoundary key={scene} scene={scene}><Suspense fallback={null}><StyleApp onReady={revealSite} /></Suspense></SceneBoundary>
   }
   if (showShell) {
+    const frameSrc = sceneUrl(scene, { framed: true })
     return (
       <div className="site-shell">
         <a className="site-skip" href="#site-content" onClick={(event) => {
@@ -350,12 +355,13 @@ export default function App() {
             if (!isSceneId(id)) return
             window.history.pushState(null, '', sceneUrl(id))
             setScene(id)
+            setSearch(window.location.search)
           }}
         />
         <main className="site-content" id="site-content" tabIndex={-1}>
           <iframe
-            key={scene}
-            src={sceneUrl(scene, { framed: true })}
+            key={frameSrc}
+            src={frameSrc}
             title={`${demoFor(scene)?.title ?? scene} demo`}
             className="site-frame"
             onLoad={revealSite}
@@ -384,30 +390,32 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <SurfaceProviderProbe value="lab">
-        <SurfaceCanvas
-          frameloop={domSurfaceDemandProbe ? 'demand' : 'always'}
-          shadows
-          camera={{ position: [0, 2.5, 9], fov: 45 }}
-          dpr={[1, 2]}
-          onCreated={(state) => {
-            // Dev diagnostics: lets automation inspect the scene graph.
-            window.__r3f = state
-          }}
-        >
-        <KeepDomFocus />
-        <FocusScene>
-          <Suspense fallback={null}>
-            <Room scene={scene} />
-          </Suspense>
-        </FocusScene>
-        </SurfaceCanvas>
-      </SurfaceProviderProbe>
+    <SceneBoundary key={scene} scene={scene}>
+      <div className="app">
+        <SurfaceProviderProbe value="lab">
+          <SurfaceCanvas
+            frameloop={domSurfaceDemandProbe ? 'demand' : 'always'}
+            shadows
+            camera={{ position: [0, 2.5, 9], fov: 45 }}
+            dpr={[1, 2]}
+            onCreated={(state) => {
+              // Dev diagnostics: lets automation inspect the scene graph.
+              window.__r3f = state
+            }}
+          >
+            <KeepDomFocus />
+            <FocusScene>
+              <Suspense fallback={null}>
+                <Room scene={scene} />
+              </Suspense>
+            </FocusScene>
+          </SurfaceCanvas>
+        </SurfaceProviderProbe>
 
-      {notice}
+        {notice}
 
-      {showChrome && <Suspense fallback={null}><SceneHud scene={scene} /></Suspense>}
-    </div>
+        {showChrome && <Suspense fallback={null}><SceneHud scene={scene} /></Suspense>}
+      </div>
+    </SceneBoundary>
   )
 }

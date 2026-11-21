@@ -15,6 +15,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { sceneUrl } from '../captureMode'
+import { revealSite } from './siteOpening'
 
 interface Props {
   /**
@@ -39,8 +40,9 @@ export class SceneBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // Still console.error it: the boundary is for the reader, and the
-    // console is where a debugger's breakpoints and source maps live.
+    // Lift the cold-load opening curtain and clear `#root[inert]` so an error
+    // during initial mount is visible and interactive rather than hidden behind it.
+    revealSite()
     console.error('[lab] scene threw:', error)
     this.setState({ stack: info.componentStack ?? null })
   }
