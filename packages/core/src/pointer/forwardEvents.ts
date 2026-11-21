@@ -14,7 +14,8 @@
 import { relay } from './relay'
 import { ACTIVE_ATTR, HOVER_ATTR, chainOf, swapChainAttr } from './twins'
 
-const FOCUSABLE = 'input, textarea, select, button, [tabindex], [contenteditable]'
+const FOCUSABLE =
+  'input:not(:disabled), textarea:not(:disabled), select:not(:disabled), button:not(:disabled), a[href], summary, [tabindex]:not(:disabled), [contenteditable]:not([contenteditable="false"])'
 
 /**
  * Deepest descendant of `root` that accepts the pointer at (x, y) — or null,
@@ -481,48 +482,28 @@ export function clearPointerState(root: HTMLElement) {
     return
   }
   hoverRoots.delete(root)
+  if (lastForward?.root === root) lastForward = null
   if (m.hovered) {
-    // Leave from where the pointer actually was. The grace polygon is
-    // anchored at these coordinates, so reporting the away point here would
-    // stretch the hull out to meet it and the move below would land inside
-    // its own grace area — open forever, for a subtler reason.
+    // Leave from where the pointer actually was so Radix's grace polygon
+    // anchors there rather than stretching out to meet the away point.
     const init = pointerInit(releasedSample(m.sample), m.at.x, m.at.y)
     swapChainAttr(root, m.hovered, null, HOVER_ATTR)
     crossBoundary(root, m.hovered, null, init)
     m.hovered = null
 
-    // Then say where the pointer went, over the next few frames. Document
-    // -level trackers — Radix's grace area, and every dismissal heuristic
-    // built like it — reason about position, not about which subtree an event
-    // came from, so a leave with no follow-up move leaves them believing the
-    // pointer is still parked wherever it last was.
-    //
-    // Why a burst and not one dispatch: a real pointer that leaves an element
-    // keeps moving, so a consumer that ARMS a tracker in response to the
-    // leave still receives later moves. Ours is discrete — one exit, one
-    // instant — and a single synchronous move lands before any consumer has
-    // reacted. Radix is the worked example: `pointerleave` sets React state,
-    // and the document listener that closes the tooltip is attached by the
-    // effect after that commits. Measured 2026-07-31: the synchronous move
-    // did nothing; the identical move sent later closed the tooltip.
-    //
-    // Cancelled if the pointer comes back (see forwardPointer), so returning
-    // to the surface never eats its own dismissal.
+    // Send a multi-frame follow-up burst so document-level grace trackers
+    // attached in passive effects after `pointerleave` (measured 2026-07-31 on
+    // Radix Tooltip) observe the pointer move outside their hull. Cancelled if
+    // the pointer re-enters (`forwardPointer`).
     const rect = root.getBoundingClientRect()
     let frames = AWAY_FRAMES
     const step = () => {
       m.away = 0
-      // A surface torn down mid-departure has nothing to dismiss, and events
-      // from a detached tree never reach document anyway.
       if (!root.isConnected) return
-
-      // Where did it go? If a neighbouring surface has taken the pointer since
-      // this departure began, there — a real destination, which a grace area
-      // may well decide to tolerate. Otherwise off the source entirely, which
-      // is provably outside any hull Radix can build (AWAY_MARGIN_PX). Asked
-      // per frame, not once, because the destination can arrive a frame late
-      // and because the pointer may leave everything after all.
-      const to = lastForward && lastForward.root !== root ? lastForward : null
+      const to =
+        lastForward && lastForward.root !== root && lastForward.root.isConnected
+          ? lastForward
+          : null
       const away: PointerEventInit & MouseEventInit = {
         ...init,
         clientX: to ? to.x : rect.left - AWAY_MARGIN_PX,
@@ -733,6 +714,9 @@ export function forwardPointer(
   // anchor, and the next real 10px hand move moved the controlled view.
   // The r3f 'up' side needs no gate here — Surface's
   // pressedRef already refuses a release it never saw the press for.
+  if (kind === 'move' && pointer.buttons === 0 && surfaceDragPointerIds.delete(pointer.pointerId)) {
+    flushPendingClears()
+  }
   if (
     kind === 'move' &&
     pointer.buttons !== 0 &&
@@ -800,8 +784,18 @@ export function forwardPointer(
  * state flows; a real library would render its own popover surface.
  */
 export function nudgeSelect(el: HTMLSelectElement) {
-  el.selectedIndex = (el.selectedIndex + 1) % el.options.length
-  relay(el, new Event('change', { bubbles: true }))
+  if (el.disabled || el.matches(':disabled') || el.options.length === 0) return
+  const count = el.options.length
+  const current = el.selectedIndex
+  for (let offset = 1; offset <= count; offset++) {
+    const index = (Math.max(0, current) + offset) % count
+    const option = el.options[index]
+    if (!option || option.disabled || option.matches(':disabled')) continue
+    if (index === current) return
+    el.selectedIndex = index
+    relay(el, new Event('change', { bubbles: true }))
+    return
+  }
 }
 
 // ---- wheel / scroll forwarding ------------------------------------------
@@ -953,12 +947,12 @@ function flushPendingClears() {
  */
 export const trackDrag: () => () => void = refCounted(() => {
   const onMove = (e: PointerEvent) => {
-    if (
-      !surfaceDragPointerIds.has(e.pointerId) ||
-      !e.isTrusted ||
-      e.buttons === 0
-    )
+    if (!e.isTrusted || !surfaceDragPointerIds.has(e.pointerId)) return
+    if (e.buttons === 0) {
+      surfaceDragPointerIds.delete(e.pointerId)
+      queueMicrotask(flushPendingClears)
       return
+    }
     if (!(e.target instanceof HTMLCanvasElement)) return
     e.preventDefault()
   }
@@ -967,20 +961,25 @@ export const trackDrag: () => () => void = refCounted(() => {
   const onEnd = (e: PointerEvent) => {
     if (e.isTrusted && surfaceDragPointerIds.has(e.pointerId)) {
       surfaceDragPointerIds.delete(e.pointerId)
-      // This capture listener runs before the same trusted up reaches the
-      // canvas and is forwarded — a microtask puts the flush after it, so
-      // the up still lands before any deferred boundary events. (When the
-      // forwarded up flushed already, this finds the set empty.)
       queueMicrotask(flushPendingClears)
     }
+  }
+  const onLostAll = () => {
+    if (surfaceDragPointerIds.size === 0) return
+    surfaceDragPointerIds.clear()
+    queueMicrotask(flushPendingClears)
   }
   document.addEventListener('pointermove', onMove, { capture: true, passive: false })
   document.addEventListener('pointerup', onEnd, true)
   document.addEventListener('pointercancel', onEnd, true)
+  document.addEventListener('dragstart', onLostAll, true)
+  window.addEventListener('blur', onLostAll)
   return () => {
     document.removeEventListener('pointermove', onMove, { capture: true })
     document.removeEventListener('pointerup', onEnd, true)
     document.removeEventListener('pointercancel', onEnd, true)
+    document.removeEventListener('dragstart', onLostAll, true)
+    window.removeEventListener('blur', onLostAll)
     surfaceDragPointerIds.clear()
     flushPendingClears()
   }

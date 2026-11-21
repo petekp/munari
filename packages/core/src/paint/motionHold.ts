@@ -104,7 +104,10 @@ export function matchMotion(from: HTMLElement, to: HTMLElement): void {
       const key = motionKey(source)
       const target = key === undefined ? undefined : targets.get(key)?.shift()
       if (!target) continue
-      target.currentTime = source.currentTime
+      // Scroll-driven CSS timelines expose non-numeric percentage progress and throw on assignment.
+      if (source.currentTime === null || Number.isFinite(source.currentTime)) {
+        target.currentTime = source.currentTime
+      }
       if (source.playState !== 'paused') continue
       target.pause()
       const copies = copiesOf.get(source)
