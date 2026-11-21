@@ -72,22 +72,17 @@ const CARRIED_DESCRIPTORS = [
 ] as const
 
 /**
- * Faces read per stylesheet, keyed by the sheet object and its rule count.
+ * Faces per stylesheet, keyed by sheet identity and rule count.
  *
- * Per sheet rather than once per document, because a document gains
- * stylesheets after the engine installs: a scene that links its own fonts
- * when it mounts adds a sheet the install-time read never saw, and every
- * letter set in those faces rasterized in a fallback face (the logo scene's
- * guest families, 2026-09-12). The rule count catches a readable sheet that
- * gains a face through `insertRule`; a sheet read once is not read again.
+ * Keyed per sheet rather than per document because scenes link guest fonts on
+ * mount after engine install (logo scene, 2026-09-12); rule count catches
+ * readable sheets mutated via `insertRule`.
  */
 const facesBySheet = new WeakMap<CSSStyleSheet, { rules: number; faces: Promise<DeclaredFace[]> }>()
 
-/** Every `@font-face` the document declares, across every stylesheet it has now. */
+/** Every `@font-face` the document declares across its current stylesheets. */
 async function declaredFaces(doc: Document, onUnreadable?: (href: string) => void): Promise<DeclaredFace[]> {
-  // `styleSheets` already includes anything adopted in engines that support
-  // it, but reading `adoptedStyleSheets` as well costs nothing and covers the
-  // ones where it does not; a sheet listed twice is read once.
+  // Include `adoptedStyleSheets` explicitly for engines where `doc.styleSheets` omits them.
   const adopted = 'adoptedStyleSheets' in doc ? doc.adoptedStyleSheets : []
   const sheets = new Set<CSSStyleSheet>([
     ...Array.from(doc.styleSheets).filter((s): s is CSSStyleSheet => s instanceof CSSStyleSheet),
@@ -111,42 +106,41 @@ function sheetFaces(
   try {
     rules = sheet.cssRules
   } catch {
-    // A stylesheet from another origin, linked without CORS, throws here.
+    // Cross-origin sheet linked without CORS.
   }
   const count = rules ? rules.length : -1
   const cached = facesBySheet.get(sheet)
   if (cached?.rules === count) return cached.faces
   const faces = rules
     ? readRules(rules, sheet.href ?? doc.baseURI, doc, onUnreadable)
-    : fetchSheetFaces(sheet.href, doc, onUnreadable)
+    : fetchSheetFaces(sheet.href, doc, onUnreadable, () => {
+        if (facesBySheet.get(sheet)?.faces === faces) facesBySheet.delete(sheet)
+      })
   facesBySheet.set(sheet, { rules: count, faces })
   return faces
 }
 
 /**
- * Read the faces a stylesheet's CSSOM cannot hand over, from its text.
- *
- * A Google Fonts `<link>` is the common case: the page renders its faces,
- * but the browser refuses `cssRules` to script because the link carries no
- * `crossorigin`. The same URL answers a CORS fetch, and so do the font files
- * it names, which is how snapDOM's own font pass reads it too. A sheet that
- * refuses the fetch as well cannot be embedded by anyone, and says so.
+ * Fallback CORS fetch for cross-origin `<link>` sheets (such as Google Fonts
+ * without `crossorigin`) whose `cssRules` throw `SecurityError`. Failed fetches
+ * evict their cache entry so transient network errors can recover.
  */
 async function fetchSheetFaces(
   href: string | null,
   doc: Document,
-  onUnreadable?: (href: string) => void,
+  onUnreadable: ((href: string) => void) | undefined,
+  onFailed: () => void,
 ): Promise<DeclaredFace[]> {
   if (!href) return []
   try {
     const response = await fetch(href)
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const parsed = new CSSStyleSheet()
-    // `replaceSync` drops `@import` rules rather than following them; a
-    // font stylesheet that imports another loses that one's faces.
+    // `replaceSync` drops `@import` rules rather than following them.
     parsed.replaceSync(await response.text())
     return await readRules(parsed.cssRules, href, doc, onUnreadable)
   } catch {
+    onFailed()
     onUnreadable?.(href)
     return []
   }
@@ -190,12 +184,8 @@ function unquote(value: string): string {
 }
 
 /**
- * The first fetchable URL in a `src` list, resolved against its stylesheet.
- *
- * `local()` entries are skipped rather than resolved: a local face cannot be
- * embedded, and picking it would leave the capture with no bytes at all. The
- * base is the sheet's own URL, as CSS resolves it, not the document's: a
- * relative `url()` in a sheet under `/fonts/` names a file under `/fonts/`.
+ * First fetchable `url()` in a `src` list, resolved against its stylesheet URL
+ * (not the document URL); `local()` entries are skipped because they cannot be embedded.
  */
 function firstUrl(src: string, base: string): string | null {
   const match = /url\(\s*(['"]?)([^'")]+)\1\s*\)/.exec(src)
@@ -231,45 +221,61 @@ export function parseRanges(text: string): readonly (readonly [number, number])[
   return ranges
 }
 
-/**
- * Fetch a face and encode it, at most once per URL for the life of the page.
- *
- * The promise itself is cached, not the result, so captures that overlap the
- * first fetch all wait on the same request instead of starting their own.
- */
-const encodedByUrl = new Map<string, Promise<string | null>>()
+interface EncodedFace {
+  readonly data: string
+  readonly format: string
+}
 
-function encodeFace(url: string): Promise<string | null> {
+function detectFontFormat(contentType: string | null, url: string) {
+  const type = (contentType ?? '').toLowerCase()
+  if (type.includes('woff2')) return { mime: 'font/woff2', format: 'woff2' }
+  if (type.includes('woff')) return { mime: 'font/woff', format: 'woff' }
+  if (type.includes('ttf') || type.includes('truetype')) return { mime: 'font/ttf', format: 'truetype' }
+  if (type.includes('otf') || type.includes('opentype')) return { mime: 'font/otf', format: 'opentype' }
+  let path = url.toLowerCase()
+  try {
+    path = new URL(url).pathname.toLowerCase()
+  } catch {
+    // Non-URL falls back to suffix check.
+  }
+  if (path.endsWith('.woff')) return { mime: 'font/woff', format: 'woff' }
+  if (path.endsWith('.ttf')) return { mime: 'font/ttf', format: 'truetype' }
+  if (path.endsWith('.otf')) return { mime: 'font/otf', format: 'opentype' }
+  return { mime: 'font/woff2', format: 'woff2' }
+}
+
+// Cache the in-flight promise so overlapping captures share one request; evict
+// null outcomes so transient network errors do not poison webfonts for the page.
+const encodedByUrl = new Map<string, Promise<EncodedFace | null>>()
+
+function encodeFace(url: string): Promise<EncodedFace | null> {
   const cached = encodedByUrl.get(url)
   if (cached) return cached
-  const pending = (async () => {
+  const pending = (async (): Promise<EncodedFace | null> => {
     try {
       const response = await fetch(url)
       if (!response.ok) return null
+      const { mime, format } = detectFontFormat(response.headers.get('content-type'), url)
       const bytes = new Uint8Array(await response.arrayBuffer())
-      // Chunked: `String.fromCharCode(...bytes)` overflows the argument limit
-      // somewhere around 100 KB, and these faces run to 90 KB and up.
+      // Chunked: `String.fromCharCode(...bytes)` overflows around 100 KB.
       let binary = ''
       const CHUNK = 0x8000
       for (let i = 0; i < bytes.length; i += CHUNK) {
         binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
       }
-      return `data:font/woff2;base64,${btoa(binary)}`
+      return { data: `data:${mime};base64,${btoa(binary)}`, format }
     } catch {
       return null
     }
-  })()
+  })().then((result) => {
+    if (!result && encodedByUrl.get(url) === pending) encodedByUrl.delete(url)
+    return result
+  })
   encodedByUrl.set(url, pending)
   return pending
 }
 
-/**
- * Start fetching every face the document declares now.
- *
- * Called at install so the first capture finds the cache warm. A capture that
- * beats it waits on the same fetch rather than starting its own; a sheet
- * added later is read by the first capture after it lands.
- */
+/** Prefetch declared faces at install so the first capture finds the cache warm. */
 export function warmCaptureFonts(doc: Document = document): void {
   void declaredFaces(doc).then((faces) => {
     for (const face of faces) void encodeFace(face.url)
@@ -362,11 +368,8 @@ function intersects(
 }
 
 /**
- * Which declared faces this subtree needs.
- *
- * Exported because selecting NOTHING is a silent failure: the capture speeds up,
- * the payload shrinks, and the text quietly rasterizes in a fallback face. The
- * only cheap signal is the chosen set, so it is a seam a test can hold.
+ * Which declared faces this subtree needs. Exported so tests can verify the
+ * chosen set directly — selecting nothing silently ships fallback glyphs.
  */
 export function chooseFaces<T extends { family: string; ranges: Ranges }>(
   all: readonly T[],
@@ -378,8 +381,8 @@ export function chooseFaces<T extends { family: string; ranges: Ranges }>(
   )
 }
 
-const fontFaceCss = (face: DeclaredFace, data: string) =>
-  `@font-face{font-family:'${face.family}';${face.descriptors}src:url(${data}) format('woff2');}`
+const fontFaceCss = (face: DeclaredFace, encoded: EncodedFace) =>
+  `@font-face{font-family:'${face.family}';${face.descriptors}src:url(${encoded.data}) format('${encoded.format}');}`
 
 export async function inputFontsEmbedded(field: HTMLInputElement, svg: XMLDocument): Promise<boolean> {
   try {
@@ -443,8 +446,8 @@ export async function inputFontsEmbedded(field: HTMLInputElement, svg: XMLDocume
     if (liveCounts.size !== declaredCounts.size || Array.from(liveCounts).some(([key, count]) => declaredCounts.get(key) !== count)) return false
     const css = Array.from(svg.querySelectorAll('style'), (style) => style.textContent ?? '').join('\n')
     const embedded = await Promise.all(faces.map(async (face) => {
-      const data = await encodeFace(face.url)
-      return data !== null && css.includes(fontFaceCss(face, data))
+      const encoded = await encodeFace(face.url)
+      return encoded !== null && css.includes(fontFaceCss(face, encoded))
     }))
     return embedded.every(Boolean)
   } catch {
@@ -452,12 +455,7 @@ export async function inputFontsEmbedded(field: HTMLInputElement, svg: XMLDocume
   }
 }
 
-/**
- * Build the `@font-face` block this clone needs.
- *
- * Returns an empty string when nothing matches, which is the correct answer
- * for a subtree drawn entirely in system fonts.
- */
+/** Build the `@font-face` block this clone needs (empty when system fonts suffice). */
 async function fontCssFor(
   live: Element,
   clone: Element,
@@ -477,9 +475,8 @@ async function fontCssFor(
   if (wanted.length === 0) return ''
   const blocks = await Promise.all(
     wanted.map(async (face) => {
-      const data = await encodeFace(face.url)
-      if (!data) return ''
-      return fontFaceCss(face, data)
+      const encoded = await encodeFace(face.url)
+      return encoded ? fontFaceCss(face, encoded) : ''
     }),
   )
   return blocks.join('')

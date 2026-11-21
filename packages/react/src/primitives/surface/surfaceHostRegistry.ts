@@ -157,6 +157,16 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
   // nothing ever proves and the crossing hangs in 'lifting' forever.
   let deferred: { target: RenderTarget; close: () => void }[] = []
 
+  const key = id ?? ''
+  const retireIfIdle = () => {
+    if (
+      key === '' || hosts.get(key) !== host || mounts.has(host) || claims > 0 || deferred.length > 0 ||
+      sourceMap.size + presenterMap.size + sourceListeners.size + presenterListeners.size +
+      runtimeListeners.size + tickSet.size + beforeDraw.size + rasterListeners.size + objectSet.size > 0
+    ) return
+    hosts.delete(key)
+  }
+
   const host: SurfaceHost = {
     id,
     runtime: null,
@@ -167,7 +177,10 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
     },
     subscribeRuntime(listener) {
       runtimeListeners.add(listener)
-      return () => runtimeListeners.delete(listener)
+      return () => {
+        runtimeListeners.delete(listener)
+        retireIfIdle()
+      }
     },
     mounted: () => mounts.has(host),
     available: () => mounts.has(host) && host.runtime !== null && !rendererLost,
@@ -189,6 +202,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
         sourceMap.delete(entry.key)
         sourceSnapshot = sourceMap.size === 0 ? NO_SOURCES : Array.from(sourceMap.values())
         for (const listener of sourceListeners) listener()
+        retireIfIdle()
       }
     },
     sources: () => sourceSnapshot,
@@ -196,6 +210,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
       sourceListeners.add(listener)
       return () => {
         sourceListeners.delete(listener)
+        retireIfIdle()
       }
     },
     registerPresenter(entry) {
@@ -208,6 +223,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
         presenterSnapshot =
           presenterMap.size === 0 ? NO_PRESENTERS : Array.from(presenterMap.values())
         for (const listener of presenterListeners) listener()
+        retireIfIdle()
       }
     },
     presenters: () => presenterSnapshot,
@@ -215,6 +231,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
       presenterListeners.add(listener)
       return () => {
         presenterListeners.delete(listener)
+        retireIfIdle()
       }
     },
     registerTick(tick) {
@@ -223,16 +240,24 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
       return () => {
         if (!tickSet.delete(tick)) return
         tickSnapshot = Array.from(tickSet)
+        retireIfIdle()
       }
     },
     ticks: () => tickSnapshot,
-    registerBeforeDraw(listener) { beforeDraw.add(listener); return () => { beforeDraw.delete(listener) } },
+    registerBeforeDraw(listener) {
+      beforeDraw.add(listener)
+      return () => {
+        beforeDraw.delete(listener)
+        retireIfIdle()
+      }
+    },
     registerRaster(listener) {
       rasterListeners.add(listener)
       rasterSnapshot = Array.from(rasterListeners)
       return () => {
         if (!rasterListeners.delete(listener)) return
         rasterSnapshot = Array.from(rasterListeners)
+        retireIfIdle()
       }
     },
     hasRaster:()=>rasterListeners.size>0,
@@ -250,6 +275,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
       return () => {
         if (!objectSet.delete(object)) return
         objectSnapshot = objectSet.size === 0 ? NO_OBJECTS : Array.from(objectSet)
+        retireIfIdle()
       }
     },
     objects: () => objectSnapshot,
@@ -269,6 +295,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
           // object, and a demand Canvas that stops here retains the last
           // pixels of whatever just released.
           host.runtime?.invalidate()
+          retireIfIdle()
         }
       }
     },
@@ -289,15 +316,19 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
       const closing = deferred.filter(entry => included.has(entry.target))
       deferred = deferred.filter(entry => !included.has(entry.target))
       for (const entry of closing) entry.close()
+      retireIfIdle()
     },
     discardTargetPresentations(target) {
       deferred = deferred.filter(entry => entry.target !== target)
+      retireIfIdle()
     },
     discardFrameTail() {
       if (deferred.length === 0) return
       deferred = []
+      retireIfIdle()
     },
   }
+  retireHost.set(host, retireIfIdle)
   return host
 }
 
@@ -306,6 +337,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
 // mounted by the other root. The key is the id; `undefined` collapses to
 // the empty string so the default host has an ordinary map entry.
 const hosts = new Map<string, SurfaceHost>()
+const retireHost = new WeakMap<SurfaceHost, () => void>()
 // Counted, not a set membership. Strict Mode mounts, unmounts and mounts
 // again with the second registration ahead of the first cleanup, so a
 // boolean membership would drop a host that is still on screen. Distinct
@@ -416,6 +448,10 @@ export function mountSurfaceHost(candidate: SurfaceHost): SurfaceHostMount {
       if (remainingForId.length < 2) faulted.delete(key)
       host.setRuntime(null)
       host.notifyLifecycle()
+      retireHost.get(host)?.()
+      if (!hosts.has(key) && remainingForId.length === 1 && remainingForId[0]) {
+        hosts.set(key, remainingForId[0])
+      }
     },
   }
 }

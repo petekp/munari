@@ -309,6 +309,35 @@ describe('mount bookkeeping', () => {
     expect(resolveSurfaceHost()).toBe(host)
   })
 
+  it('evicts an idle named host after unmount, while preserving one with pending registrations', () => {
+    const transient = surfaceHost('card-42')
+    const firstMount = mountSurfaceHost(transient)
+    firstMount.release()
+
+    const remounted = createSurfaceHost('card-42')
+    const secondMount = mountSurfaceHost(remounted)
+    expect(secondMount.host).toBe(remounted)
+    expect(secondMount.host).not.toBe(transient)
+    secondMount.release()
+
+    // While a page-side Surface still holds a registration, the pending host
+    // stays resident so a remounting Canvas adopts it; once both release, it retires.
+    const held = surfaceHost('card-99')
+    const leavePresenter = held.registerPresenter({ key: 'p', element: createElement('mesh') })
+    const heldMount = mountSurfaceHost(createSurfaceHost('card-99'))
+    expect(heldMount.host).toBe(held)
+    heldMount.release()
+
+    const adoptedAgain = mountSurfaceHost(createSurfaceHost('card-99'))
+    expect(adoptedAgain.host).toBe(held)
+    adoptedAgain.release()
+    leavePresenter()
+
+    const freshAfterDrain = createSurfaceHost('card-99')
+    const finalMount = mountSurfaceHost(freshAfterDrain)
+    expect(finalMount.host).toBe(freshAfterDrain)
+    finalMount.release()
+  })
 })
 
 describe('ownership', () => {

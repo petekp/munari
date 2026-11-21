@@ -181,4 +181,65 @@ describe('fontEmbedPlugin', () => {
     expect(css).toContain('data:font/woff2;base64,Ynl0ZXM=')
     expect(unreadable).toEqual([locked])
   })
+
+  it('retries font and cross-origin stylesheet fetches after transient failures', async () => {
+    const flakySheet = 'https://fonts.test/css2?family=FlakySheet'
+    const style = document.createElement('style')
+    style.textContent = "@font-face{font-family:'RetryFace';src:url(https://lab.test/retry.woff2)}"
+    document.head.append(style)
+
+    const sheet = Object.create(CSSStyleSheet.prototype, {
+      href: { value: flakySheet },
+      cssRules: {
+        get: () => {
+          throw new DOMException('Cannot access rules', 'SecurityError')
+        },
+      },
+    })
+    const baseStyleSheet = style.sheet
+    Object.defineProperty(document, 'styleSheets', {
+      configurable: true,
+      value: baseStyleSheet ? [baseStyleSheet, sheet] : [sheet],
+    })
+
+    let online = false
+    vi.stubGlobal('fetch', async (url: string) => {
+      if (!online) return new Response('unavailable', { status: 503 })
+      if (url === 'https://lab.test/retry.woff2') return new Response('retry-bytes')
+      if (url === flakySheet) {
+        return new Response("@font-face{font-family:'FlakySheet';src:url(https://fonts.test/flaky.woff2)}")
+      }
+      if (url === 'https://fonts.test/flaky.woff2') return new Response('sheet-bytes')
+      throw new TypeError('Failed to fetch')
+    })
+
+    const retryNode = letter('RetryFace')
+    const sheetNode = letter('FlakySheet')
+    expect(await carried(retryNode)).toBe('')
+    expect(await carried(sheetNode)).toBe('')
+
+    online = true
+    expect(await carried(retryNode)).toContain('data:font/woff2;base64,')
+    expect(await carried(sheetNode)).toContain("font-family:'FlakySheet'")
+  })
+
+  it.each([
+    ['ttf extension', 'https://lab.test/body.ttf', undefined, 'data:font/ttf;base64,', "format('truetype')"],
+    ['otf extension', 'https://lab.test/display.otf?v=2', undefined, 'data:font/otf;base64,', "format('opentype')"],
+    ['woff extension', 'https://lab.test/legacy.woff', undefined, 'data:font/woff;base64,', "format('woff')"],
+    ['ttf content-type', 'https://lab.test/font?id=7', 'font/ttf', 'data:font/ttf;base64,', "format('truetype')"],
+  ])('preserves font MIME and CSS format for %s', async (_, url, contentType, expectedMime, expectedFormat) => {
+    const family = `Fmt${url.length}`
+    const style = document.createElement('style')
+    style.textContent = `@font-face{font-family:'${family}';src:url(${url})}`
+    document.head.append(style)
+    vi.stubGlobal('fetch', async (requested: string) => {
+      if (requested !== url) throw new TypeError('Failed to fetch')
+      return new Response('bytes', contentType ? { headers: { 'content-type': contentType } } : undefined)
+    })
+
+    const css = await carried(letter(family))
+    expect(css).toContain(expectedMime)
+    expect(css).toContain(expectedFormat)
+  })
 })
