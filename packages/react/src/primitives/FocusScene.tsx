@@ -156,12 +156,7 @@ function createProxyLayer(): HTMLDivElement {
   return el
 }
 
-export function FocusScene({
-  children,
-  onFocusChange,
-  initialFocus,
-  reframeMargin = 24,
-}: {
+export interface FocusSceneProps {
   children: ReactNode
   onFocusChange?: (e: FocusSceneEvent) => void
   /** Group the first Tab into the scene selects. Default: entryPick — the
@@ -170,7 +165,14 @@ export function FocusScene({
   /** Inset (CSS px) the reframe correction aims inside — scroll-margin's
    *  analog. */
   reframeMargin?: number
-}) {
+}
+
+export function FocusScene({
+  children,
+  onFocusChange,
+  initialFocus,
+  reframeMargin = 24,
+}: FocusSceneProps) {
   const camera = useThree((s) => s.camera)
   const gl = useThree((s) => s.gl)
 
@@ -984,10 +986,7 @@ export function FocusScene({
     document.addEventListener('focusin', bundle.onFocusin)
     document.addEventListener('focusout', bundle.onFocusout)
     document.addEventListener('click', bundle.onClick, true)
-    // Debug surface for instruments/ probes — not API, and it tracks the
-    // internals it reflects. `typeof debug` keeps the window slot's type
-    // exact without a hand-maintained interface, so one narrowing cast does
-    // the whole job.
+    // Debug surface for instruments/ probes — tracks internals via `typeof debug`.
     const debug = {
       locate: bundle.locate,
       ring: bundle.ringOrder,
@@ -1037,14 +1036,7 @@ export function FocusScene({
  * and scene-drawn leaf controls (such as Dial) join through proxies. Renders
  * no scene object.
  */
-export function FocusGroup({
-  id,
-  label,
-  order,
-  objectRef,
-  onStateChange,
-  children,
-}: {
+export interface FocusGroupProps {
   id: string
   label?: string
   /** Authored scene-ring position (docs/focus.md "Ordering"). Ordered groups
@@ -1053,7 +1045,16 @@ export function FocusGroup({
   objectRef?: RefObject<THREE.Object3D | null>
   onStateChange?: (state: GroupFocusState, cause: FocusCause) => void
   children: ReactNode
-}) {
+}
+
+export function FocusGroup({
+  id,
+  label,
+  order,
+  objectRef,
+  onStateChange,
+  children,
+}: FocusGroupProps) {
   const scene = use(FocusSceneContext)
   const onStateChangeRef = useLatest(onStateChange)
 

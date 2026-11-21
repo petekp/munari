@@ -5,6 +5,8 @@ import {
   useSurfaceStatus, useSurfaceRefresh, useSurfaceDriver, useSurfaceMotion, useFreezeSurface, useSurfaceProgress, useSurfaceSupport, supportsSurfaces,
   useElementCapture, CaptureContent, useCaptureHandle, usePageTarget, useSurfaceBeforeRender,
   type SurfaceHandle, type SurfacePresentation, type SurfaceDestination, type SurfaceProps,
+  type SurfaceStatus, type CaptureContentProps, type SurfaceLitMaterialProps, type SurfaceChromeState,
+  type FocusSceneProps, type FocusGroupProps, type Viewport, type Dir, type SurfacePartId, type PointerRouteRequest,
 } from '@petepetrash/munari'
 import { FrameSurface, type FrameSource, type PresentationRequirement } from '@petepetrash/munari/advanced'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
@@ -55,7 +57,7 @@ function Observations() {
   const refresh: () => void = useSurfaceRefresh(own)
   const refreshEnclosing: () => void = useSurfaceRefresh()
   void [refresh, refreshEnclosing]
-  const state=useSurfaceStatus(own)
+  const state: SurfaceStatus = useSurfaceStatus(own)
   const frozen:boolean=useFreezeSurface(own);void frozen
   const hold: SurfacePresentation=state.presentation
   const raw:number=useSurfaceProgress(own).get()
@@ -178,3 +180,18 @@ const customProducer = {
 ;<Surface.HTML pageStyle={{ margin: 12 }}><div /></Surface.HTML>
 // @ts-expect-error The handle cannot write renderer intent.
 void handle.request
+
+function ExportedTypeErgonomics(
+  captureProps: CaptureContentProps,
+  litProps: SurfaceLitMaterialProps,
+  chromeState: SurfaceChromeState,
+  focusSceneProps: FocusSceneProps,
+  focusGroupProps: FocusGroupProps,
+  viewport: Viewport,
+  dir: Dir,
+  partId: SurfacePartId,
+  routeRequest: PointerRouteRequest,
+) {
+  void [captureProps, litProps, chromeState, focusSceneProps, focusGroupProps, viewport, dir, partId, routeRequest]
+}
+void ExportedTypeErgonomics

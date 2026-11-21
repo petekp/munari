@@ -19,7 +19,7 @@
 export { Surface, SceneSurface, useSurfaceStatus, useSurfaceRefresh, useSurfaceMotion, useSurfaceDriver, useFreezeSurface } from './primitives/Surface'
 export type { SurfaceProps, SurfaceRootProps, SurfaceHTMLProps, SceneSurfaceHTMLProps, SceneSurfaceRootProps, SceneSurfaceProps, SurfaceSceneProps, SurfaceControls, SurfaceDriverFrame, SurfaceDriverStep, SurfaceMotionFrame } from './primitives/Surface'
 export { useElementCapture, CaptureContent } from './primitives/elementCapture'
-export type { ElementCapture, ElementCaptureOptions } from './primitives/elementCapture'
+export type { ElementCapture, ElementCaptureOptions, CaptureContentProps } from './primitives/elementCapture'
 export { useCaptureHandle, useCaptureFrame, useCaptureStatus } from './primitives/capture'
 export type { CaptureHandle, CaptureFrame, CaptureStatus } from './primitives/capture'
 export { SurfaceCanvas, type SurfaceCanvasProps } from './primitives/surface/SurfaceCanvas'
@@ -44,10 +44,12 @@ export {
   useSurfaceSourceRoot,
   useSurfaceTexture,
   useSurfaceTextureOf,
+  type SurfaceChromeState,
 } from './primitives/surface/surfaceContext'
 export {
   useSurfaceNodes,
   type SurfaceNodes,
+  type SurfaceLitMaterialProps,
 } from './primitives/surface/surfaceMaterials'
 // The shader half of the corner mask (the JS half lives in the kernel), for a
 // node material that samples a second capture with its own size and radii.
@@ -73,8 +75,10 @@ export {
 } from './primitives/surface/SurfaceAnchor'
 export {
   SURFACE_ANCHOR_ATTRIBUTE,
+  type PointerRouteRequest,
   type SourceUvRect,
   type SurfaceChrome,
+  type SurfacePartId,
 } from '@munari/core'
 export { SURFACE_FOCUS_ATTRIBUTE } from './primitives/surface/surfaceFocus'
 
@@ -94,7 +98,9 @@ export {
 export { detectHtmlInCanvas } from '@munari/core'
 
 // ── Focus, and the camera that follows it ────────────────────────────────
-export { FocusScene, FocusGroup } from './primitives/FocusScene'
+export { FocusScene, FocusGroup, type FocusSceneProps, type FocusGroupProps } from './primitives/FocusScene'
+export type { Viewport } from './lib/focusTree'
+export type { Dir } from './lib/spatialNav'
 export {
   useFocusScene,
   useFocusSceneEvents,

@@ -10,7 +10,7 @@ import { SurfaceAnchor } from './surface/SurfaceAnchor'
 import { SurfaceLitMaterial } from './surface/surfaceMaterials'
 import { SurfaceRootContext, SurfacePartContext, SurfaceTunnelContext, SurfaceHandleContext, DEFAULT_PART } from './surface/surfaceContext'
 import { surfaceStoreOf, useSurfaceHandle, type SurfaceHandle } from './surface/surfaceHandle'
-import { surfaceViewPresentation, type SurfaceViewPresentation, type SurfaceViewDestination } from './surface/surfaceStatus'
+import { surfaceViewPresentation, type SurfaceStatus, type SurfaceViewPresentation, type SurfaceViewDestination } from './surface/surfaceStatus'
 import { useSurfaceDriver as useSurfaceDriverBinding, useSurfaceStoreOf } from './surface/useSurfaceDriver'
 import { type SurfaceSize, type SurfaceSourceRuntime, type SurfaceResolution, type SurfacePartPublication } from './surface/surfaceSourceRuntime'
 import { useLatest } from './useLatest'
@@ -72,11 +72,9 @@ export interface SurfaceControls {
   onPresentationChange?: (presentation: SurfaceViewPresentation) => void
   onMotionComplete?: (destination: SurfaceViewDestination) => void
   /**
-   * The content froze for the scene, or thawed when the page took it back.
-   * CSS animations, transitions and Web Animations are frozen for you on
-   * this edge; stop your own clocks here — a rAF loop, a timer, a video.
-   * Never fires for content declared `live`. `useFreezeSurface` is the same
-   * signal as React state.
+   * Fired when content freezes on entering the scene or thaws on returning to
+   * the page. CSS/WAAPI motion freezes automatically; stop custom rAF/timers/video
+   * here. Never fires when `live` is set (`useFreezeSurface` reads the same state).
    */
   onFreezeChange?: (frozen: boolean) => void
   onReady?: () => void
@@ -514,7 +512,7 @@ export function useSurfaceRefresh(surface?: SurfaceHandle): () => void {
   return useRequiredSurfaceStore('useSurfaceRefresh', surface).refresh
 }
 
-export function useSurfaceStatus(surface?: SurfaceHandle) {
+export function useSurfaceStatus(surface?: SurfaceHandle): SurfaceStatus {
   const store = useRequiredSurfaceStore('useSurfaceStatus', surface)
   const browserSupported = useSurfaceSupport()
   const snapshot = useSyncExternalStore(store.subscribe, store.getStatus, store.getStatus)

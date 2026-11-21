@@ -281,7 +281,7 @@ export function useElementCapture(options: ElementCaptureOptions = {}): ElementC
   return result
 }
 
-type CaptureContentProps = {
+export type CaptureContentProps = {
   capture: CaptureHandle; size: SurfaceSize; resolution?: SurfaceResolution
   /** See `SurfaceHTMLProps.live`. */
   live?: boolean
