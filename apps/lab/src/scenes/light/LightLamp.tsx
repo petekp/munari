@@ -306,11 +306,8 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
     redraw()
   }, [lightHeight, redraw])
 
-  // Mount: the multiply canvas. Created outside React; a lost device or context
-  // degrades to the CSS depth kit rather than an opaque black overlay. A
-  // passive effect: the page ref belongs to a parent, and parent refs are
-  // not attached yet when a child's layout effect runs. The renderer starts
-  // asynchronously, so the loop, listeners and first draw wait for init.
+  // Multiply canvas: created outside React (degrades to CSS depth kit on loss);
+  // passive effect so `pageRef` from the parent has attached before init starts.
   useEffect(() => {
     const box = host.current
     const page = pageRef.current
@@ -432,11 +429,8 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
         state.draw = draw
         state.start = start
         state.stop = stop
-        // `device-pixel-content-box` reports the exact backing-store size, which is
-        // what keeps the masthead's buffer off a fractional DPR. WebKit has not
-        // implemented that box and THROWS from `observe` rather than ignoring the
-        // option, which took the whole scene down. The callback reads the page's
-        // own geometry, not the entry, so the content box observes the same events.
+        // `device-pixel-content-box` tracks exact backing-store DPR; WebKit
+        // throws from `observe` when passed that box, so fall back to default.
         try { observer.observe(page,{box:'device-pixel-content-box'}) }
         catch { observer.observe(page) }
         resize()
@@ -466,7 +460,6 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
       state.draw = () => {}
       state.start = () => {}
       state.stop = () => {}
-      pass.mesh.material.dispose()
       display?.dispose()
       headline?.dispose()
       pass.paper?.dispose()
@@ -567,13 +560,16 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
       pass.renderer = null
       pass.pipeline = null
       pipeline.dispose()
-      // dispose() skips the backend while init is pending, so wait for it. After
-      // a failed init, dispose() re-awaits the rejected init without handling it,
-      // so a renderer that never started is left alone.
+      // Same mid-init disposal guard as the shadow renderer above.
       void init.then(() => { void renderer.dispose() }, () => {})
       canvas.remove()
     }
   }, [state, degraded, pageRef, redraw, effectsEnabled, flyer, generation, lost])
+
+  useEffect(() => () => {
+    state.shadow.mesh.geometry.dispose()
+    state.shadow.mesh.material.dispose()
+  }, [state])
 
   // The page tells the depth kit whether the shader owns shadows now.
   useEffect(() => {
@@ -625,10 +621,8 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
     }
   }, [state, innerRef, pageRef, redraw, effectsEnabled, generation])
 
-  // Read the raised and sunk elements into relief: on mount, after fonts,
-  // once layout settles, and at once when an element changes its relief or
-  // hides. Scrolling only re-frames it. Painting happens in a worker, so a
-  // rebuild costs the main thread a measurement and a texture upload.
+  // Read raised/sunk elements into relief on mount, font settle, layout settle,
+  // and `[data-relief]`/`[hidden]` changes; worker failures fall back inline.
   useEffect(() => {
     const page = pageRef.current
     const inner = innerRef.current
@@ -639,7 +633,8 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
     let previousPlan = ''
     let lastLayout = ''
     let appliedPlan = ''
-    const worker = createReliefWorker()
+    let pendingPlan: ReturnType<typeof measureRelief> = null
+    let worker = createReliefWorker()
     state.shadow.layoutCurrent = () => appliedPlan !== '' && appliedPlan === JSON.stringify(measureRelief(inner, inner))
     const apply = (mask: Mask | null, signature = '') => {
       if (!alive) return
@@ -649,15 +644,24 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
       state.shadow.relief = mask ? { mask, texture: maskTexture(mask) } : null
       redraw()
     }
+    const fallbackWorker = () => {
+      if (!worker) return
+      worker.terminate()
+      worker = null
+      if (alive && pendingPlan) apply(paintRelief(pendingPlan, domPainter), previousPlan)
+    }
     if (worker) {
       worker.onmessage = (event: MessageEvent<ReliefReply>) => {
         if (event.data.id === requestId) apply(event.data.mask, previousPlan)
       }
+      worker.onerror = (event) => { event.preventDefault(); fallbackWorker() }
+      worker.onmessageerror = fallbackWorker
     }
     const build = () => {
       if (!alive) return
       const plan = measureRelief(inner, inner)
       if (!plan) {
+        pendingPlan = null
         requestId++
         previousPlan = ''
         lastLayout = 'null'
@@ -668,6 +672,7 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
       if (signature === previousPlan) return
       previousPlan = signature
       lastLayout = signature
+      pendingPlan = plan
       apply(null)
       if (worker) {
         const request: ReliefRequest = { id: ++requestId, plan }
@@ -682,6 +687,7 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
       lastLayout = layout
       // Old coordinates are not a valid preview of a new layout. Invalidate
       // pending worker replies too, so one cannot restore a stale field (#50).
+      pendingPlan = null
       requestId++
       previousPlan = ''
       apply(null)
@@ -705,11 +711,8 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
     }
   }, [state, pageRef, innerRef, redraw, effectsEnabled, generation])
 
-  // The flyer publishes from the hero's frame callback; redrawing right
-  // there puts the shadow and the card in the same frame whatever order the
-  // two animation-frame callbacks run in (the shadow trailed the card by a
-  // frame through the launch wiggle, Pete, 2026-09-05). The independent
-  // loop yields while the Surface supplies the frames.
+  // Redraw inside the flyer's frame callback so shadow and card stay in phase
+  // through the launch wiggle (Pete, 2026-09-05); the drift loop yields while active.
   const redrawFlyer = useEffectEvent(() => { if (!degraded) redraw() })
   useEffect(() => flyer.subscribe(() => redrawFlyer()), [flyer])
 

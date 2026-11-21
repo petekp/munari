@@ -111,14 +111,9 @@ function createLanternState(): LanternState {
   const camera = new THREE.PerspectiveCamera(50, 1, 1, 4000)
   const lantern = createLampLantern()
   scene.add(lantern.group)
-  // The PMREMGenerator/RoomEnvironment map (set on scene.environment once
-  // the renderer has started, see the mount effect below) is what now gives the
-  // blackened-steel MeshPhysicalNodeMaterials their directional highlights and
-  // makes them read as metal rather than flat color — this hemisphere is
-  // only a very dim, cool fill so the underside of the model (which the
-  // room env's own lights don't reach at every drag angle) never goes to
-  // pure black (round 5: replaces the previous warm hemisphere+directional
-  // pair, whose job the IBL now does).
+  // PMREM/RoomEnvironment (installed once the renderer starts) supplies the
+  // steel specular IBL; this dim cool hemisphere fills the underside where the
+  // room env's lights do not reach.
   scene.add(new THREE.HemisphereLight(0x9fb4c9, 0x0c0c0d, 0.25))
   return {
     scene,
@@ -376,7 +371,6 @@ export function LampApp() {
       state.draw = () => {}
       state.start = () => {}
       state.stop = () => {}
-      state.light.dispose()
       state.maskTexture?.dispose()
       pipeline.dispose()
       // dispose() skips the backend while init is pending, so a renderer
@@ -472,7 +466,9 @@ export function LampApp() {
         // renderer) and disposed once baked; only the resulting target needs
         // to live on past this setup.
         const pmremGenerator = new PMREMGenerator(renderer)
-        environment = pmremGenerator.fromScene(new RoomEnvironment(), 0.04)
+        const room = new RoomEnvironment()
+        environment = pmremGenerator.fromScene(room, 0.04)
+        room.dispose()
         state2.scene.environment = environment.texture
         pmremGenerator.dispose()
 
@@ -494,17 +490,19 @@ export function LampApp() {
       state2.draw = () => ({ x: 0, y: 0 })
       state2.scene.environment = null
       environment?.dispose()
-      state2.lantern.dispose()
       pipeline.dispose()
-      // dispose() skips the backend while init is pending, so a renderer
-      // unmounted mid-init would keep its device or context. After a failed
-      // init, Three 0.186's dispose() leaves an unhandled rejection, so that
-      // renderer is left as it is.
+      // Same mid-init disposal guard as the shadow renderer above.
       const dispose = () => renderer.dispose()
       void started.then(dispose, () => {})
       canvas.remove()
     }
   }, [state2, redraw, generation, lost])
+
+  useEffect(() => () => {
+    state.mesh.geometry.dispose()
+    state.light.dispose()
+    state2.lantern.dispose()
+  }, [state, state2])
 
   // Read the headline into ink after fonts settle, and again whenever its
   // layout changes. The lab loads Bodoni Moda with display=block, so an
@@ -593,7 +591,7 @@ export function LampApp() {
     }
     const up = (event: PointerEvent) => {
       dragging.current = false
-      element.releasePointerCapture(event.pointerId)
+      if (element.hasPointerCapture(event.pointerId)) element.releasePointerCapture(event.pointerId)
       element.classList.remove('is-dragging')
       document.body.style.userSelect = ''
       driftEpoch.current = performance.now()

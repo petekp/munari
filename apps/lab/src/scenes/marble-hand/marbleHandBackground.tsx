@@ -303,6 +303,8 @@ export function MarbleHandBackground({ theme, motion, reducedMotion, tuning }: {
     }
   }, [state, generation, lost])
 
+  useEffect(() => () => state.mesh.geometry.dispose(), [state])
+
   // A paused or reduced-motion field still has to show a slider's change.
   useEffect(() => {
     if (state.renderer) state.draw()
