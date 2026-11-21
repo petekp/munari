@@ -16,8 +16,8 @@ React/Three peers. `/advanced` exposes supported lower-level renderer and
 evidence mechanisms; it is not a renderer abstraction.
 
 For DOM-aligned attachments, use `Surface.Anchor` or `useSurfaceAnchorRects`.
-The `/advanced` entry also exports `collectSurfaceAnchors`, `stampSurfaceAnchors`
-and `projectSurfaceAnchor` for manual paint-receipt work. Their canonical
+The `/advanced` entry also exports `collectSurfaceAnchors` and
+`anchorReceiptMatchesDrawn` for manual paint-receipt work. Their canonical
 implementation is in the core mapping layer, covered by its conformance tests.
 The former registry duplicate has been removed.
 

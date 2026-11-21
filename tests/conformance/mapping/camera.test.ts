@@ -1,16 +1,19 @@
 // The camera contract: one world unit is one CSS pixel on EXACTLY
 // ONE PLANE, z = 0. Every other plane is magnified by perspective;
-// screenToPlane/carryToPlane/planeToScreen are the one place allowed
-// to know the conversion.
+// screenToPlane and carryToPlane own the conversion.
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import {
   cameraDistance,
   carryToPlane,
   planeScale,
-  planeToScreen,
   screenToPlane,
 } from '@munari/core'
+
+const planeToScreen = (p: { x: number; y: number; z: number }, w: number, h: number, camZ: number) => {
+  const s = planeScale(camZ, p.z)
+  return { x: w / 2 + p.x * s, y: h / 2 - p.y * s }
+}
 
 const VW = 1600
 const VH = 1000

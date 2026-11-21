@@ -111,6 +111,13 @@ beforeEach(() => {
   stubTrialContext(true)
 })
 
+afterEach(() => {
+  vi.unstubAllGlobals()
+  Reflect.deleteProperty(HTMLCanvasElement.prototype, 'layoutSubtree')
+  Reflect.deleteProperty(HTMLCanvasElement.prototype, 'onpaint')
+  Reflect.deleteProperty(HTMLCanvasElement.prototype, 'requestPaint')
+})
+
 function make(w = 360, h = 460, scale = 1) {
   return createDomTextureSource('<div class="root"></div>', w, h, {
     label: 'test',

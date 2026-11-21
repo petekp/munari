@@ -6,7 +6,7 @@
 // hand. Vector parameters are structural so THREE.Vector3 passes
 // through unchanged (decisions.md #4).
 
-import type { Vec3Like, Vec3Readonly } from '../math/vec3'
+import type { Vec3Like } from '../math/vec3'
 
 /**
  * How far back the camera has to sit for the plane z = 0 to be the
@@ -88,29 +88,4 @@ export function carryToPlane<V extends Vec3Like>(p: V, camZ: number, z: number):
   p.y *= k
   p.z = z
   return p
-}
-
-/** A position on the screen, in client px — the units `getBoundingClientRect`
- *  and pointer events already speak. */
-export interface ScreenPoint {
-  x: number
-  y: number
-}
-
-/**
- * Where a world point lands on screen, in client px. The inverse of
- * `screenToPlane`; only tests use it, to prove that inverse and that
- * `carryToPlane` keeps a point's screen position.
- */
-export function planeToScreen(
-  p: Vec3Readonly,
-  viewportWidth: number,
-  viewportHeight: number,
-  camZ: number,
-): ScreenPoint {
-  const s = planeScale(camZ, p.z)
-  return {
-    x: viewportWidth / 2 + p.x * s,
-    y: viewportHeight / 2 - p.y * s,
-  }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sampleUvPosition } from '../../../packages/core/src/mapping/uvSampling'
+import { sampleUvPosition } from '@munari/core'
 
 // A unit plane centered on the origin, two triangles, UVs origin bottom-left
 // — the geometry every Surface has until a scene gives it another.

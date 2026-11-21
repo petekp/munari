@@ -44,13 +44,6 @@ export interface SurfaceAnchorReceipt<K extends string = string> {
   readonly anchors: Readonly<Record<K, SourceUvRect>>
 }
 
-export interface SurfaceAnchorProjection {
-  readonly x: number
-  readonly y: number
-  readonly cssWidth: number
-  readonly cssHeight: number
-}
-
 /** The attribute an author writes to name a box. A string, because it is one. */
 export const SURFACE_ANCHOR_ATTRIBUTE = 'data-munari-anchor'
 
@@ -107,37 +100,11 @@ export function collectSurfaceAnchors<K extends string>(
   return stampSurfaceAnchors(paint, anchors)
 }
 
-/**
- * Re-stamp a validated set with a newer paint. The pixels moved on but the
- * boxes did not, which is the common case for a panel that repainted
- * without relayout — and re-collecting would pay a layout read per paint.
- */
-export function stampSurfaceAnchors<K extends string>(
+function stampSurfaceAnchors<K extends string>(
   paint: DomPaintReceipt,
   anchors: Readonly<Record<K, SourceUvRect>>,
 ): SurfaceAnchorReceipt<K> {
   return Object.freeze({ paint, anchors: Object.freeze(anchors) })
-}
-
-/**
- * Project one anchor into a Surface's current box. Position follows the live
- * size; physical dimensions stay the captured CSS dimensions.
- */
-export function projectSurfaceAnchor(
-  anchor: SourceUvRect,
-  width: number,
-  height: number,
-  mirrorU = false,
-): SurfaceAnchorProjection {
-  const sourceU = (anchor.uMin + anchor.uMax) / 2
-  const u = mirrorU ? 1 - sourceU : sourceU
-  const v = (anchor.vMin + anchor.vMax) / 2
-  return Object.freeze({
-    x: u * width,
-    y: (1 - v) * height,
-    cssWidth: anchor.cssWidth,
-    cssHeight: anchor.cssHeight,
-  })
 }
 
 /**

@@ -14,7 +14,6 @@
 import { describe, expect, it } from 'vitest'
 
 import {
-  hostTailPresents,
   presentationReceiptSatisfies,
   presentationRoute,
   type PresentationReceipt,
@@ -138,20 +137,5 @@ describe('presentationRoute', () => {
 
   it.each(cases)('%s', (_name, patch, hasHost, expected) => {
     expect(presentationRoute(pass(patch), hasHost)).toBe(expected)
-  })
-})
-
-describe('host-tail evidence', () => {
-  it('the host tail closes presentation only when the frame reached the screen', () => {
-    expect(hostTailPresents({ deferred: 2, reachedScreen: true })).toBe(true)
-    // The composite pass was skipped, or the context was lost: nothing was
-    // shown, so nothing is proven.
-    expect(hostTailPresents({ deferred: 2, reachedScreen: false })).toBe(false)
-  })
-
-  it('a tail with nothing deferred proves nothing', () => {
-    // Every frame ends with a draw to the screen. Only a frame that
-    // actually carried a deferred presenter closes that presenter's proof.
-    expect(hostTailPresents({ deferred: 0, reachedScreen: true })).toBe(false)
   })
 })

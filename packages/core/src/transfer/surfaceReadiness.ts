@@ -1,10 +1,12 @@
 // Surface readiness — has every registered scene presenter drawn once?
 //
 // The law: readiness is a KEYED set over one lifetime, never a count.
-// A presenter proves itself by completing its first eligible
-// color-writing draw; a Surface is ready when every presenter registered
-// for the current lifetime has done so, and a source replacement starts a
-// new lifetime in which nothing has proven anything yet.
+// A presenter proves stage-one readiness by completing its first eligible
+// draw (`warm-up` while lifting on a shared canvas, or a color-writing pass
+// that reached the screen; see `transfer/presentation`, decisions.md #45).
+// Stage-two visible presentation requires a color-writing draw. A Surface is
+// ready when every presenter registered for the current lifetime has proven
+// itself, and a source replacement starts a new lifetime with nothing proven.
 //
 // Keyed rather than counted, because a presenter that remounts mid-warm-up
 // fires its first-draw boundary AGAIN. The retired lift hook learned this as receipts
@@ -28,7 +30,7 @@ export interface SurfaceReadiness {
   readonly lifetime: number
   /** Presenters registered for this lifetime. */
   readonly registered: readonly SurfacePresenterKey[]
-  /** Those whose first eligible color-writing draw has completed. */
+  /** Those whose first eligible stage-one draw (`warm-up` or color-writing) has completed. */
   readonly proven: readonly SurfacePresenterKey[]
 }
 

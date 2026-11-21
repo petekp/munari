@@ -45,7 +45,6 @@ import {
   isRelayed,
   relay,
   nativeRideStyle,
-  poseMatrix3d,
   surfaceCursorAt,
   surfacePose,
   trackFocusModality,
@@ -214,7 +213,7 @@ function ride() {
     createSurfacePose(),
   )
   const live = createNativePointerRig(canvas, root, glCanvas)
-  live.ride(nativeRideStyle(poseMatrix3d(pose, 0, 0), 7))
+  live.ride(nativeRideStyle(`matrix3d(${pose.matrix.map((v) => v.toFixed(8)).join(', ')})`, 7))
   return live
 }
 
@@ -251,10 +250,8 @@ beforeEach(() => {
   box(field, FIELD_BOX)
   box(loose, LOOSE_BOX)
 
-  // Module-state hygiene, as in forwardEvents.test.ts: a previous test's
-  // unreleased press leaves a surface drag live, and `clearPointerState` then
-  // defers by design. Done before the log is armed, so its own dispatches do
-  // not appear in it.
+  // Module-state hygiene: release any prior press before arming the event log
+  // so `clearPointerState` never defers on a leftover surface drag.
   forwardPointer(root, 0.5, 0.5, 'up')
   rig = null
 

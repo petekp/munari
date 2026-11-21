@@ -91,7 +91,7 @@ export interface SurfacePassEvidence {
  *   composite these pixels this frame and the outgoing renderer may release
  *   inside the post-draw callback.
  * - `tail`: color went into an off-screen target and the host will close
- *   the frame (`hostTailPresents`). A post-processed scene draws every
+ *   the frame when a qualified screen draw includes that target. A post-processed scene draws every
  *   presenter this way, so the presenter's own post-draw callback is NOT a
  *   presentation boundary: the frame has not reached the screen and a
  *   composite pass could still discard it. Reading a target draw as
@@ -110,22 +110,4 @@ export function presentationRoute(pass: SurfacePassEvidence, hasHost: boolean): 
   if (!pass.colorWrite) return !pass.depthWrite && !pass.stencilWrite ? 'warm-up' : 'color-off'
   if (pass.defaultFramebuffer) return 'now'
   return hasHost ? 'tail' : 'no-host'
-}
-
-/** What the host saw at the end of one rendered frame. */
-export interface SurfaceHostTail {
-  /** Presenters that wrote color into a target during this frame. */
-  readonly deferred: number
-  /** The frame ended with a color-writing draw to the default framebuffer. */
-  readonly reachedScreen: boolean
-}
-
-/**
- * Does the host's tail close presentation for the passes that deferred to
- * it? A frame whose deferred presenters never reached the screen — the
- * composite pass was skipped, the renderer bailed, the context was lost —
- * closes nothing, and every deferred presenter stays unproven.
- */
-export function hostTailPresents(tail: SurfaceHostTail): boolean {
-  return tail.deferred > 0 && tail.reachedScreen
 }

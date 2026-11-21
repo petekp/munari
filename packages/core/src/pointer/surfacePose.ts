@@ -7,8 +7,8 @@
 // browser hit-test the drawn child through it. Everything that reasons about
 // the hit region — whether the pose is even expressible as a planar
 // homography, which way the sheet is facing, where a texture uv lands on
-// screen — reads the same numbers. `posePoint` at rest is the relay's own
-// `rect.left + u * rect.width`, derived rather than repeated.
+// screen — reads `pose.matrix`. At rest that homography maps `(u * w, (1 - v) * h)`
+// to the relay's own `rect.left + u * rect.width`, derived rather than repeated.
 //
 // The fault: a projection computed twice is a projection that drifts. The two
 // copies agree in the case the author tested and part company under the one
@@ -95,7 +95,7 @@ export interface SurfacePose {
 }
 
 /** A point in client coordinates. */
-export interface PosePoint {
+interface PosePoint {
   x: number
   y: number
 }
@@ -260,53 +260,6 @@ export function surfacePose(input: SurfacePoseInput, out: SurfacePose): SurfaceP
   const doubled = windingDoubled(out.quad)
   out.frontFacing = out.planar && (input.mirrorU ? doubled < 0 : doubled > 0)
   return out
-}
-
-/**
- * Where a texture uv lands on screen, in client px.
- *
- * This is the relay's own hit geometry, derived instead of repeated: at rest
- * the parked source stands at its layout box with no transform, and this
- * returns exactly `rect.left + u * rect.width`, `rect.top + (1 - v) *
- * rect.height`. Under any other pose it returns where the pixels actually
- * are. The two routes place a uv at the same point because there is only one
- * map.
- */
-export function posePoint(pose: SurfacePose, u: number, v: number, out: PosePoint): PosePoint {
-  // The matrix, not an interpolation across the projected corners: under
-  // perspective the map is projective, so lerping the corners drifts toward
-  // the middle of a tilted quad by whatever the foreshortening is worth.
-  project(pose.matrix, u * pose.contentWidth, (1 - v) * pose.contentHeight, out)
-  return out
-}
-
-/** CSS number formatting: fixed notation, because `matrix3d` parses no exponents. */
-function css(value: number): string {
-  return value.toFixed(8)
-}
-
-/**
- * The pose as a CSS `matrix3d` for an element whose border-box origin stands
- * at (originX, originY) in client coordinates, with `transform-origin: 0 0`.
- *
- * The parked canvas wears this. It is parked at client (0, 0)
- * (`position: fixed; left: 0; top: 0`, `paint/htmlInCanvas.ts`), so the
- * caller passes that origin and the transform maps content px to offsets
- * from it — the client-space pose with the box origin subtracted.
- * Subtracting a translation from a projective matrix is a row operation on
- * the w row, not a change to the projection.
- */
-export function poseMatrix3d(pose: SurfacePose, originX: number, originY: number): string {
-  const m = pose.matrix
-  const parts: string[] = []
-  for (let c = 0; c < 4; c++) {
-    const wRow = m[c * 4 + 3] ?? 0
-    parts.push(css((m[c * 4] ?? 0) - originX * wRow))
-    parts.push(css((m[c * 4 + 1] ?? 0) - originY * wRow))
-    parts.push(css(m[c * 4 + 2] ?? 0))
-    parts.push(css(wRow))
-  }
-  return `matrix3d(${parts.join(', ')})`
 }
 
 /**

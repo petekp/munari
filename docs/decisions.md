@@ -3123,13 +3123,25 @@ The same change deletes four other private paths:
 - `mirrorU` on the DOM Surface path: the source runtime, the presenter,
   anchors, and the native route.
 
-`FrameSurface` keeps its public `mirrorU` prop. Core's `surfacePose` and
-`projectSurfaceAnchor` keep their `mirrorU` input.
+`FrameSurface` keeps its public `mirrorU` prop. Core's `surfacePose` keeps its
+`mirrorU` input.
 
 **Amendment (2026-10-09, react binding, public API).** The root entry no
 longer exports `surfaceFocusKey` or `surfaceFocusTarget`. Only the private
 focus transfer calls them. `SURFACE_FOCUS_ATTRIBUTE` stays. `FrameSurface`
 drops its `width` and `height` props, which it never read.
+
+**Amendment (2026-11-21, core + react binding, public API).** `/advanced`
+retires six uncalled kernel helpers superseded by later mechanisms:
+`hostTailPresents` (`SurfaceHostTail`, replaced by per-target frame-tail
+closure), `poseMatrix3d` and `posePoint` (`PosePoint`, superseded by direct
+`pose.matrix` reads in `surfaceNativeRoute`), `projectSurfaceAnchor` and
+`stampSurfaceAnchors` (`SurfaceAnchorProjection`, internal to
+`collectSurfaceAnchors`), and `planeToScreen` (`ScreenPoint`, test-only).
+The root entry types `useSurfaceStatus(): SurfaceStatus` explicitly and exports
+`CaptureContentProps`, `SurfaceLitMaterialProps`, `SurfaceChromeState`,
+`FocusSceneProps`, `FocusGroupProps`, `Viewport`, `Dir`, `SurfacePartId`, and
+`PointerRouteRequest`.
 
 <a id="50"></a>
 
@@ -5357,37 +5369,29 @@ reports `false`. Other software rasterizers were not checked.
 
 ## #75 — The overview leads with a running demo, and one catalog lists the demos (2026-10-18, lab)
 
-The overview at `?scene=home` is a white page with black Archivo type. It opens
-with the tagline and one sentence about what Munari is. Under that, the chosen
-demo runs live in an iframe loaded with `&framed&bare&capture=auto`, scaled from
-a 1100px layout, or 720px on narrow screens. The frame runs to the window's edges up to 1600px wide. Past that it stops growing, and its corners round as the side margins open. It is never taller than the window; a capped frame lays its demo out at the shorter height rather than cropping it. An index of every demo follows.
-Choosing a thumbnail runs that demo in the frame. Three short statements of what
-the library does, the install command, and a link to the guide close the page.
-The wordmark is the page's only color besides the demos.
+The overview (`?scene=home`) is a white Archivo page opening with the tagline and
+one sentence on Munari. Below it, the chosen demo runs live in an iframe loaded
+with `&framed&bare&capture=auto`, scaled from a 1100px layout (720px on narrow
+screens). The frame spans the window up to 1600px, rounding its corners as side
+margins open, and caps its height to the viewport so demos lay out shorter
+rather than cropping. A thumbnail index, three summary statements, the install
+command, and a guide link close the page; only the wordmark and demos carry color.
 
-The agent-prompt hero is gone. It made the visitor read a sentence and pick a
-verb before seeing anything move. `capture=auto` stays: Chrome with
-HTML-in-canvas captures through it, and every other browser captures through
-snapDOM, so every visitor gets a live demo.
+The agent-prompt hero is gone; `capture=auto` stays so Chrome uses HTML-in-canvas
+and other browsers use snapDOM.
 
-`sceneCatalog.ts` `DEMOS` is the one list of advertised demos, in display
-order. The overview's index and stage, the demo pages' previous and next
-links, and the routes in `App.tsx` all read it. `App.tsx` `DEMO_PAGES` maps
-each catalog id to its lazy page, and its `satisfies Record<DemoId, …>` makes a
-catalog entry without a page a type error. Adding a demo is one catalog entry,
-one `DEMO_PAGES` entry, and a thumbnail at `public/thumbs/<id>.jpg`.
+`sceneCatalog.ts` `DEMOS` is the single demo list read by the overview, previous
+and next links, and `App.tsx` routes. `DEMO_PAGES` (`satisfies Record<DemoId, …>`)
+maps each id to its lazy page; adding a demo requires one catalog entry, one
+`DEMO_PAGES` entry, and `public/thumbs/<id>.jpg`. Demo pages replace the old
+yellow sidebar with one top bar holding the wordmark, title, instruction,
+previous/next links, and source link.
 
-Demo pages lose the yellow sidebar. One bar above the demo's frame holds the
-wordmark, linked to the overview, the demo's title and instruction, previous
-and next links, and the source link.
-
-The wordmark sits on the page with no dark plate. Its canvas was already
-transparent; the plate was the host's CSS. `MunariLogo` takes `ground="light"`
-on a white page, which keeps letters from rolling chartreuse (`#e3ec5a`). That
-color measures about 1.2:1 against white, and a letter wearing it disappeared.
-The other seven colors and every material stay. In six samples over 30 s in
-Chrome with `CanvasDrawElement`, lifted letters in those seven colors stayed
-visible on white, and chartreuse letters were faint in both page and scene.
+The wordmark sits on white without a dark plate; `MunariLogo` takes
+`ground="light"` so letters never roll chartreuse (`#e3ec5a`, ~1.2:1 contrast
+on white). In six samples over 30 s in Chrome with `CanvasDrawElement`, lifted
+letters in the remaining seven colors and materials stayed visible on white,
+while chartreuse letters were faint in both page and scene.
 
 The lamp-lit headline and the liftable form left the overview earlier as the
 Light and Postcard demos, which share `LightLamp`. Their probes load the framed

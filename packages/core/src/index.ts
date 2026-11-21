@@ -9,7 +9,6 @@ export {
   texelDemand,
   screenToPlane,
   carryToPlane,
-  planeToScreen,
 } from './mapping/camera'
 export {
   pixelGridSnap,
@@ -32,10 +31,7 @@ export {
   SURFACE_ANCHOR_ATTRIBUTE,
   anchorReceiptMatchesDrawn,
   collectSurfaceAnchors,
-  projectSurfaceAnchor,
-  stampSurfaceAnchors,
   type SourceUvRect,
-  type SurfaceAnchorProjection,
   type SurfaceAnchorReceipt,
 } from './mapping/surfaceAnchors'
 export { sampleUvPosition, type UvSample } from './mapping/uvSampling'
@@ -138,12 +134,9 @@ export {
 } from './pointer/pointerRoute'
 export {
   createSurfacePose,
-  poseMatrix3d,
   poseOnScreen,
-  posePoint,
   surfacePose,
   type Mat4Elements,
-  type PosePoint,
   type SurfacePose,
   type SurfacePoseInput,
 } from './pointer/surfacePose'
@@ -157,13 +150,11 @@ export {
 
 // transfer — the handoff
 export {
-  hostTailPresents,
   presentationReceiptSatisfies,
   presentationRoute,
   type PresentationReceipt,
   type PresentationRequirement,
   type PresentationRoute,
-  type SurfaceHostTail,
   type SurfacePassEvidence,
 } from './transfer/presentation'
 export {

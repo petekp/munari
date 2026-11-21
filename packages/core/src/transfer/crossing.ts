@@ -25,9 +25,10 @@
 // Two rules do the guarding:
 //
 // - The page releases on EVIDENCE, never on hope: every incoming
-//   presenter has fired its post-draw presentation boundary
-//   (a color-writing draw completed and recorded by `readinessProve`,
-//   not merely an upload queued), and the pixels it will show carry
+//   presenter has completed stage-one proof (`readinessProve` from an
+//   eligible `warm-up` or screen-reaching color draw, decisions.md #45 —
+//   not merely an upload queued), while stage-two presentation requires a
+//   color-writing draw, and the pixels it will show carry
 //   content no older than the lift itself (decisions.md #65). Nothing
 //   waits for the content's own motion: it is frozen from the lift's
 //   first frame (decisions.md #66), so the capture and the page already

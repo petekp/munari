@@ -4,7 +4,7 @@ import {
   crossingDrive,
   crossingRequest,
   type CrossingState,
-} from '../../../packages/core/src/transfer/crossing'
+} from '@munari/core'
 
 const WHOLE = { presented: 1, required: 1, contentCurrent: true }
 const NONE = { presented: 0, required: 1, contentCurrent: true }

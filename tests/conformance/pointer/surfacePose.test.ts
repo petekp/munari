@@ -9,9 +9,8 @@
 // page — and the symptom is a click a few pixels off with no error anywhere.
 //
 // So the contract is agreement, pinned three ways:
-//   1. at rest, `posePoint` IS the relay's own arithmetic, digit for digit;
-//   2. the `matrix3d` handed to CSS, applied the way CSS applies it, lands on
-//      the same client point `posePoint` names;
+//   1. at rest, `pose.matrix` maps `(u * w, (1 - v) * h)` to the relay's own arithmetic;
+//   2. `pose.matrix` serialized as CSS `matrix3d(...)` lands on that same client point;
 //   3. the pose refuses — `planar: false` — every case a planar homography
 //      cannot express, rather than returning stale bounds.
 //
@@ -24,9 +23,7 @@ import { describe, expect, it } from 'vitest'
 import { Matrix4, Vector4 } from 'three'
 import {
   createSurfacePose,
-  poseMatrix3d,
   poseOnScreen,
-  posePoint,
   surfacePose,
   type SurfacePose,
   type SurfacePoseInput,
@@ -99,7 +96,14 @@ function posed(overrides: Partial<SurfacePoseInput> = {}): SurfacePose {
   return surfacePose(input(overrides), createSurfacePose())
 }
 
-const at = (pose: SurfacePose, u: number, v: number) => posePoint(pose, u, v, { x: 0, y: 0 })
+const at = (pose: SurfacePose, u: number, v: number) => {
+  const p = new Vector4(u * pose.contentWidth, (1 - v) * pose.contentHeight, 0, 1)
+    .applyMatrix4(new Matrix4().fromArray(pose.matrix))
+  return { x: p.x / p.w, y: p.y / p.w }
+}
+
+const matrix3dFromOrigin = (pose: SurfacePose) =>
+  `matrix3d(${pose.matrix.map((v) => v.toFixed(8)).join(', ')})`
 
 /**
  * Read a `matrix3d(...)` back and apply it the way CSS does, from a border-box
@@ -168,7 +172,7 @@ describe('the pose at rest', () => {
     // offset, nothing scaled, nothing divided. A wrong answer here means the
     // content's hit region jumps the instant the native route takes over.
     const pose = posed()
-    const css = poseMatrix3d(pose, 0, 0)
+    const css = matrix3dFromOrigin(pose)
     for (const [x, y] of [[0, 0], [CONTENT_W, 0], [CONTENT_W, CONTENT_H], [80, 80]] as const) {
       const applied = applyMatrix3d(css, 0, 0, x, y)
       expect(applied.x).toBeCloseTo(REST.left + x, 6)
@@ -192,7 +196,7 @@ describe('the pose under perspective', () => {
     // to are the same map, checked through a real parse-and-apply rather than
     // by reading the code twice.
     const pose = posed(TILTED)
-    const css = poseMatrix3d(pose, 0, 0)
+    const css = matrix3dFromOrigin(pose)
     for (const [u, v] of [
       [0, 1], [1, 1], [1, 0], [0, 0], [0.5, 0.5], [0.18, 0.71],
     ] as const) {

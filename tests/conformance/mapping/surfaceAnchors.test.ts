@@ -9,8 +9,6 @@ import { describe, expect, it } from 'vitest'
 import {
   anchorReceiptMatchesDrawn,
   collectSurfaceAnchors,
-  projectSurfaceAnchor,
-  stampSurfaceAnchors,
   type DomPaintReceipt,
 } from '@munari/core'
 
@@ -141,56 +139,20 @@ describe('an incomplete set is refused whole', () => {
   })
 })
 
-describe('projection into a live Surface box', () => {
-  it('places the anchor centre by UV and keeps its captured CSS size', () => {
-    const anchor = {
-      uMin: 0.25,
-      uMax: 0.75,
-      vMin: 0.25,
-      vMax: 0.75,
-      cssWidth: 40,
-      cssHeight: 20,
-    }
-    const placed = projectSurfaceAnchor(anchor, 800, 400)
-    expect(placed.x).toBeCloseTo(400, 12)
-    expect(placed.y).toBeCloseTo(200, 12)
-    // Physical, not proportional: a control keeps its real size when the
-    // panel it stands on resizes.
-    expect(placed.cssWidth).toBe(40)
-    expect(placed.cssHeight).toBe(20)
-  })
-
-  it('mirrors u only, never v', () => {
-    const anchor = { uMin: 0, uMax: 0.5, vMin: 0, vMax: 0.5, cssWidth: 1, cssHeight: 1 }
-    const placed = projectSurfaceAnchor(anchor, 100, 100, true)
-    expect(placed.x).toBeCloseTo(75, 12)
-    expect(placed.y).toBeCloseTo(75, 12)
-  })
-})
-
 describe('a receipt speaks for one generation', () => {
   it('matches only the paint currently drawn', () => {
-    const receipt = stampSurfaceAnchors(paint(4), { meter: {
-      uMin: 0, uMax: 1, vMin: 0, vMax: 1, cssWidth: 1, cssHeight: 1,
-    } })
+    const receipt = collectSurfaceAnchors(
+      root([node('meter', box(60, 45, 80, 40))]),
+      paint(4),
+      ['meter'] as const,
+    )
+    expect(receipt).not.toBeNull()
+    if (!receipt) return
     expect(anchorReceiptMatchesDrawn(receipt, 7, 4)).toBe(true)
     // A newer collection than the texture carries places objects where the
     // content is ABOUT to be — during a resize, one step ahead of the pixels.
     expect(anchorReceiptMatchesDrawn(receipt, 7, 3)).toBe(false)
     expect(anchorReceiptMatchesDrawn(receipt, 7, 5)).toBe(false)
     expect(anchorReceiptMatchesDrawn(receipt, 8, 4)).toBe(false)
-  })
-
-  it('re-stamping carries validated boxes to a newer paint without a layout read', () => {
-    const first = collectSurfaceAnchors(
-      root([node('meter', box(60, 45, 80, 40))]),
-      paint(1),
-      ['meter'] as const,
-    )
-    expect(first).not.toBeNull()
-    if (!first) return
-    const restamped = stampSurfaceAnchors(paint(2), first.anchors)
-    expect(restamped.anchors).toEqual(first.anchors)
-    expect(anchorReceiptMatchesDrawn(restamped, 7, 2)).toBe(true)
   })
 })

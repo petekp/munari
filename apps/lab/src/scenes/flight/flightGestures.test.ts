@@ -19,10 +19,15 @@ import * as THREE from 'three'
 import {
   cameraDistance,
   carryToPlane,
-  planeToScreen,
+  planeScale,
 } from '@petepetrash/munari/advanced'
 import { makePlate } from './flightPhysicsLaw'
 import { attachFlightGestures, type GestureFlight } from './flightGestures'
+
+const planeToScreen = (p: { x: number; y: number; z: number }, w: number, h: number, camZ: number) => {
+  const s = planeScale(camZ, p.z)
+  return { x: w / 2 + p.x * s, y: h / 2 - p.y * s }
+}
 
 // The lab's calibration at the reference viewport — the tests hand the
 // gesture the same lift-plane carry the Board does.
