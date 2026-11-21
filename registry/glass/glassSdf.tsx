@@ -352,29 +352,40 @@ interface SdfPanel {
   depth: number
 }
 
-const sdfPanels = new Map<string, SdfPanel>()
-// Separate from the panel entry on purpose: React runs child effects before
-// parent ones, so the registrar inside `Surface.Mesh` cannot write into a
-// record its own parent has not created yet. Keyed by label, joined at
-// composite time.
-const sdfInk = new Map<string, THREE.Texture>()
-// Dev handle: `__glassInk.get('glass-card').image` is the parking canvas the
-// compositor is sampling, which is the only way to tell a UV bug apart from a
-// rasterization bug from the outside. Declared rather than asserted onto
-// window, so the console and this file agree on what the handle holds.
+interface SdfStore {
+  readonly panels: Map<string, SdfPanel>
+  // Separate from the panel entry because child effects (`InkRegistrar`) run
+  // before parent ones (`SdfGlassPanel`); joined by label at composite time.
+  readonly ink: Map<string, THREE.Texture>
+}
+
+const storesByScene = new WeakMap<THREE.Scene, SdfStore>()
+let activeStore: SdfStore | null = null
+
+function storeForScene(scene: THREE.Scene): SdfStore {
+  let store = storesByScene.get(scene)
+  if (!store) {
+    store = { panels: new Map(), ink: new Map() }
+    storesByScene.set(scene, store)
+  }
+  activeStore = store
+  return store
+}
+
+// Dev handle: `__glassInk.get('glass-card').image` exposes the parking canvas
+// the compositor samples, separating UV bugs from rasterization bugs.
 declare global {
   interface Window {
     __glassInk?: Map<string, THREE.Texture>
   }
 }
-window.__glassInk = sdfInk
 
 export function sdfPanelParams(label: string) {
-  return sdfPanels.get(label)?.params ?? null
+  return activeStore?.panels.get(label)?.params ?? null
 }
 
 export function sdfPanelLabels() {
-  return [...sdfPanels.keys()]
+  return activeStore ? [...activeStore.panels.keys()] : []
 }
 
 // ---- the panel ----------------------------------------------------------
@@ -385,16 +396,18 @@ export function sdfPanelLabels() {
 // and the compositor's `glass*(1-a) + rgb` is the shader spelling of
 // One/OneMinusSrcAlpha.
 function InkRegistrar({ label }: { label: string }) {
+  const scene = useThree((s) => s.scene)
   const texture = useSurfaceTexture()
   useEffect(() => {
     if (!texture) return
+    const { ink } = storeForScene(scene)
     texture.premultiplyAlpha = true
     texture.needsUpdate = true
-    sdfInk.set(label, texture)
+    ink.set(label, texture)
     return () => {
-      sdfInk.delete(label)
+      if (ink.get(label) === texture) ink.delete(label)
     }
-  }, [label, texture])
+  }, [scene, label, texture])
   return null
 }
 
@@ -450,6 +463,7 @@ export function SdfGlassPanel({
   position,
   rotation,
 }: SdfGlassPanelProps) {
+  const scene = useThree((s) => s.scene)
   const group = useRef<THREE.Group | null>(null)
   const surface = useSurfaceHandle(label)
   const presenter = useMemo(
@@ -457,9 +471,8 @@ export function SdfGlassPanel({
     [label, surface],
   )
   useEffect(() => presenter.register(), [presenter])
-  // One mutable params object per panel, created once and then poked in place
-  // by the console knobs — no re-render, no uniform plumbing, and nothing to
-  // clobber a live tuning session. `params` is an INITIAL value.
+  // One mutable params object per panel, created once and poked in place by
+  // console knobs — `params` is an initial value.
   const live = useMemo(
     () => ({ ...GLASS_DEFAULTS, ...params }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -467,7 +480,8 @@ export function SdfGlassPanel({
   )
 
   useEffect(() => {
-    sdfPanels.set(label, {
+    const { panels } = storeForScene(scene)
+    const entry: SdfPanel = {
       label,
       presenter,
       group,
@@ -480,11 +494,12 @@ export function SdfGlassPanel({
       ripples: ripples ?? [],
       glows: glows ?? [],
       depth: 0,
-    })
-    return () => {
-      sdfPanels.delete(label)
     }
-  }, [label, presenter, width, height, px, hasBase, live, blobs, rects, ripples, glows])
+    panels.set(label, entry)
+    return () => {
+      if (panels.get(label) === entry) panels.delete(label)
+    }
+  }, [scene, label, presenter, width, height, px, hasBase, live, blobs, rects, ripples, glows])
 
   return (
     <group ref={group} position={position} rotation={rotation}>
@@ -517,11 +532,8 @@ export function SdfGlassPanel({
 // Cost is one scene render plus N full-screen passes, not one scene render
 // per panel (glassSdfNodes.ts says why that mattered). The passes are pure fill: at 1× viewport, ~8 taps each.
 
-// drei's useFBO can't express "give me a depth texture" in its types (its
-// `depth?: boolean` intersects with three's `RenderTargetOptions.depth?:
-// number` and collapses to never), and the pipeline wants exact control over
-// the attachments anyway: HalfFloat colour so the composite stays in linear
-// light, a depth texture on the scene pass only, MSAA on the scene pass only.
+// HalfFloat colour keeps the composite in linear light; depth texture and MSAA
+// attach to the scene pass only.
 function useTarget(
   w: number,
   h: number,
@@ -588,20 +600,9 @@ function uploadRipples(
   return nr
 }
 
-/** Stamps any glow still waiting for a clock, then fills the glow uniform
- *  slots and returns how many it used.
- *
- *  `t0 < 0` means "stamp me", and it is honoured HERE — for every panel's
- *  array, unconditionally — because this is the code that owns `now`.
- *
- *  It used to live in the scene, next to the array the CTA pushes into. That
- *  worked for exactly one array: when the strike began spilling onto the card
- *  as well, the card's glows kept t0 = -1 forever, `now - (-1)` was always
- *  past glowLife, and the upload skipped every one of them in silence. The
- *  spill never drew a frame, and the two knobs aimed at it read as dead
- *  controls. Stamping where the upload happens is what makes that class of
- *  bug unable to recur — an array that reaches the compositor is an array
- *  that gets a clock. */
+/** Stamps any glow with `t0 < 0` against `now`, then fills the glow uniform
+ *  slots. Stamping here covers spillover arrays as well as direct targets so
+ *  unstamped entries never age past `glowLife` in silence. */
 function uploadGlows(
   slots: THREE.Vector4[],
   glows: GlassGlow[],
@@ -647,9 +648,18 @@ export function GlassSdfCompositor({
   const h = Math.max(1, Math.round(size.height * dpr))
 
   const gl = useThree((s) => s.gl)
+  const rootScene = useThree((s) => s.scene)
   // Fiber types the renderer as WebGLRenderer; SurfaceCanvas supplies a
   // WebGPURenderer, which is what takes a RenderTarget.
   if (!(gl instanceof WebGPURenderer)) throw new Error('The glass compositor needs the WebGPURenderer from SurfaceCanvas')
+  const { panels: sdfPanels, ink: sdfInk } = storeForScene(rootScene)
+
+  useEffect(() => {
+    window.__glassInk = sdfInk
+    return () => {
+      if (window.__glassInk === sdfInk) delete window.__glassInk
+    }
+  }, [sdfInk])
 
   // MSAA on the scene pass only: the panels get exact analytic coverage from
   // the SDF, but the props and the wall behind them are still triangles.
@@ -688,10 +698,8 @@ export function GlassSdfCompositor({
   const glass = useMemo(() => createGlassMaterial(values), [values])
   const blit = useMemo(() => createBlitMaterial(sceneFbo.texture), [sceneFbo])
 
-  // Two one-mesh scenes. `frustumCulled = false` because the vertex node
-  // writes clip space directly — three's bounding-sphere test would cull a
-  // quad it thinks is a 2×2 plane at the origin.
-  const [glassScene, blitScene, blitMesh, quadCam] = useMemo(() => {
+  // Two one-mesh scenes (`frustumCulled = false`: vertex node writes clip space directly).
+  const [glassScene, blitScene, blitMesh, quadGeo, quadCam] = useMemo(() => {
     const geo = new THREE.PlaneGeometry(2, 2)
     const mk = (m: THREE.Material) => {
       const s = new THREE.Scene()
@@ -702,15 +710,16 @@ export function GlassSdfCompositor({
     }
     // The vertex node ignores the camera; WebGPU still updates its projection.
     const output = mk(blit.material)
-    return [mk(glass).scene, output.scene, output.mesh, new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)]
+    return [mk(glass).scene, output.scene, output.mesh, geo, new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1)]
   }, [glass, blit])
 
   useEffect(
     () => () => {
+      quadGeo.dispose()
       glass.dispose()
       blit.material.dispose()
     },
-    [glass, blit],
+    [quadGeo, glass, blit],
   )
   useEffect(() => () => noInk.dispose(), [noInk])
 
