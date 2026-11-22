@@ -1,170 +1,356 @@
-# Opt-in payload developer experience proposal
+# Opt-in payload proposal
 
-**Status: proposed, 2026-11-21. Runtime work is unbuilt.**
+**Status: proposed, 2026-11-21. Nothing in this document is built.**
 
-Companion to [payload-optimization-research.md](payload-optimization-research.md). The names `@petepetrash/munari/stage`, `@petepetrash/munari/kernel`, `@petepetrash/munari/vite`, `<SurfaceStage>`, `<StageSurface>`, and `<BareSurfaceCanvas>` below are proposed interfaces, not shipped exports.
+This proposal rests on [payload-optimization-research.md](payload-optimization-research.md)
+and on the builds listed in [the appendix](#appendix-measurement-method). Every
+name marked *(proposed)* is a proposal, not an export. Every other name exists
+today.
 
----
+## Summary
 
-## 1. The DX problem: why naive bundle splitting hurts callers
+A React app that renders one flat `<Surface>` inside a `<SurfaceCanvas>` ships
+532.1 kB gzip. React alone is 58.7 kB of that. Munari's own code is about
+55 kB ([research §1.2](payload-optimization-research.md#12-munaris-own-code-size-peers-externalized)).
+Three.js and React Three Fiber (R3F) make up the rest.
 
-[Payload optimization research](payload-optimization-research.md) showed that a minimal flat `<Surface>` ships `519.6 kB` gzip today (`+462.3 kB` over React), even though `@munari/core` is `14.6 kB` gzip and the full `@petepetrash/munari` binding is `54.6 kB` gzip.
+Three separate causes add bytes, and each has its own fix:
 
-Fixing that payload naively — by shattering `@petepetrash/munari` into seven micro-subpaths (`/lite`, `/lit`, `/anchors`, `/deform`, `/focus`, `/native-pointer`, `/capture`) or adding `enableX()` plugin registrations — trades a byte problem for three worse authoring problems:
+1. The published build bundles unrelated code together. A caller who imports
+   one small helper also gets `Surface`, `three/webgpu` and R3F. One output file
+   per source module fixes this without an API change. It saves nothing for an
+   app that renders a Surface.
+2. R3F's `<Canvas>` registers every class in `three`. A host built on R3F's
+   `createRoot` that registers only the classes in use is up to 108.9 kB
+   smaller. Scenes would then register their own elements, so this needs a
+   spike and Pete's decision.
+3. R3F 9 bundles Three's older `WebGLRenderer`, which Munari never uses. It
+   costs 79.5 kB. No supported change in Munari removes it. R3F 10, now in
+   alpha, drops it.
 
-1. **Premature classification tax:** Before rendering one card, the caller has to predict whether next week's iteration will add a `<directionalLight>`, a `<Surface.Anchor>`, or mesh bending, and pick the matching entry point up front.
-2. **Split-brain registration bugs:** Requiring both a local JSX prop (`pointerRoute="auto"` or `<Surface.Anchor>`) *and* a distant startup call (`enableNativePointerRoute()` in `main.tsx`) splits one decision across two files. Forgetting the startup call either silently degrades behavior or throws at runtime.
-3. **Silent JSX crashes in R3F:** `@react-three/fiber` declares `<ambientLight>`, `<directionalLight>`, and `<boxGeometry>` in global TypeScript JSX types. If `<SurfaceCanvas>` silently stopped calling `extend(THREE)` to save `84.7 kB` gzip, existing code would pass `tsc` with zero errors and crash on mount (`R3F: AmbientLight is not part of the THREE namespace`).
-4. **Refactoring cliffs between tiers:** If a lightweight DOM-shader wrapper uses different material hooks, coordinate conventions, or CSS authoring rules than `<SurfaceCanvas>`, outgrowing the lightweight tier forces a rewrite.
+Payload should follow what a caller imports, whatever the entry point. Entry
+points then only decide which names are public, as [decision #6](decisions.md#6--the-binding-re-exports-the-kernel-whole-and-the-shader-string-lives-beside-the-material-2026-08-03-react-binding)
+says. This proposal adds no entry point and no bundler plugin. A caller never
+chooses an app type up front, and adding an import never changes existing code.
 
----
+## Where the bytes go today
 
-## 2. Design principles
+These builds ran on 2026-11-21 with Vite 8.2.0, `three` 0.186.1,
+`@react-three/fiber` 9.8.1 and React 19.2.8. Sizes sum every emitted JavaScript
+file, minified and with `gzip -9`. The [appendix](#appendix-measurement-method)
+has the script.
 
-Using deep-module design criteria (*interface*, *depth*, *seam*, *adapter*, *leverage*, *locality*):
+The "Today" column imports the staged package in `packages/react/dist`. The
+"Per module" column imports `packages/react/src` directly, so the bundler sees
+one file per module. Both trees declare `"sideEffects": ["*.css"]`, so the
+bundler drops any module the entry does not reach. That column estimates what
+Step 1 would produce; the Step 1 build itself must be measured again.
 
-1. **Organize entry points around authoring posture, not internal subsystems.** Callers know *how they are building* ("DOM + shader on a React page" vs. "3D world in React Three Fiber" vs. "zero-Three micro-transition"), not which internal kernel helpers run underneath.
-2. **Tree-shaking is the bundler's job; registration seams are only for environment adapters.** Feature modules (`FocusScene`, `Dial`, `deformSurfaceGeometry`, `useElementCapture`, `encodedOutput`) opt in automatically when imported and vanish when omitted. Global `enableX()` seams are reserved strictly for environment-wide adapters that swap behavior underneath an unchanged component interface — specifically `@petepetrash/munari/snapdom` ([decisions.md #60](decisions.md#60)).
-3. **Preserve compound `<Surface.*>` ergonomics.** Keeping `Root`, `HTML`, `Scene`, `Mesh`, `Anchor`, and `LitMaterial` together on `Surface` costs only `~3.0 kB` gzip of Munari code (`MeshStandardNodeMaterial` is already inside `WebGPURenderer`). Shattering `Surface.*` saves almost nothing while breaking every existing scene and guide.
-4. **Zero-cliff graduation.** Authoring rules ([authoring.md](authoring.md)), TSL output helpers (`premultipliedOutput`, `encodedOutput`, `surfaceRadiusMask`), `deformSurfaceGeometry`, and `enableSnapdomCapture()` stay identical across tiers. Moving from a lightweight stage to a full R3F `<SurfaceCanvas>` changes the outer host wrapper, never the card's HTML, CSS, or shader math.
-5. **Never turn a TypeScript pass into a runtime crash.** Any host that omits R3F's wildcard `extend(THREE)` must carry a distinct name (`<BareSurfaceCanvas>`) and an explicit `catalogue` prop, with actionable development diagnostics.
+| Consumer entry | Today, min / gzip | Per module, min / gzip |
+|---|---:|---:|
+| React 19 and `react-dom/client` only | 189.3 / 58.7 kB | — |
+| `encodedOutput` only | 761.7 / 224.7 kB | 471.5 / 129.8 kB |
+| `three/tsl` functions that `encodedOutput` uses, without Munari | — | 471.5 / 129.8 kB |
+| `useElementCapture` in one component | 950.9 / 282.4 kB | 297.3 / 92.1 kB |
+| `createDomTextureSource` from `/advanced` | 7.9 / 3.5 kB | 7.9 / 3.5 kB |
+| Minimal `<Surface>` in `<SurfaceCanvas>` | 1,919.3 / 532.1 kB | 1,919.0 / 532.1 kB |
 
----
+The research measured 519.6 kB for the minimal Surface with different entry
+files and no committed script. This proposal uses its own builds, plus the
+research's figures for Munari's code with peers left external.
 
-## 3. Three caller postures, one coherent package
+The table shows three things.
 
-All entries remain inside the single published package `@petepetrash/munari` ([decisions.md #1](decisions.md#1)), with `@react-three/fiber` promoted to an **optional** peer dependency in `peerDependenciesMeta` alongside `@zumer/snapdom`.
+- With one file per module, `encodedOutput` costs nothing beyond the
+  `three/tsl` functions it calls. An app that already uses TSL pays 0 bytes for
+  it.
+- `/advanced` already gives a kernel-only path. Importing a kernel function from
+  it today bundles 3.5 kB and no Three.js or R3F.
+- Build changes alone do not help an app that renders a Surface. That app's cost
+  sits in the R3F host.
 
-| Caller posture | Proposed entry | Peers installed | Total app gzip (net over React) | When to choose it |
-|---|---|---|---:|---|
-| **Posture A: React DOM + Shader / 2.5D UI** | `@petepetrash/munari/stage` | `react`, `react-dom`, `three` *(no R3F)* | **`~306 kB`** (`+249 kB`) — *zero bundler config* | Lit cards, Genie-style bends, liquid-glass lenses, DOM transitions on ordinary web pages |
-| **Posture B: Full 3D R3F Scene** | `@petepetrash/munari` (+ `@petepetrash/munari/vite`) | `react`, `react-dom`, `three`, `@react-three/fiber` | **`~442 kB`** default / **`~357 kB`** `<BareSurfaceCanvas>` | Multi-surface 3D rooms, Drei `<Environment>` / `<OrbitControls>`, GLTF models, `<FocusScene>`, `<Dial>` |
-| **Posture C: `<20 kB` Micro-Effect** | `@petepetrash/munari/kernel` + `registry/shader-quad` | `react`, `react-dom` *(0 B of `three` bundled)* | **`~75 kB`** (`+18 kB`) | Design-system button ripples, blur headers, single-quad transitions with strict bundle budgets |
-| **Cross-browser Safari / Firefox / iOS** *(any posture)* | `@petepetrash/munari/snapdom` *(dynamic `import()`)* | `+ @zumer/snapdom` *(loaded only when needed)* | `+0 kB` on Chrome 157+ / `+88 kB` fallback | Progressive cross-browser 3D capture |
+The R3F host was measured without Munari, to separate its two costs. Each entry
+renders one plane through a `WebGPURenderer` factory, as `SurfaceCanvas` does
+([SurfaceCanvas.tsx:197](../packages/react/src/primitives/surface/SurfaceCanvas.tsx)).
 
----
+| R3F host entry | min / gzip | Contains `three`'s `WebGLRenderer` |
+|---|---:|---|
+| `<Canvas>` | 1,685.6 / 458.2 kB | yes |
+| `createRoot` and `extend({ Mesh, Group, PlaneGeometry })` | 1,312.9 / 349.3 kB | yes |
+| `<Canvas>`, R3F's `three` import resolved to `three/webgpu` | 1,444.6 / 404.9 kB | no |
+| `createRoot`, R3F's `three` import resolved to `three/webgpu` | 958.3 / 265.4 kB | no |
 
-## 4. Authoring walkthrough by posture
+With R3F's `three` import resolved to `three/webgpu`, the minimal Surface app
+drops from 532.1 to 452.6 kB. Resolving every `three` import that way gives the
+same 452.6 kB. Munari's own imports from `three` therefore add nothing to the
+older renderer. Switching them to `three/webgpu` would save no bytes.
 
-### 4.1 Posture A — `@petepetrash/munari/stage` (React DOM + TSL, no R3F)
+## Step 1: build output that follows imports
 
-Today, lifting a single HTML card into lit 3D requires installing `@react-three/fiber`, wiring `useId()` + `useSurfaceSupport()`, configuring six overlay props on `<SurfaceCanvas>` (`pointerMode="surfaces"`, `frameloop="demand"`, `gl={{ alpha: true }}`, `onCreated={({ gl }) => gl.setClearAlpha(0)}`, `style={{ position: 'absolute', inset: 0 }}`), and shipping `519.6 kB` gzip. Five scenes in `apps/lab` (`Light`, `Lamp`, `Rain`, `Wordmark`, `Gravity` fallback) already bypass R3F by hand to avoid this overhead.
+This step changes the package build and no public API. It makes three changes.
 
-`@petepetrash/munari/stage` turns that hand-rolled pattern into a deep module backed directly by `three/webgpu` (`WebGPURenderer` + `DirectRenderPipeline`, [decisions.md #69, #72, #73](decisions.md#69)):
+- tsdown emits one ESM file per source module instead of six shared chunks.
+  `@munari/core` stays bundled inside the package, under an internal path, as
+  [decision #11](decisions.md#11--the-published-package-is-staged-and-the-kernel-travels-inside-it-2026-08-03) requires. The staging check that no
+  `@munari/core` import survives stays.
+- `enableSnapdomCapture` loads the input-region rasterizer with a dynamic
+  `import()` inside the asynchronous rasterize callback, where it is built today
+  only when the `isolatedTextInputs` selector matches
+  ([snapdom.ts:342](../packages/react/src/snapdom.ts)). The function stays
+  synchronous and keeps returning `void`. The default `/snapdom` code drops from
+  18.5 to 8.2 kB gzip
+  ([research §1.2](payload-optimization-research.md#12-munaris-own-code-size-peers-externalized)).
+- The measurement script is committed under `instruments/payload/`
+  *(proposed)*. A budget check fails when one entry grows past its recorded size
+  plus a stated margin. It catches a helper that starts importing `Surface`, a
+  kernel import that starts pulling in R3F, and the snapDOM entry loading the
+  input rasterizer eagerly.
+
+Step 1 leaves three things out.
+
+- Pure annotations on `Object.assign` in
+  [Surface.tsx](../packages/react/src/primitives/Surface.tsx) and on
+  `createContext`. The bundler drops unused modules whole, which is how the
+  per-module column got its numbers. Add one only where the budget check shows
+  a cost.
+- Moving `copyFieldState` out of
+  [elementCapture.tsx](../packages/react/src/primitives/elementCapture.tsx).
+  Today `Surface` reaches `elementCapture` through
+  [surfacePageSnapshot.ts:9](../packages/react/src/primitives/surface/surfacePageSnapshot.ts).
+  `useElementCapture` does not reach `Surface`. Move it only if the budget
+  check shows a cost.
+- Switching Munari's imports from `three` to `three/webgpu`. The measurement
+  above shows that it saves nothing.
+
+To verify Step 1, run `npm run build`, the measurement script, `npm test`,
+`npm run typecheck` and `npx publint packages/react/dist`. Then install the
+packed package in a temporary consumer outside the repository. Check that every
+public entry resolves and that each output file importing React still starts
+with `'use client'`. Check that `process.env.NODE_ENV` stays unreplaced
+([tsdown.config.ts](../packages/react/tsdown.config.ts), points 4 and 6).
+
+The build config and staging script are package tooling, so this step needs
+Pete's approval for that change. Whether the budget check runs in CI is a
+separate approval.
+
+## Step 2: a SurfaceCanvas without R3F's full catalogue
+
+This step changes the public contract. It needs a spike before a decision.
+
+R3F's `<Canvas>` runs `extend(THREE)` with `import * as THREE from 'three'`
+(`@react-three/fiber` 9.8.1, `dist/react-three-fiber.esm.js` lines 4 and 40).
+The bundler then keeps every Three.js class, and `<Canvas>` cannot skip it.
+R3F's `createRoot` starts with an empty catalogue, which saves 108.9 kB on the
+R3F host alone. Munari imports some of those classes itself, so a full app
+saves less. The spike must measure it.
+
+Without it, a scene registers each element it uses. In R3F 9, `extend(Class)`
+returns a typed component.
 
 ```tsx
-import { useState } from 'react'
-import { SurfaceStage, StageSurface } from '@petepetrash/munari/stage'
-import '@petepetrash/munari/style.css'
+import { extend } from '@react-three/fiber'
+import { AmbientLight } from 'three/webgpu'
 
-export function LitNoteCard() {
-  const [lifted, setLifted] = useState(false)
+const Light = extend(AmbientLight)
 
-  return (
-    <SurfaceStage lights="studio">
-      <StageSurface
-        inScene={lifted}
-        lit={{ roughness: 0.32, metalness: 0.05 }}
-        pose={{ z: lifted ? 28 : 0, rotateX: lifted ? -0.12 : 0 }}
-      >
-        <article className="note-card">
-          <h3>Quarterly notes</h3>
-          <input defaultValue="Editable before, during, and after lift" />
-        </article>
-      </StageSurface>
-
-      <button type="button" onClick={() => setLifted((v) => !v)}>
-        {lifted ? 'Return to flat HTML' : 'Light in 3D'}
-      </button>
-    </SurfaceStage>
-  )
+export function Lighting() {
+  return <Light intensity={0.4} />
 }
 ```
 
-**Why this interface is deeper and lighter at the same time:**
-- **Zero R3F ceremony or peer conflict:** Callers only run `npm install @petepetrash/munari three@0.186.1 --save-exact`. No `useId()`, no `setClearAlpha(0)`, no `scale={1 / 120}` world-unit math (`pose` and `deform` operate in CSS pixels and radians).
-- **`-213.5 kB` gzip out of the box with zero bundler config:** Because `@petepetrash/munari/stage` (and all internal Munari files once switched from `'three'` to `'three/webgpu'`) never imports `'three'` (`three.module.js`), Vite, Next.js, and Webpack never pull in legacy `THREE.WebGLRenderer`, GLSL `ShaderLib`, or R3F's `react-reconciler`. (Verified: `three` and `three/webgpu` share the exact `three.core.js` class references, so `instanceof` remains `true` even if caller code imports `'three'`.)
-- **In-place DOM lenses included:** `/stage` also hosts `useElementCapture` + `useStageCaptureTexture(capture)` for `Veil`- and `Selection`-style glass/blur overlays without R3F.
-- **Clean graduation to Posture B:** Custom TSL node materials (`MeshBasicNodeMaterial`, `premultipliedOutput`, `surfaceRadiusMask`) and `deform` functions (`(x, y) => ({ x, y, z })`) carry straight into `<SurfaceCanvas>` + `<Surface.Mesh>` without rewriting shader or CSS code.
+A scene that wants every lowercase element writes `extend(THREE)` once, with
+`THREE` imported from `three/webgpu`.
 
-### 4.2 Posture B — `@petepetrash/munari` + `@petepetrash/munari/vite` (Full R3F 3D Scenes)
+There are three options.
 
-For developers building multi-object 3D scenes in `@react-three/fiber`, **nothing in their existing component code changes**:
+- In option A, SurfaceCanvas registers only Munari's own elements, and scenes
+  register theirs with `extend`. This saves the most. R3F declares every
+  lowercase element globally, so an unregistered `<ambientLight>` compiles and
+  then throws on mount. Munari would add a development message naming the
+  missing class. In this repo, 41 `.tsx` files use lowercase elements.
+- In option B, SurfaceCanvas keeps the full catalogue, and a second host
+  component *(proposed, unnamed)* skips it. Two components then do one job, and
+  moving to the smaller one still means registering every element.
+- In option C, nothing changes and nothing is saved.
 
-```tsx
-import { SurfaceCanvas, Surface, FocusScene, Dial } from '@petepetrash/munari'
-```
+A `catalogue` prop on SurfaceCanvas is not an option. R3F keeps one catalogue
+per module, shared by every root, so a prop on one canvas would register classes
+for all of them. The prop would suggest a locality it does not have.
 
-Instead, three behind-the-seam improvements cut payload automatically while preserving full compatibility:
+Building on `createRoot` moves work into Munari. `<Canvas>` handles resizing,
+the event source, the error boundary and the bridge that carries React context
+into the scene. R3F does not export its bridge hook, so Munari would depend on
+`its-fine`, the library R3F uses for it, directly. The
+[React API improvement plan](react-api-improvement-plan.md) changes the same
+context transport.
 
-1. **Automatic per-export tree-shaking (`tsdown` `unbundle: true` + `/* @__PURE__ */`):**
-   - Today, importing `encodedOutput` alone drags in `39.6 kB` gzip of Munari and `169 kB` gzip of Three/R3F because `dist/index.js` evaluates unannotated `Object.assign` calls.
-   - Emitting per-module ESM in `dist/` (with `@munari/core` bundled into internal `dist/_core/*` modules) means a scene that imports `{ SurfaceCanvas, Surface }` automatically drops `FocusScene`, `FocusGroup`, `Dial` (`-8.7 kB` gz), `useElementCapture` (`-8.1 kB` gz), and `deformSurfaceGeometry` until imported.
-2. **One-line bundler plugin `@petepetrash/munari/vite` (`-77.6 kB` gzip, zero code edits):**
-   ```ts
-   // vite.config.ts
-   import { munari } from '@petepetrash/munari/vite'
-   export default defineConfig({ plugins: [react(), munari()] })
-   ```
-   `munari()` aliases bare `'three'` to `'three/webgpu'` (with an equivalent 3-line `resolve.alias` / `turbopack.resolveAlias` snippet documented for Next.js). Every R3F intrinsic (`<ambientLight>`, `<directionalLight>`, `<boxGeometry>`) and `@react-three/drei` helper continues to work unchanged, while `three.module.js`'s duplicate legacy `WebGLRenderer` + GLSL `ShaderLib` (`331.0 kB` min / `77.6 kB` gz) vanishes from the bundle.
-3. **Opt-in `<BareSurfaceCanvas catalogue={...}>` (`-84.7 kB` additional gzip) + `overlay` preset:**
-   - First, add an `overlay` boolean preset on both `<SurfaceCanvas overlay>` and `<BareSurfaceCanvas overlay>` that expands to transparent alpha, `setClearAlpha(0)`, `pointerMode="surfaces"`, and `position: absolute; inset: 0`, retiring the 6-prop boilerplate from overlay scenes.
-   - Second, for R3F apps that want to drop unused `THREE.*` classes (`SkinnedMesh`, `Audio`, `ExtrudeGeometry`), export `<BareSurfaceCanvas catalogue={{ AmbientLight, DirectionalLight }}>` built on R3F's `createRoot` + `FiberProvider` (`357.3 kB` gz total app). In development, if an un-registered JSX tag mounts inside `<BareSurfaceCanvas>`, catch R3F's error and print:
-     `Munari <BareSurfaceCanvas>: <directionalLight> is not registered. Pass catalogue={{ DirectionalLight }} from 'three/webgpu', or use <SurfaceCanvas>.`
+**Recommendation: spike option A, then decide.** The spike builds the host on
+`createRoot` in a branch. It passes when it measures the full minimal-Surface
+app and the lab, and when `probe:api-lifecycle`, `probe:api-composition-check`
+and `gate:native-pointer` pass with `STRICT_CAPABILITY=1` and on the no-flag
+native path. The spike settles the real saving and the size of the host code.
 
-### 4.3 Posture C — `@petepetrash/munari/kernel` + `registry/shader-quad` (`+18 kB` gzip micro-effects)
+## Step 3: the older WebGLRenderer comes from R3F 9
 
-Today, `@petepetrash/munari/advanced` mixes `export * from '@munari/core'` with `FrameSurface` and `passMaterial` (`three/webgpu` + `@react-three/fiber`), so a developer cannot consume Munari's zero-dependency DOM/capture kernel without pulling Three and R3F into the bundle.
+R3F 9.8.1 falls back to `new THREE.WebGLRenderer(...)` when `gl` is not a
+function (`dist/events-9ce18a08.esm.js` line 1374). `SurfaceCanvas` always
+passes a factory, but the bundler keeps the class and its GLSL shader library.
+That costs 79.5 kB on the minimal Surface app.
 
-Adding `@petepetrash/munari/kernel` (re-exporting only `@munari/core` + pure React lifecycle hooks like `useSurfaceSupport` with **zero** imports from `three` or `@react-three/fiber`) paired with a copyable `registry/shader-quad` recipe (`~120` lines of raw WebGL 2 / WebGPU single-quad boilerplate, following the `registry/focus-orbit` precedent in [decisions.md #6](decisions.md#6)) gives design-system authors:
-- Zero-flash handoff coordination (`createSurfaceCoordinator`),
-- `Element.moveBefore` + Safari focus/selection/scroll preservation (`relocatePreservingState`),
-- `<canvas content="drawable">` + `drawElementImage` + `storeForBox` hysteresis + `chooseCaptureMemory` software-GPU protection (`createDomTextureSource`),
-- **`~75 kB` gzip total app (`+18 kB` net over React)** — while keeping `@petepetrash/munari` completely free of non-Three renderer abstractions ([decisions.md #1](decisions.md#1)).
+There are three options.
 
-### 4.4 Zero-ceremony cross-browser fallback (`@petepetrash/munari/snapdom`)
+- Munari can wait for R3F 10. In `@react-three/fiber@10.0.0-alpha.6`, the default and
+  `/webgpu` entries import `three/webgpu`, and only `/legacy` refers to
+  `WebGLRenderer`. This was read from the packed tarball; its payload is not
+  measured. Its peer range admits the repo's React and `three`. Moving to R3F 10
+  is its own project once a stable release exists.
+- The docs can describe an app-level alias that resolves only R3F's `three`
+  import to `three/webgpu`. It builds: a drei `RoundedBox` app built cleanly with it.
+  But it breaks at runtime any plain R3F `<Canvas>` without a `gl` factory,
+  because `WebGLRenderer` becomes `undefined`. Each bundler needs its own
+  importer-scoped config, and R3F does not support the setup.
+- Munari can ship a global alias from `three` to `three/webgpu`. This is
+  rejected. `three/webgpu` lacks seven exports that drei and three-stdlib
+  import, and an app importing only drei's `RoundedBox` failed with 55
+  `MISSING_EXPORT` errors.
 
-The existing dynamic-import pattern in `main.tsx` stays the canonical cross-browser story:
+**Recommendation: no change in Munari. Track R3F 10 and measure it at its first
+stable release.**
 
-```ts
-import { supportsSurfaces } from '@petepetrash/munari' // or '/stage'
+## Overlay configuration
 
-if (!supportsSurfaces()) {
-  const { enableSnapdomCapture } = await import('@petepetrash/munari/snapdom')
-  await enableSnapdomCapture()
-}
-```
+The review of the earlier proposal recommended an `overlay` preset. This
+proposal does not.
 
-Two small refinements make this cleaner and `10.3 kB` gzip lighter:
-1. **Lazy `isolatedTextInputs` inside `enableSnapdomCapture()`:** Return `Promise<void>` (still synchronous-compatible for callers who don't pass `isolatedTextInputs`, or `await`-able when `isolatedTextInputs` dynamically `import()`s `snapdomInputRegions`), cutting default `dist/snapdom.js` by **61%** (`18.5 kB` gz -> `8.2 kB` gz).
-2. **Chrome 157+ pays `0 B`:** Because `supportsSurfaces()` is `true` natively in Chrome 157+, the dynamic `import('@petepetrash/munari/snapdom')` chunk (`+88 kB` gzip with `@zumer/snapdom`) is never fetched on Chromium.
+In the lab, 18 files set `pointerMode="surfaces"` and 19 lines call
+`setClearAlpha(0)`. Most also pass `gl={{ alpha: true }}`. Reading the code shows
+that both alpha settings already match the defaults.
 
----
+- R3F passes `alpha: true` to the renderer factory
+  (`@react-three/fiber` 9.8.1, `dist/events-9ce18a08.esm.js` line 1370),
+  and SurfaceCanvas forwards it
+  ([SurfaceCanvas.tsx:191, :197](../packages/react/src/primitives/surface/SurfaceCanvas.tsx)).
+- A `WebGPURenderer` with `alpha: true` clears to alpha 0
+  (`three` 0.186.1, `src/renderers/common/Renderer.js` line 465).
+- Neither R3F nor SurfaceCanvas sets a clear color.
 
-## 5. Rejected DX alternatives
+Position, stacking and `frameloop` differ from scene to scene. A preset would
+therefore bundle one real setting, `pointerMode`, with two settings that do
+nothing. Work package 8 of the [React API improvement plan](react-api-improvement-plan.md)
+reaches the same conclusion from the lab's recipes.
 
-| Alternative considered | Why it is rejected |
+**Recommendation: no preset.** The code reading is unverified in a browser. A
+pixel check on one overlay scene with both alpha settings removed should come
+first. Then the recipes drop them.
+
+## Alternatives not pursued
+
+| Alternative | Why not |
 |---|---|
-| **Split `Surface` into `SurfaceRoot` + separate `/lit` and `/anchors` subpaths** | Saves `0.0 kB` of Three.js (since `WebGPURenderer` owns `StandardNodeLibrary`) and only `~3.0 kB` gzip of Munari code, while breaking `<Surface.Anchor>` / `<Surface.LitMaterial>` muscle memory across docs, demos, and agent skills. |
-| **Add `enableNativePointerRoute()`, `enableFocusScene()`, `enableAnchors()`** | Violates locality: callers already declare intent via imports (`FocusScene`) or props. Global `enableX()` calls create silent "forgot to register in `main.tsx`" bugs. |
-| **Silently remove `extend(THREE)` inside existing `<SurfaceCanvas>`** | Causes `<ambientLight />` and `<boxGeometry />` to typecheck cleanly in TypeScript and throw at runtime. Explicit `<BareSurfaceCanvas catalogue={...}>` makes the contract honest. |
-| **Import `three/src/renderers/webgpu/WebGPURenderer.nodes.js` inside Munari** | Mixes `three/src/*` with consumer `three/webgpu` (`three/build/*`), duplicating `Object3D`/`NodeMaterial` classes, breaking `instanceof` checks, and inflating bundles to `1.40 MB` min. |
-| **Publish separate `@munari/core` or `@munari/stage` npm packages** | Violates [decisions.md #1](decisions.md#1) and [#11](decisions.md#11): multiple versioned npm packages invite duplicate kernel/registry state (`captureEngine` singleton split-brain). Subpaths in `@petepetrash/munari` share one private `dist/_core/*` graph. |
+| A `@petepetrash/munari/vite` plugin that aliases `three` to `three/webgpu` | The global alias breaks drei and three-stdlib builds (Step 3). A narrower alias belongs to the app, not the package. |
+| A `/stage` entry with a React host that skips R3F | A second implementation of Surface. The page-to-scene handoff lives in the R3F binding, and device-loss replacement for standalone renderers is lab code ([decision #73](decisions.md#73--surfacecanvas-replaces-a-lost-renderer-2026-10-08-react-binding--instruments)). |
+| A `/kernel` entry | `/advanced` already bundles kernel-only for kernel imports (3.5 kB). The functions the earlier proposal listed for it (`createSurfaceCoordinator`, `relocatePreservingState`) do not exist, `chooseCaptureMemory` is private, and the `moveBefore` logic is in `packages/react/src/primitives/retainedMove.ts`. |
+| Making R3F an optional peer | It would amend [decision #1](decisions.md#1--the-name-is-munari-and-the-hourglass-is-the-shape-2026-08-02-renamed-2026-08-04). A required peer costs disk space at install, not bundle size, and the lab, the only consumer, uses R3F. Open question 4. |
+| Splitting `Surface.Anchor` and `Surface.LitMaterial` off `Surface` | `LitMaterial` adds no Three.js code, because `WebGPURenderer` already registers `MeshStandardNodeMaterial` ([research §2.4](payload-optimization-research.md#24-empirical-trap-check-what-does-not-save-bytes-in-threewebgpu)). Detaching `Anchor` saves 4.2 kB minified ([research §4, phase 3](payload-optimization-research.md#phase-3--opt-in-subpaths--registration-seams)). Neither justifies a public API change. |
+| Startup registration calls such as `enableAnchors()` | They split one decision between a component and a startup file, and a forgotten call fails silently. |
 
----
+## Open questions for Pete
 
-## 6. Rollout & regression-prevention plan
+1. Should SurfaceCanvas drop R3F's full catalogue in Step 2? Recommendation:
+   approve the spike of option A. Decide between A, B and C on its measured
+   saving and host code size.
+2. Should the budget check run in CI? Recommendation: yes, as its own job
+   after the package build, once Step 1 lands. This changes CI membership.
+3. Should the docs describe the app-level R3F alias from Step 3?
+   Recommendation: no. It breaks plain R3F canvases at runtime, and R3F 10 makes
+   it unnecessary.
+4. Should R3F become an optional peer? Recommendation: no, until a consumer
+   uses Munari without R3F.
+5. Should SurfaceCanvas get an `overlay` preset? Recommendation: no. Run
+   the pixel check, then remove the two no-op alpha settings from the recipes.
 
-Each step ships independently, preserves existing scenes, and locks its savings behind an automated test:
+The capability check keeps its current name, `useSurfaceSupport`, in this
+document. The [React API improvement plan](react-api-improvement-plan.md)
+proposes renaming it `useCaptureSupport`; neither proposal depends on the other.
 
-1. **Step 1 — Unbundle `dist/` + pure annotations + internal `'three/webgpu'` imports + `tests/bundleBudgets.test.ts` *(zero public API change)*:**
-   - Update [tsdown.config.ts](../packages/react/tsdown.config.ts) and [stage-manifest.mjs](../packages/react/scripts/stage-manifest.mjs) to emit module-preserving ESM with `@munari/core` inlined under `dist/_core/*`; annotate `/* @__PURE__ */` on `Object.assign` and `createContext`; decouple `copyFieldState` from `elementCapture.tsx`; switch internal value imports from `'three'` to `'three/webgpu'`; lazy-load `isolatedTextInputs` in `snapdom.ts`.
-   - Add `tests/bundleBudgets.test.ts` (running Rolldown in Vitest against staged `packages/react/dist`) asserting hard byte ceilings on `useSurfaceSupport`, `encodedOutput`, `useElementCapture`, `FocusScene`, and default `snapdom` so accidental cross-imports fail CI immediately.
-2. **Step 2 — `@petepetrash/munari/vite`, `<SurfaceCanvas overlay>`, and `<BareSurfaceCanvas>` *(additive, non-breaking)*:**
-   - Ship the `'three' -> 'three/webgpu'` Vite plugin (`-77.6 kB` gz across `apps/lab` immediately!), the `overlay` prop shorthand, and `<BareSurfaceCanvas catalogue={...}>` (`-162.3 kB` gz).
-3. **Step 3 — `@petepetrash/munari/kernel` + `registry/shader-quad` *(additive)*:**
-   - Expose the pure zero-Three kernel subpath (`+14.6 kB` gz) and add one copyable single-quad WebGL 2 / WebGPU transition item under `registry/`.
-4. **Step 4 — `@petepetrash/munari/stage` + optional `@react-three/fiber` peer *(additive)*:**
-   - Mark `@react-three/fiber` optional in `peerDependenciesMeta`, build `<SurfaceStage>` + `<StageSurface>` over `SurfaceRoot` + `WebGPURenderer` + `DirectRenderPipeline`, and migrate at least two non-scene demos in `apps/lab` (e.g. `Veil` or `Postcard`) to prove parity across enhanced Chrome 157 and `snapDOM` gates.
-5. **Step 5 — Agent skill & docs sync:**
-   - Update `README.md`, `llms.txt`, and `.agents/skills/munari/SKILL.md` with the three-posture decision table so both humans and coding agents default to `/stage` for page UI effects and `.` for 3D R3F worlds.
+## Rollout
+
+1. Step 1, with the measurement script and budget check. Needs approval for the
+   package tooling change.
+2. The Step 2 spike, in a branch, measured and probed as described. Then Pete's
+   decision on open question 1.
+3. Step 3 waits on a stable R3F 10.
+4. If Step 2 lands, the README, `docs/authoring.md` and the Munari skill
+   explain how to register Three.js elements.
+
+## Appendix: measurement method
+
+`measure.mjs` builds one entry file with Vite in production mode and sums every
+emitted `.js` file. It prints minified, `gzip -9` and Brotli quality 11 sizes,
+and flags strings that exist only in `three`'s `WebGLRenderer` and
+`ShaderLib`. Its second argument picks the alias. `none` uses none. `all`
+resolves every `three` import to `three/webgpu`. `r3f` does that only for
+imports from `@react-three/fiber`.
+
+Save it as `.scratch/measure/measure.mjs`, write each entry as
+`.scratch/measure/entries/<name>.js`, and run from the repository root:
+
+```sh
+npm run build   # stages packages/react/dist
+node .scratch/measure/measure.mjs distSurface none
+node .scratch/measure/measure.mjs distSurface r3f
+node .scratch/measure/measure.mjs dreiRoundedBox all   # fails: 55 MISSING_EXPORT
+```
+
+| Entry | What it imports and renders |
+|---|---|
+| `react` | A `<div>` through `react-dom/client` |
+| `distSurface`, `srcSurface` | `SurfaceCanvas` and a `Surface` holding one `<div>` |
+| `distEncodedOutput`, `srcEncodedOutput` | `encodedOutput`, assigned to `window` |
+| `tslOnly` | `sRGBTransferEOTF`, `sRGBTransferOETF` and `vec4` from `three/tsl` |
+| `distElementCapture`, `srcElementCapture` | One component that calls `useElementCapture` |
+| `distAdvancedKernel`, `srcAdvancedKernel` | `createDomTextureSource` from `/advanced` |
+| `r3fCanvas` | `<Canvas>` with a `WebGPURenderer` factory, one mesh and plane |
+| `r3fCreateRoot` | The same scene through `createRoot` and `extend({ Mesh, Group, PlaneGeometry })` |
+| `dreiRoundedBox` | `<Canvas>` with drei's `RoundedBox` |
+
+`dist` entries import by absolute path from `packages/react/dist`, and `src`
+entries from `packages/react/src`. Step 1 commits this script under
+`instruments/payload/`.
+
+<details>
+<summary>measure.mjs</summary>
+
+```js
+import { build } from 'vite';
+import { readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { gzipSync, brotliCompressSync, constants } from 'node:zlib';
+const [,, name, aliasMode = 'none'] = process.argv;
+const here = new URL('.', import.meta.url).pathname;
+const outDir = join(here, 'out', name + '-' + aliasMode);
+rmSync(outDir, { recursive: true, force: true });
+const plugins = [];
+if (aliasMode === 'r3f') plugins.push({ name: 'r3f-three-webgpu', enforce: 'pre', async resolveId(src, importer) {
+  if (src === 'three' && importer && importer.includes('@react-three/fiber')) return this.resolve('three/webgpu', importer, { skipSelf: true });
+} });
+const warnings = [];
+await build({ configFile: false, root: here, logLevel: 'silent', mode: 'production', plugins,
+  resolve: aliasMode === 'all' ? { alias: [{ find: /^three$/, replacement: 'three/webgpu' }] } : {},
+  build: { outDir, minify: true, write: true, emptyOutDir: true, reportCompressedSize: false, modulePreload: false,
+    rollupOptions: { input: join(here, 'entries', name + '.js'), onwarn(w) { warnings.push(w.code + ': ' + (w.message || '').slice(0, 160)); } } } });
+const files = [];
+const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); statSync(p).isDirectory() ? walk(p) : p.endsWith('.js') && files.push(p); } };
+walk(outDir);
+const buf = Buffer.concat(files.map((f) => readFileSync(f)));
+const kb = (n) => (n / 1000).toFixed(1);
+const gz = files.reduce((s, f) => s + gzipSync(readFileSync(f), { level: 9 }).length, 0);
+const br = files.reduce((s, f) => s + brotliCompressSync(readFileSync(f), { params: { [constants.BROTLI_PARAM_QUALITY]: 11 } }).length, 0);
+const src = buf.toString();
+console.log(JSON.stringify({ name, aliasMode, files: files.length, min: kb(buf.length), gz: kb(gz), br: kb(br),
+  hasLegacyWebGLRenderer: /WebGLRenderer: Use|THREE.WebGLRenderer: Context Lost|WebGLRenderer: A WebGL context could not be created/.test(src) || src.includes('WebGLRenderer: Context Lost'),
+  hasShaderLib: src.includes('meshphysical_frag') || src.includes('ShaderLib'),
+  warnings: warnings.slice(0, 6), warningCount: warnings.length }));
+```
+
+</details>
