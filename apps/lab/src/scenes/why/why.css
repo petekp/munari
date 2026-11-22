@@ -84,7 +84,13 @@
   padding-top: var(--m-s2);
 }
 
-/* ── 3-way decision cards ─────────────────────────────────── */
+/* ── paradigm, unlocks & 3-way decision cards ─────────────── */
+
+.why-paradigm-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--m-s5);
+}
 
 .why-decisions {
   display: grid;
@@ -105,6 +111,50 @@
 
 .why-decision-active {
   background: var(--m-field);
+}
+
+.why-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--m-s5);
+}
+
+.why-mode {
+  display: grid;
+  align-content: start;
+  gap: var(--m-s2);
+  padding-top: var(--m-s3);
+  border-top: 1px solid var(--m-rule);
+}
+
+.why-unlocks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--m-s5) var(--m-s6);
+}
+
+.why-unlock {
+  display: grid;
+  align-content: start;
+  gap: var(--m-s2);
+  padding-top: var(--m-s4);
+  border-top: 1px solid var(--m-rule);
+}
+
+@media (min-width: 761px) {
+  .why-unlock:nth-child(-n + 2),
+  .why-tradeoff:nth-child(-n + 2) {
+    padding-top: 0;
+    border-top: 0;
+  }
+}
+
+.why-unlock-demos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--m-s2) var(--m-s3);
+  padding-top: var(--m-s1);
 }
 
 /* ── walkthrough sections ─────────────────────────────────── */
@@ -658,6 +708,8 @@
 
 @media (max-width: 760px) {
   .why-decisions,
+  .why-modes,
+  .why-unlocks,
   .why-split-notes,
   .why-compare-boxes,
   .why-engine-cards,
@@ -669,6 +721,12 @@
   .why-decision + .why-decision {
     border-inline-start: 0;
     border-block-start: 1px solid var(--m-ink);
+  }
+
+  .why-unlock:first-child,
+  .why-tradeoff:first-child {
+    padding-top: 0;
+    border-top: 0;
   }
 
   .why-film-cells {

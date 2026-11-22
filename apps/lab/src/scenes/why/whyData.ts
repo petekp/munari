@@ -1,17 +1,62 @@
-// Why Munari data — structured copy, compiled JSX snippets, demo links, and comparison matrix.
+// Why Munari data — structured copy, paradigm comparison, capability cards, and walkthrough entries.
 //
-// The law: every code sample and metric on the visual walkthrough page matches
+// The law: every metric and capability on the visual walkthrough page matches
 // `docs/why-munari.md` and `docs/platform.md`, so the site page and repository
 // guide never contradict each other.
 //
-// Ownership: this module holds static content and types; `Why.tsx`,
-// `whyDiagrams.tsx`, and `whyStage.tsx` own rendering and interaction.
+// Ownership: this module holds static copy and types; `whySnippets.ts` holds
+// copyable JSX blocks; `Why.tsx`, `whyDiagrams.tsx`, and `whyStage.tsx` render them.
+
+import type { DemoId } from '../../components/sceneCatalog'
+import {
+  ANCHOR_TSL_SNIPPET,
+  CURVED_INPUT_SNIPPET,
+  ELEMENT_CAPTURE_SNIPPET,
+  HANDOFF_SNIPPET,
+  INSTALL_SNIPPET,
+  SNAPDOM_SNIPPET,
+  SPATIAL_BOARD_SNIPPET,
+} from './whySnippets'
+
+export { INSTALL_SNIPPET }
 
 export type DiagramKind = 'handoff' | 'curve' | 'anchor' | 'resize' | 'capture' | 'engines'
 
 export interface RelatedSceneLink {
   readonly id: string
   readonly label: string
+}
+
+export interface PromotedDemoLink {
+  readonly id: DemoId
+  readonly label: string
+}
+
+export interface ParadigmCard {
+  readonly tag: string
+  readonly title: string
+  readonly verdict: string
+  readonly detail: string
+}
+
+export interface LifecycleMode {
+  readonly badge: string
+  readonly title: string
+  readonly detail: string
+}
+
+export interface UnlockItem {
+  readonly wall: string
+  readonly title: string
+  readonly detail: string
+  readonly demos: readonly PromotedDemoLink[]
+}
+
+export interface DecisionCard {
+  readonly tag: string
+  readonly title: string
+  readonly verdict: string
+  readonly detail: string
 }
 
 export interface WhySectionItem {
@@ -25,19 +70,12 @@ export interface WhySectionItem {
   readonly munariTitle: string
   readonly munariPoints: readonly string[]
   readonly diagram: DiagramKind
-  readonly demoId: string
+  readonly demoId: DemoId
   readonly demoTitle: string
   readonly demoThumb: string
   readonly demoInstruction: string
   readonly relatedScenes: readonly RelatedSceneLink[]
   readonly code: string
-}
-
-export interface DecisionCard {
-  readonly tag: string
-  readonly title: string
-  readonly verdict: string
-  readonly detail: string
 }
 
 export interface TradeoffItem {
@@ -52,8 +90,99 @@ export interface ComparisonRow {
   readonly munari: string
 }
 
-export const INSTALL_SNIPPET =
-  'npm install @petepetrash/munari @react-three/fiber\nnpm install three@0.186.1 --save-exact'
+export const PARADIGM_CARDS: readonly ParadigmCard[] = [
+  {
+    tag: '0% idle GPU',
+    title: 'Standard HTML & CSS',
+    verdict: 'Crisp document, isolated flat boxes',
+    detail:
+      'Native text shaping, selection, forms, autofill, Cmd+F, and screen readers. Every element paints as an isolated flat plane with its own fixed shadow, uniform Gaussian backdrop blur, and no shared light or pixel shaders.',
+  },
+  {
+    tag: 'Continuous 60 fps',
+    title: 'Full-Canvas WebGL',
+    verdict: 'Shared shaders, lost browser',
+    detail:
+      'Scene-wide lighting, refraction, and curved geometry, paid for by rebuilding text layout, giving up native inputs, text selection, password managers, and screen readers, and running a full-viewport render loop.',
+  },
+  {
+    tag: '0 fps at rest',
+    title: 'Selective DOM promotion (Munari)',
+    verdict: 'Keep the HTML page, shade what needs it',
+    detail:
+      'Your document stays ordinary HTML. Specific React components enter WebGPU shaders and shared 3D space, either for a 400 ms gesture or as a persistent lit surface, while keeping live inputs, selection, and 0 fps idle.',
+  },
+]
+
+export const LIFECYCLE_MODES: readonly LifecycleMode[] = [
+  {
+    badge: '0 GPU textures at rest',
+    title: 'Transient promotion for gestures and transitions',
+    detail:
+      'Set inScene={active} only while dragging, minimizing, or folding. At rest, the component is plain HTML with zero VRAM cost; on interaction, Munari swaps on the verified GPU frame and hands back when settled.',
+  },
+  {
+    badge: '0 fps when still',
+    title: 'Demand-driven surfaces for persistent lighting and optics',
+    detail:
+      'Pair frameloop="demand" with pointerMode="surfaces". Promoted elements draw one frame when light, state, or springs move, leave surrounding HTML directly clickable, and sleep at 0 fps (<1% CPU) once motion ends.',
+  },
+]
+
+export const UNLOCK_ITEMS: readonly UnlockItem[] = [
+  {
+    wall: 'Shared spatial field',
+    title: 'One scene light and real cast shadows across separate components',
+    detail:
+      'CSS box-shadow hardcodes a local offset per element. Munari places separate DOM components under one light source so headings, forms, and raised selections cast coherent penumbras across the page.',
+    demos: [
+      { id: 'light', label: 'Light' },
+      { id: 'postcard', label: 'Postcard' },
+    ],
+  },
+  {
+    wall: 'Optical transport & substrates',
+    title: 'True refraction and physical materials over selectable text',
+    detail:
+      'CSS stops at flat fills and uniform Gaussian backdrop-filter. Custom TSL materials shade live HTML with variable-thickness Snell refraction, dispersion, cotton paper grain, or machined hardware.',
+    demos: [
+      { id: 'selection', label: 'Selection' },
+      { id: 'postcard', label: 'Postcard' },
+      { id: 'knobs', label: 'Knobs' },
+    ],
+  },
+  {
+    wall: 'Non-affine geometry',
+    title: 'Bent, elastic, and particle-dissolved UI that still takes input',
+    detail:
+      'CSS matrix3d projects only rigid flat planes. Munari bends windows into docks, crumples dragged cards, and dissolves typed words into particles while clicks, typing, hover, and scroll still hit the real controls.',
+    demos: [
+      { id: 'genie', label: 'Genie' },
+      { id: 'flight', label: 'Flight' },
+      { id: 'plume', label: 'Plume' },
+    ],
+  },
+  {
+    wall: 'DOM-driven shaders',
+    title: 'Shaders and 3D hardware locked to responsive DOM layout',
+    detail:
+      'Captured surfaces expose premultiplied color, alpha silhouettes, and frame-matched Surface.Anchor boxes. 3D dials, resize handles, and page-reflecting cursors track responsive DOM with zero 1-frame lag.',
+    demos: [
+      { id: 'knobs', label: 'Knobs' },
+      { id: 'marble-hand', label: 'Marble hand' },
+    ],
+  },
+  {
+    wall: '2D to 3D depth',
+    title: 'Two-way flow between document layout and depth-buffered 3D',
+    detail:
+      'No walled canvas box. Components sit in normal page flow, lift into a shared depth buffer where 3D objects pass in front of and behind them, and return to plain HTML with React state and focus intact.',
+    demos: [
+      { id: 'logo', label: 'Logo' },
+      { id: 'flight', label: 'Flight' },
+    ],
+  },
+]
 
 export const DECISION_CARDS: readonly DecisionCard[] = [
   {
@@ -61,7 +190,7 @@ export const DECISION_CARDS: readonly DecisionCard[] = [
     title: 'CSS perspective() or Drei <Html>',
     verdict: 'Use when planes stay flat',
     detail:
-      'Vector text in every browser with native menus and zero GPU capture. Choose this when UI never bends, refracts, or intersects 3D geometry in depth.',
+      'Vector text in every browser with native menus and zero GPU capture. Choose this when UI stays on rigid flat quads and needs no pixel shaders, refraction, or 3D depth intersections.',
   },
   {
     tag: '~50 lines · Chrome 157+',
@@ -73,9 +202,9 @@ export const DECISION_CARDS: readonly DecisionCard[] = [
   {
     tag: '@petepetrash/munari',
     title: 'Munari',
-    verdict: 'Use for real UI in 3D scenes',
+    verdict: 'Use for native-grade UI on real DOM',
     detail:
-      'Components start in normal page flow, lift into lit or curved 3D with zero blank frames, keep input accurate on warped meshes, sleep at 0 fps, and run outside Chrome.',
+      'Components start in normal page flow, gain shared lighting, refraction, or curved motion with zero blank frames, keep input accurate on warped meshes, sleep at 0 fps, and run across Chrome, Safari, and Firefox.',
   },
 ]
 
@@ -109,38 +238,7 @@ export const WHY_SECTIONS: readonly WhySectionItem[] = [
       { id: 'genie', label: 'Genie' },
       { id: 'glass', label: 'Glass compositor' },
     ],
-    code: `function LitCardHandoff() {
-  const canvasId = useId()
-  const supported = useSurfaceSupport()
-  const [inScene, setInScene] = useState(false)
-
-  return (
-    <section style={{ position: 'relative', minHeight: 320 }}>
-      {supported && (
-        <SurfaceCanvas
-          id={canvasId}
-          pointerMode="surfaces"
-          frameloop="demand"
-          gl={{ alpha: true }}
-          onCreated={({ gl }) => gl.setClearAlpha(0)}
-          style={{ position: 'absolute', inset: 0 }}
-        >
-          <ambientLight intensity={0.45} />
-          <directionalLight position={[-1.5, 2, 3]} intensity={2.6} color="#fff1d6" />
-        </SurfaceCanvas>
-      )}
-      <Surface.Root canvasId={canvasId} inScene={inScene}>
-        <Surface.HTML><NoteCard /></Surface.HTML>
-        <Surface.Scene>
-          <Surface.Mesh material={<Surface.LitMaterial roughness={0.32} metalness={0.05} />} />
-        </Surface.Scene>
-      </Surface.Root>
-      <button type="button" disabled={!supported} onClick={() => setInScene((v) => !v)}>
-        {inScene ? 'Return to flat HTML' : 'Light in 3D'}
-      </button>
-    </section>
-  )
-}`,
+    code: HANDOFF_SNIPPET,
   },
   {
     id: 'input',
@@ -170,33 +268,7 @@ export const WHY_SECTIONS: readonly WhySectionItem[] = [
       { id: 'slider', label: 'Magnified slider' },
       { id: 'optics', label: 'Optics' },
     ],
-    code: `// Pair hover selectors so bent and fallback surfaces match:
-// .wave-btn:hover, .wave-btn[data-hover] { background: #000; color: #fff; }
-
-function CurvedSheet({ width, height }: { width: number; height: number }) {
-  const geoRef = useRef<THREE.PlaneGeometry>(null)
-
-  useFrame(({ clock }) => {
-    const geometry = geoRef.current
-    if (!geometry) return
-    const t = clock.getElapsedTime()
-    deformSurfaceGeometry(geometry, [width, height], (x, y) => ({
-      x,
-      y,
-      z: Math.sin((x / width) * Math.PI * 2 + t) * 18,
-    }))
-  })
-
-  return (
-    <group scale={1 / 120}>
-      <Surface.Mesh
-        placement="manual"
-        pointerRoute="auto"
-        geometry={<planeGeometry ref={geoRef} args={[width, height, 48, 24]} />}
-      />
-    </group>
-  )
-}`,
+    code: CURVED_INPUT_SNIPPET,
   },
   {
     id: 'anchors',
@@ -225,31 +297,7 @@ function CurvedSheet({ width, height }: { width: number; height: number }) {
       { id: 'controls', label: 'Controls bench' },
       { id: 'crystal', label: 'Crystal TSL' },
     ],
-    code: `const ignoreRaycast = () => {}
-
-function ButtonBezel() {
-  const box = useSurfaceAnchorBox()
-  if (!box) return null
-  const depth = 0.04
-  return (
-    <mesh position={[0, 0, -depth / 2]} raycast={ignoreRaycast}>
-      <boxGeometry args={[box.width * 1.08, box.height * 1.16, depth]} />
-      <meshStandardMaterial color="#2148bd" roughness={0.35} />
-    </mesh>
-  )
-}
-
-function CoolTintMaterial() {
-  const surface = useSurfaceNodes()
-  const material = useMemo(() => {
-    const m = new MeshBasicNodeMaterial({ transparent: true })
-    const sample = surface.map.sample(uv()).mul(surface.radiusMask())
-    m.outputNode = premultipliedOutput(vec4(sample.rgb.mul(vec3(0.85, 0.95, 1)), sample.a))
-    return m
-  }, [surface])
-  useEffect(() => () => material.dispose(), [material])
-  return <primitive object={material} attach="material" />
-}`,
+    code: ANCHOR_TSL_SNIPPET,
   },
   {
     id: 'sharpness',
@@ -279,29 +327,7 @@ function CoolTintMaterial() {
       { id: 'workspace', label: '3D Workspace' },
       { id: 'candidates', label: 'Candidate studies' },
     ],
-    code: `export function SpatialBoard() {
-  return (
-    <SurfaceCanvas frameloop="demand" camera={{ position: [0, 0, 5], fov: 45 }}>
-      <ambientLight intensity={0.5} />
-      <directionalLight position={[2, 3, 4]} intensity={2} />
-      <FocusScene>
-        <group position={[-1.2, 0, 0]}>
-          <FocusGroup id="metrics">
-            <SceneSurface.Root>
-              <SceneSurface.HTML size={[320, 200]}>
-                <div style={{ width: 320, height: 200, padding: 16, background: '#fff' }}>
-                  <h3>Latency</h3>
-                  <p>Tab or click to approach; 3D objects occlude this panel in depth.</p>
-                </div>
-              </SceneSurface.HTML>
-              <SceneSurface.Mesh material={<Surface.LitMaterial roughness={0.4} />} />
-            </SceneSurface.Root>
-          </FocusGroup>
-        </group>
-      </FocusScene>
-    </SurfaceCanvas>
-  )
-}`,
+    code: SPATIAL_BOARD_SNIPPET,
   },
   {
     id: 'capture',
@@ -330,26 +356,7 @@ function CoolTintMaterial() {
       { id: 'marble-hand', label: 'Marble hand' },
       { id: 'veil', label: 'Progressive blur veil' },
     ],
-    code: `export function PageWithLens() {
-  const capture = useElementCapture()
-  return (
-    <div style={{ position: 'relative' }}>
-      <article ref={capture.ref} style={{ padding: 24 }}>
-        <h2>Native article</h2>
-        <p>Select this text normally while the 3D glass band magnifies its pixels.</p>
-      </article>
-      <SurfaceCanvas
-        frameloop="demand"
-        pointerMode="surfaces"
-        gl={{ alpha: true }}
-        onCreated={({ gl }) => gl.setClearAlpha(0)}
-        style={{ position: 'absolute', inset: 0 }}
-      >
-        <MagnifyingBand capture={capture} />
-      </SurfaceCanvas>
-    </div>
-  )
-}`,
+    code: ELEMENT_CAPTURE_SNIPPET,
   },
   {
     id: 'browsers',
@@ -377,12 +384,7 @@ function CoolTintMaterial() {
       { id: 'plume', label: 'Plume' },
       { id: 'distortion-wave', label: 'Distortion wave' },
     ],
-    code: `import { enableSnapdomCapture } from '@petepetrash/munari/snapdom'
-
-// Keep native HTML-in-canvas on Chrome 157+; fall back to snapDOM elsewhere.
-enableSnapdomCapture({
-  isolatedTextInputs: 'input[data-munari-capture-region]',
-})`,
+    code: SNAPDOM_SNIPPET,
   },
 ]
 
@@ -417,7 +419,7 @@ export const COMPARISON_ROWS: readonly ComparisonRow[] = [
     munari: 'Prefer CSS 3D unless lighting or shaders apply',
   },
   {
-    requirement: 'Per-pixel lighting, refraction, or bent meshes on live UI',
+    requirement: 'Shared scene lighting, refraction, or bent meshes on live UI',
     cssAndDrei: 'Cannot deform or shade DOM pixels',
     diyCanvas: 'Custom WebGPU + custom hit-test math',
     munari: 'Built in (Surface.LitMaterial, useSurfaceNodes, deformSurfaceGeometry)',

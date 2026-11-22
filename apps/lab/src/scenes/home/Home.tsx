@@ -55,7 +55,7 @@ export function HomeApp({ onReady }: HomeProps) {
       <main>
         <section className="home-intro" aria-labelledby="home-title">
           <h1 id="home-title">HTML, 3D, and Shaders, Unified.</h1>
-          <p>Munari is a React library that draws live HTML in Three.js scenes. Buttons still click, fields still take typing, and text still selects.</p>
+          <p>Native-grade lighting, optics, and physical motion on real DOM components—without turning your website into a full-canvas app. Buttons still click, fields still take typing, and text still selects.</p>
         </section>
 
         <a className="home-skip" href="#home-index">Skip to all demos</a>
@@ -79,16 +79,16 @@ export function HomeApp({ onReady }: HomeProps) {
           <h2 id="home-facts-title">What it does</h2>
           <dl>
             <div>
-              <dt>Draws HTML in 3D</dt>
-              <dd>Wrap React content in a Surface and it becomes a texture in your scene, redrawn as the content changes.</dd>
+              <dt>Crosses CSS’s flat-box limits</dt>
+              <dd>Cast shared scene light across separate components, refract live text through glass, or bend and curl interactive forms with WebGPU shaders.</dd>
             </div>
             <div>
-              <dt>Keeps it working</dt>
-              <dd>Clicks, typing, focus, and text selection reach the real elements, wherever the scene puts them.</dd>
+              <dt>Keeps the real DOM working</dt>
+              <dd>Clicks, typing, focus, scroll, and text selection reach the live React elements—even across curved or lit geometry.</dd>
             </div>
             <div>
-              <dt>Moves it between page and scene</dt>
-              <dd>Lift content off the page into the scene and set it back down without losing its state.</dd>
+              <dt>Promotes on demand, sleeps at 0 fps</dt>
+              <dd>Components stay in ordinary page layout, enter 3D without blank frames or lost state, and drop to 0 fps at rest across Chrome, Safari, and Firefox.</dd>
             </div>
           </dl>
         </section>
@@ -97,9 +97,8 @@ export function HomeApp({ onReady }: HomeProps) {
           <h2 id="home-start-title">Get started</h2>
           <CopyLine text={INSTALL} />
           <p>
-            Then follow <a href={GUIDE_URL} target="_blank" rel="noreferrer">the guide</a> to put your first element in a scene.
-            In Chrome, Munari draws the live element through the <a href={BROWSER_GUIDE} target="_blank" rel="noreferrer">HTML-in-canvas origin trial</a>.
-            Other browsers need snapDOM, and the guide shows how to add it.
+            Follow <a href={GUIDE_URL} target="_blank" rel="noreferrer">the guide</a> to put your first component in a scene, or read <a href={sceneUrl('why')}>Why Munari</a> for how selective DOM promotion works.
+            Chrome 157+ and the <a href={BROWSER_GUIDE} target="_blank" rel="noreferrer">HTML-in-canvas origin trial</a> draw live elements directly; Safari, Firefox, and iOS run the same components through snapDOM.
           </p>
         </section>
       </main>

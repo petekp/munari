@@ -41,7 +41,7 @@
 
 .home-intro { padding-block: clamp(32px, 5vw, 64px) clamp(28px, 3.5vw, 44px); }
 .home-intro h1 { max-width: 14ch; margin: 0; font-size: clamp(40px, 6vw, 80px); font-weight: 600; font-stretch: 112%; line-height: 0.98; letter-spacing: -0.035em; }
-.home-intro p { max-width: 46ch; margin: clamp(20px, 2.5vw, 32px) 0 0; font-size: clamp(18px, 1.6vw, 21px); line-height: 1.45; }
+.home-intro p { max-width: 52ch; margin: clamp(20px, 2.5vw, 32px) 0 0; font-size: clamp(18px, 1.6vw, 21px); line-height: 1.45; }
 
 /* ── stage ────────────────────────────────────────────────── */
 

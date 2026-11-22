@@ -1,12 +1,12 @@
-// Why Munari page — interactive visual walkthrough of Munari's value propositions.
+// Why Munari page — interactive visual walkthrough of selective DOM promotion and Munari's guarantees.
 //
 // The law: every claim from `docs/why-munari.md` pairs an interactive specimen
 // showing what breaks in DIY code with an on-demand live lab demo and the
 // minimal JSX that implements it.
 //
 // Ownership: `App.tsx` mounts `WhyApp` at `?scene=why`; `whyData.ts`,
-// `whyDiagrams.tsx`, and `whyStage.tsx` supply the content, specimens, and
-// single-active demo frame.
+// `whySnippets.ts`, `whyDiagrams.tsx`, and `whyStage.tsx` supply the copy,
+// specimens, and single-active demo frame.
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 import { CaptureEngineStatus } from '../../components/CaptureEngineStatus'
@@ -18,7 +18,10 @@ import {
   COMPARISON_ROWS,
   DECISION_CARDS,
   INSTALL_SNIPPET,
+  LIFECYCLE_MODES,
+  PARADIGM_CARDS,
   TRADEOFFS,
+  UNLOCK_ITEMS,
   WHY_SECTIONS,
   type WhySectionItem,
 } from './whyData'
@@ -46,6 +49,67 @@ function BrowserEnvironmentBar() {
       <Tag>Element.moveBefore: {hasMoveBefore ? 'supported' : 'insertBefore restore'}</Tag>
       <Tag>Renderer: {hasWebGpu ? 'WebGPU' : 'WebGL 2'}</Tag>
     </div>
+  )
+}
+
+function ParadigmSection() {
+  return (
+    <section id="paradigm" className="m-section" aria-labelledby="paradigm-heading">
+      <h2 id="paradigm-heading">Selective DOM promotion</h2>
+      <div className="why-paradigm-body">
+        <div className="why-decisions">
+          {PARADIGM_CARDS.map((card, idx) => (
+            <div key={card.title} className={`why-decision${idx === 2 ? ' why-decision-active' : ''}`}>
+              <div>
+                <Tag>{card.tag}</Tag>
+              </div>
+              <h3 className="m-heading">{card.title}</h3>
+              <b className="m-label">{card.verdict}</b>
+              <p className="m-ui m-quiet">{card.detail}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="why-modes">
+          {LIFECYCLE_MODES.map((mode) => (
+            <div key={mode.title} className="why-mode">
+              <div>
+                <Tag>{mode.badge}</Tag>
+              </div>
+              <h3 className="m-label">{mode.title}</h3>
+              <p className="m-ui m-quiet">{mode.detail}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function UnlocksSection() {
+  return (
+    <section id="unlocks" className="m-section" aria-labelledby="unlocks-heading">
+      <h2 id="unlocks-heading">What it unlocks</h2>
+      <div className="why-unlocks">
+        {UNLOCK_ITEMS.map((item) => (
+          <article key={item.title} className="why-unlock">
+            <div>
+              <Tag>{item.wall}</Tag>
+            </div>
+            <h3 className="m-heading">{item.title}</h3>
+            <p className="m-ui m-quiet">{item.detail}</p>
+            <div className="why-unlock-demos m-small">
+              <span className="m-quiet">Demos:</span>
+              {item.demos.map((demo) => (
+                <a key={demo.id} className="m-link" href={sceneUrl(demo.id)}>
+                  {demo.label}
+                </a>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -226,12 +290,18 @@ export function WhyApp({ onReady }: WhyProps) {
         <div className="why-intro">
           <h1 className="m-display">Why Munari</h1>
           <p className="m-lead">
-            Chrome 157 draws one flat element inside a canvas in fifty lines. Munari is for what happens next:
-            keeping UI in normal page flow, bending meshes without losing clicks, locking 3D parts to layout, and
-            shipping outside Chrome.
+            Native-grade lighting, optics, and physical motion on real DOM components—without turning your website
+            into a full-canvas app. Your page stays ordinary HTML; Munari promotes only the components or transitions
+            that cross CSS&rsquo;s limits.
           </p>
           <BrowserEnvironmentBar />
           <nav aria-label="Contents" className="why-contents m-ui">
+            <a className="m-link m-link--nav" href="#paradigm">
+              Selective promotion
+            </a>
+            <a className="m-link m-link--nav" href="#unlocks">
+              What it unlocks
+            </a>
             <a className="m-link m-link--nav" href="#choose">
               Choose the right tool
             </a>
@@ -248,6 +318,9 @@ export function WhyApp({ onReady }: WhyProps) {
             </a>
           </nav>
         </div>
+
+        <ParadigmSection />
+        <UnlocksSection />
 
         <section id="choose" className="m-section" aria-labelledby="choose-heading">
           <h2 id="choose-heading">Choose the right tool</h2>

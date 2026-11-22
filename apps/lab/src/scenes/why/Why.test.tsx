@@ -2,6 +2,7 @@
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { DEMOS } from '../../components/sceneCatalog'
 import { WhyApp } from './Why'
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true)
@@ -12,7 +13,7 @@ afterEach(() => {
 })
 
 describe('WhyApp visual walkthrough', () => {
-  it('switches specimen/code tabs with keyboard and mounts at most one live demo iframe at a time', async () => {
+  it('renders selective DOM promotion framing and links strictly to promoted catalog demos', async () => {
     vi.stubGlobal('fetch', () => Promise.resolve(new Response('')))
     const container = document.createElement('div')
     document.body.append(container)
@@ -24,6 +25,37 @@ describe('WhyApp visual walkthrough', () => {
       })
 
       expect(container.querySelector('h1.m-display')?.textContent).toBe('Why Munari')
+      expect(container.querySelector('.why-intro .m-lead')?.textContent).toContain(
+        'Native-grade lighting, optics, and physical motion on real DOM components',
+      )
+      expect(container.querySelector('#paradigm')?.querySelectorAll('.why-decision')).toHaveLength(3)
+      expect(container.querySelector('#paradigm')?.querySelectorAll('.why-mode')).toHaveLength(2)
+
+      const promotedIds = new Set<string>(DEMOS.map((d) => d.id))
+      const unlockLinks = [...container.querySelectorAll<HTMLAnchorElement>('#unlocks .why-unlock-demos a')]
+      expect(unlockLinks.length).toBeGreaterThanOrEqual(5)
+      for (const link of unlockLinks) {
+        const scene = new URL(link.getAttribute('href') ?? '', 'http://localhost').searchParams.get('scene')
+        expect(promotedIds.has(scene ?? '')).toBe(true)
+      }
+    } finally {
+      await act(async () => {
+        root.unmount()
+      })
+    }
+  })
+
+  it('switches specimen/code tabs with keyboard and mounts at most one live demo iframe at a time', async () => {
+    vi.stubGlobal('fetch', () => Promise.resolve(new Response('')))
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+
+    try {
+      await act(async () => {
+        root.render(createElement(WhyApp))
+      })
+
       expect(container.querySelectorAll('.why-walk-section')).toHaveLength(6)
       expect(container.querySelector('[role="region"] table.why-table')).not.toBeNull()
       expect(container.querySelectorAll('iframe')).toHaveLength(0)
@@ -50,7 +82,6 @@ describe('WhyApp visual walkthrough', () => {
       expect(runPostcard).toBeDefined()
       expect(runGenie).toBeDefined()
 
-      // Give stage panels a positive clientWidth in happy-dom so the scaled iframe mounts.
       for (const panel of container.querySelectorAll<HTMLElement>('.why-stage-panel')) {
         Object.defineProperty(panel, 'clientWidth', { configurable: true, value: 800 })
       }
