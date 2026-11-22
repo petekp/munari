@@ -2,7 +2,8 @@
 // casting coherent global-light soft shadows at 0 fps idle (?scene=polymer-prototype&variant=A|B|C).
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
-import { SurfaceCanvas, useSurfaceSupport } from '@petepetrash/munari'
+import { supportsSurfaces, SurfaceCanvas, useSurfaceSupport } from '@petepetrash/munari'
+import { captureEngine } from '@petepetrash/munari/advanced'
 import { Button, Status, Tag } from '../../components/system'
 import { sceneUrl } from '../../captureMode'
 import { PolymerCanvasTelemetry } from './PolymerPrototypeSurface'
@@ -16,6 +17,13 @@ import {
 } from './polymerPrototypeTuning'
 import { VariantA, VariantB, VariantC } from './PolymerPrototypeVariants'
 import './polymerPrototype.css'
+
+// Auto-install snapDOM when opened in unflagged browsers (e.g. IDE webviews, Safari, Firefox)
+// without `?capture=auto`, while leaving native HTML-in-canvas untouched in Chrome 157+.
+if (!supportsSurfaces()) {
+  const { enableSnapdomCapture } = await import('@petepetrash/munari/snapdom')
+  enableSnapdomCapture({ isolatedTextInputs: '[data-munari-capture-region]' })
+}
 
 interface VariantMeta {
   readonly id: PolymerVariantId
@@ -163,6 +171,7 @@ function TelemetryHud({
         <Status status={active ? 'fallback' : 'live'}>
           {active ? 'Rendering interaction' : '0 fps · GPU idle'}
         </Status>
+        <Tag>Engine: {captureEngine().name}</Tag>
         <Tag>Surfaces: {polymerTelemetry.activeSurfaces}</Tag>
         <Tag>DPR: {polymerTelemetry.dpr.toFixed(2)}</Tag>
       </div>
@@ -291,6 +300,7 @@ export function PolymerPrototypeApp({ onReady }: { readonly onReady?: () => void
     requestAnimationFrame(() => notifyPolymerTuning())
   }, [])
 
+  const engineName = captureEngine().name
   const inScene = supported && polymerEnabled
 
   return (
@@ -325,7 +335,7 @@ export function PolymerPrototypeApp({ onReady }: { readonly onReady?: () => void
           onSelectPresetPos={(u, v) => setLightUV(u, v, true)}
         />
 
-        <div ref={stageRef} className="poly-stage-root">
+        <div key={engineName} ref={stageRef} className="poly-stage-root">
           <div className="poly-light-rail" aria-hidden />
 
           {supported && (
