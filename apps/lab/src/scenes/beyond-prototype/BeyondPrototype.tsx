@@ -153,6 +153,13 @@ export function BeyondPrototypeApp({ onReady }: { readonly onReady?: () => void 
                   <span className="m-readout">{item.num}</span> {item.shortLabel}
                 </button>
               ))}
+              <a
+                href={sceneUrl('signature-prototype')}
+                className="beyond-nav-pill beyond-series-link"
+                title="Series III: Signature prototypes"
+              >
+                Series III →
+              </a>
             </span>
             <BeyondTelemetryReadout />
           </>

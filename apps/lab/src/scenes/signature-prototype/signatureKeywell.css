@@ -1,0 +1,279 @@
+/* Prototype 03 (`SignatureKeywell`): Backlit polycarbonate keycap matrix */
+
+.sk-bench-stage {
+  background:
+    radial-gradient(85% 80% at 50% 38%, #262a34 0%, #14161c 100%);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 16px 40px;
+}
+
+.sk-stage-caption {
+  position: absolute;
+  bottom: 11px;
+  left: 16px;
+  right: 16px;
+  z-index: 6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: rgba(226, 232, 240, 0.76);
+  text-align: center;
+  pointer-events: none;
+}
+
+.sk-slot--scene {
+  position: relative;
+  z-index: 2;
+  transform: translateY(-8px);
+}
+
+.sk-degraded-sizer {
+  position: relative;
+  z-index: 2;
+}
+
+.sk-slot--degraded {
+  background: #171920;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.5);
+}
+
+/* Captured 620x408 hardware surface root */
+.sk-deck-root,
+.ui-root .sk-deck-root {
+  box-sizing: border-box;
+  width: 620px;
+  height: 408px;
+  position: relative;
+  background: transparent;
+  color: #f1f5f9;
+  font-family: var(--m-sans);
+  user-select: none;
+}
+
+/* Top CNC OLED & live macro binding strip (`y = 18..82 px`) */
+.sk-oled-strip {
+  position: absolute;
+  top: 18px;
+  left: 28px;
+  right: 28px;
+  height: 64px;
+  box-sizing: border-box;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgba(8, 10, 15, 0.90);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.sk-oled-left {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+.sk-oled-kicker {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.sk-oled-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.sk-oled-led {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+}
+
+.sk-oled-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.sk-oled-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.sk-macro-input {
+  width: 196px;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  background: rgba(15, 23, 42, 0.92);
+  color: #f8fafc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.sk-macro-input:hover,
+.sk-macro-input[data-hover] {
+  border-color: rgba(248, 250, 252, 0.65);
+}
+
+.sk-macro-input:focus-visible:not([data-pointer-focus]) {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+/* Exact 4x3 matrix matching `GRID_LEFT = 33, GRID_TOP = 104, KEY_W = 128, KEY_H = 82, GAP = 14` */
+.sk-matrix-grid {
+  position: absolute;
+  left: 33px;
+  top: 104px;
+  width: 554px;
+  height: 274px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sk-matrix-row {
+  display: grid;
+  grid-template-columns: repeat(4, 128px);
+  gap: 14px;
+  height: 82px;
+}
+
+.sk-matrix-cell {
+  width: 128px;
+  height: 82px;
+}
+
+.sk-key-btn {
+  box-sizing: border-box;
+  width: 128px;
+  height: 82px;
+  padding: 15px 16px 14px;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: rgba(226, 232, 240, 0.88);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Degraded Standard HTML mode gives keys dark smoked outlines + lit LED state */
+.sk-slot--degraded .sk-key-btn {
+  background: #1e222c;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.sk-slot--degraded .sk-key-btn[aria-pressed='true'] {
+  border-color: var(--key-led, #38bdf8);
+  background: color-mix(in srgb, var(--key-led, #38bdf8) 22%, #1e222c);
+  box-shadow:
+    inset 0 0 18px color-mix(in srgb, var(--key-led, #38bdf8) 32%, transparent),
+    0 0 14px color-mix(in srgb, var(--key-led, #38bdf8) 28%, transparent);
+}
+
+.sk-key-btn[aria-pressed='true'] {
+  color: #ffffff;
+}
+
+.sk-key-btn:hover,
+.sk-key-btn[data-hover] {
+  color: #ffffff;
+}
+
+.sk-key-btn:focus-visible:not([data-pointer-focus]) {
+  outline: 2px solid #7dd3fc;
+  outline-offset: -3px;
+}
+
+.sk-key-top {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.sk-key-num {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  opacity: 0.78;
+}
+
+.sk-key-code {
+  font-family: var(--m-sans);
+  font-size: 15px;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+}
+
+.sk-key-macro {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.94;
+}
+
+/* Sits cleanly on flat dark-anodized bottom chin (`y = 389..401 px`, below `y = 382` tub chamfer) */
+.sk-chin-label {
+  position: absolute;
+  bottom: 6px;
+  left: 36px;
+  right: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(203, 213, 225, 0.72);
+  pointer-events: none;
+}
+
+@media (max-width: 600px) {
+  .sk-stage-caption {
+    font-size: 10px;
+  }
+}

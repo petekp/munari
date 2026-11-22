@@ -43,6 +43,7 @@ const WhyApp = lazy(() => import('./scenes/why/Why').then(m => ({ default: m.Why
 const PolymerPrototypeApp = lazy(() => import('./scenes/polymer-prototype/PolymerPrototype').then(m => ({ default: m.PolymerPrototypeApp })))
 const FrontierPrototypeApp = lazy(() => import('./scenes/frontier-prototype/FrontierPrototype').then(m => ({ default: m.FrontierPrototypeApp })))
 const BeyondPrototypeApp = lazy(() => import('./scenes/beyond-prototype/BeyondPrototype').then(m => ({ default: m.BeyondPrototypeApp })))
+const SignaturePrototypeApp = lazy(() => import('./scenes/signature-prototype/SignaturePrototype').then(m => ({ default: m.SignaturePrototypeApp })))
 const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
 
 // Each advertised demo's page, keyed by its catalog id. The `satisfies`
@@ -88,6 +89,7 @@ const LAB_SCENES = [
   'polymer-prototype',
   'frontier-prototype',
   'beyond-prototype',
+  'signature-prototype',
 ] as const
 
 type SceneId = 'home' | DemoId | (typeof LAB_SCENES)[number]
@@ -133,6 +135,29 @@ function readScene(): SceneId {
 }
 
 
+const PAGE_SCENES = {
+  fisheye: FisheyeApp,
+  slider: SliderApp,
+  veil: VeilApp,
+  optics: OpticsApp,
+  refraction: RefractionApp,
+  gallery: GalleryApp,
+  crystal: CrystalApp,
+  controls: ControlsApp,
+  wordmark: WordmarkApp,
+  style: StyleApp,
+  why: WhyApp,
+  'polymer-prototype': PolymerPrototypeApp,
+  'frontier-prototype': FrontierPrototypeApp,
+  'beyond-prototype': BeyondPrototypeApp,
+  'signature-prototype': SignaturePrototypeApp,
+  candidates: CandidatesApp,
+  gravity: GravityApp,
+  lamp: LampApp,
+  rain: RainApp,
+  'distortion-wave': DistortionWaveApp,
+} as const
+
 /**
  * The scenes that ARE pages, with their own overlay canvas on top, rather
  * than content inside the one shared 3D room. They take the whole route;
@@ -144,59 +169,12 @@ function pageSceneFor(scene: SceneId) {
     const DemoPage = DEMO_PAGES[scene]
     return <DemoPage />
   }
-  switch (scene) {
-    case 'fisheye':
-      return <FisheyeApp />
-    case 'slider':
-      return <SliderApp />
-    case 'veil':
-      return <VeilApp />
-    case 'optics':
-      return <OpticsApp />
-    case 'refraction':
-      return <RefractionApp />
-    case 'gallery':
-      return <GalleryApp />
-    case 'crystal':
-      return <CrystalApp />
-    // The controls bench is a direct study and does not carry the
-    // promoted-scene rail over its own composition.
-    case 'controls':
-      return <ControlsApp />
-    default:
-      return studySceneFor(scene)
+  if (scene in PAGE_SCENES) {
+    // SAFETY: `in` narrows `scene` to a key of `PAGE_SCENES`.
+    const StudyPage = PAGE_SCENES[scene as keyof typeof PAGE_SCENES]
+    return <StudyPage />
   }
-}
-
-/** URL-only page studies: two benches and the 2026-09-01 spikes under review. */
-function studySceneFor(scene: SceneId) {
-  switch (scene) {
-    // Private dial-in bench for the official mark: URL-only, never in the nav.
-    case 'wordmark':
-      return <WordmarkApp />
-    case 'style':
-      return <StyleApp />
-    case 'why':
-      return <WhyApp />
-    case 'polymer-prototype':
-      return <PolymerPrototypeApp />
-    case 'frontier-prototype':
-      return <FrontierPrototypeApp />
-    case 'beyond-prototype':
-      return <BeyondPrototypeApp />
-    case 'candidates':
-      return <CandidatesApp />
-    case 'gravity':
-      return <GravityApp />
-    case 'lamp':
-      return <LampApp />
-    case 'rain':
-      return <RainApp />
-    case 'distortion-wave':
-      return <DistortionWaveApp />
-    default:
-      return null
-  }
+  return null
 }
 
 /** Everything inside the shared 3D room: the mounted scene, and the
@@ -255,6 +233,7 @@ const SITE_TITLES = {
   'polymer-prototype': 'Polymer prototype · Munari',
   'frontier-prototype': 'Frontier prototypes · Munari',
   'beyond-prototype': 'Beyond flat UI · Munari',
+  'signature-prototype': 'Signature prototypes · Munari',
 } as const
 const SITE_LAZY_PAGES = {
   style: StyleApp,
@@ -262,8 +241,9 @@ const SITE_LAZY_PAGES = {
   'polymer-prototype': PolymerPrototypeApp,
   'frontier-prototype': FrontierPrototypeApp,
   'beyond-prototype': BeyondPrototypeApp,
+  'signature-prototype': SignaturePrototypeApp,
 } as const
-const OMITS_NOTICE = new Set<SceneId>(['home', 'why', 'polymer-prototype', 'frontier-prototype', 'beyond-prototype', 'marble-hand', 'plume', 'postcard'])
+const OMITS_NOTICE = new Set<SceneId>(['home', 'why', 'polymer-prototype', 'frontier-prototype', 'beyond-prototype', 'signature-prototype', 'marble-hand', 'plume', 'postcard'])
 
 function isSitePage(scene: SceneId): boolean {
   return scene in SITE_TITLES

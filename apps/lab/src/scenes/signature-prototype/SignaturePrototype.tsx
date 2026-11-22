@@ -1,0 +1,170 @@
+// Signature prototypes (`?scene=signature-prototype&variant=sundial|concertina|keywell`) —
+// Series III showcase combining 2-second cold visual impossibility, recognizable
+// software/hardware utility, live retained DOM controls, and 0 fps demand rendering:
+// 01 Sundial: Dichroic glass schedule casting live letter shadows & caustics onto native prose
+// 02 Concertina: 3D pleated release pipeline pulling bookend stages side-by-side
+// 03 Keywell: Sculpted polycarbonate macro deck with neighbor-to-neighbor bevel light bounce
+
+import { useCallback, useEffect, useState } from 'react'
+import { CaptureEngineStatus } from '../../components/CaptureEngineStatus'
+import { Bar, Status } from '../../components/system'
+import { sceneUrl } from '../../captureMode'
+import './signaturePrototype.css'
+import {
+  frontierTelemetry,
+  resetFrontierFrameCounters,
+  subscribeFrontierHud,
+} from '../frontier-prototype/frontierStage'
+import { SignatureConcertina } from './SignatureConcertina'
+import { SignatureKeywell } from './SignatureKeywell'
+import { SignatureSundial } from './SignatureSundial'
+
+export type SignatureVariantId = 'sundial' | 'concertina' | 'keywell'
+
+interface SignatureVariantEntry {
+  readonly id: SignatureVariantId
+  readonly num: string
+  readonly shortLabel: string
+  readonly title: string
+  readonly instruction: string
+}
+
+const VARIANTS: readonly SignatureVariantEntry[] = [
+  {
+    id: 'sundial',
+    num: '01',
+    shortLabel: 'Sundial',
+    title: 'Dichroic caustic sundial',
+    instruction: 'Cast live letter shadows & glass caustics.',
+  },
+  {
+    id: 'concertina',
+    num: '02',
+    shortLabel: 'Concertina',
+    title: '3D pleated comparison board',
+    instruction: 'Fold middle stages into 3D pleats to diff.',
+  },
+  {
+    id: 'keywell',
+    num: '03',
+    shortLabel: 'Keywell',
+    title: 'Backlit polycarbonate keywell',
+    instruction: 'Latch LEDs to bounce light on dark bevels.',
+  },
+]
+
+function StaticMunariMark() {
+  return (
+    <svg className="sig-logo-svg" aria-hidden="true" viewBox="80 58 855 154">
+      <path fill="#66cda8" d="M143.6,116.2 L136.4,118.6 L129.9,124.3 L123,140.3 L122.2,138.7 L122.2,118.9 L121.2,117.6 L83.5,117.6 L94.8,118.9 L94.9,203.2 L83.5,203.7 L83.5,204.6 L130.2,204.6 L122.2,203.2 L122.2,162.9 L125.3,136.9 L132.8,124 L140,121.3 L145.7,124.3 L148.4,136.9 L148.5,203.2 L140.9,203.7 L140.9,204.6 L184,204.6 L175.6,203.2 L175.6,162.9 L179.1,136 L184.9,125.6 L193.8,121.3 L200.5,127 L202.2,144.9 L202.1,203.2 L193.8,203.7 L193.8,204.6 L240.5,204.6 L229.3,203.2 L229,139.6 L224.7,125.2 L216.3,117.9 L198.3,115.9 L185.1,122.5 L178.2,134.2 L175.9,143.6 L173.5,129.7 L166.9,120.5 L156.2,116 Z" />
+      <path fill="#f5a53f" d="M303.4,118 L288.2,121.4 L280.8,127 L286.5,136.9 L274.4,178.1 L274.5,188.9 L282.1,199.7 L300.8,205.3 L314.2,202.7 L328.6,192.9 L333.9,200.8 L351.9,206.3 L365.3,203.5 L376.5,194.3 L378.3,184.4 L376.1,182.3 L370.3,185.3 L383.5,136.9 L383.4,126.1 L374.3,118.5 L352.8,118.7 L339.3,123 L335.3,129.7 L340.6,139.6 L330.8,171.9 L325,179.4 L318.3,178.1 L328.9,137.8 L328.9,126.1 L320.5,118.7 Z" />
+      <path fill="#b47deb" d="M456.4,117.8 L453.7,119.8 L449.3,136 L432.7,175.4 L431.8,185.3 L442.9,197.1 L448.3,197.1 L459.9,184.2 L489.5,161.6 L498.5,158 L501.5,162.9 L500.5,185.3 L503.5,194.3 L514.7,199.3 L521.8,195.4 L525,189.8 L519.6,174.5 L520.5,145.8 L520.3,138.7 L511.1,132 L503,131.1 L489.5,139.3 L461.7,160.5 L471.9,139.6 L473.6,128.8 L468.9,120.4 L461.7,117.7 Z" />
+      <path fill="#52c7f2" d="M602.1,117.6 L601.2,134.3 L585,134.7 L583.9,136 L583.9,204.6 L619.1,204.4 L619.5,171 L635.8,171 L635.8,204.5 L670.2,204.6 L670.9,135.1 L654.1,134.6 L653.7,118 Z M619.5,136.9 L635.8,136.9 L635.8,151.2 L619.5,151.2 Z" />
+      <path fill="#66c94e" d="M783.4,115.9 L771.7,122.3 L766.3,130.3 L763.6,117.8 L736.3,117.6 L736.3,204.6 L769,204.6 L769.5,165.6 L772.1,153.9 L780.7,146.6 L798.6,145.4 L799.1,118 L795,115.9 Z" />
+      <path fill="#f2695c" d="M878.8,117.8 L890.9,118.9 L890.9,203.2 L879.7,203.7 L879.7,204.6 L929.1,204.6 L917.9,203.2 L917.8,118 Z M904,61.3 A16.2,16.2 0 1,0 904.1,93.7 A16.2,16.2 0 1,0 904,61.3 Z" />
+    </svg>
+  )
+}
+
+function readSignatureVariant(): SignatureVariantId {
+  const raw = new URLSearchParams(window.location.search).get('variant')
+  if (raw === 'concertina' || raw === 'B') return 'concertina'
+  if (raw === 'keywell' || raw === 'C') return 'keywell'
+  return 'sundial'
+}
+
+function SignatureTelemetryReadout() {
+  const [, setTick] = useState(0)
+  useEffect(() => subscribeFrontierHud(() => setTick((n) => n + 1)), [])
+  const active = frontierTelemetry.rendersLastSecond > 0
+  return (
+    <span className="sig-bar-telemetry">
+      <CaptureEngineStatus />
+      <Status status={active ? 'fallback' : 'live'}>
+        {active ? `${frontierTelemetry.rendersLastSecond} f/s` : '0 fps'}
+      </Status>
+    </span>
+  )
+}
+
+export function SignaturePrototypeApp({ onReady }: { readonly onReady?: () => void }) {
+  const [variant, setVariant] = useState<SignatureVariantId>(readSignatureVariant)
+
+  useEffect(() => {
+    let alive = true
+    const ready = document.fonts?.ready ?? Promise.resolve()
+    void ready.then(() => {
+      if (alive) requestAnimationFrame(() => onReady?.())
+    })
+    return () => {
+      alive = false
+    }
+  }, [onReady])
+
+  useEffect(() => {
+    const onPop = () => {
+      resetFrontierFrameCounters()
+      setVariant(readSignatureVariant())
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  const selectVariant = useCallback((next: SignatureVariantId) => {
+    resetFrontierFrameCounters()
+    setVariant(next)
+    const params = new URLSearchParams(window.location.search)
+    params.set('scene', 'signature-prototype')
+    params.set('variant', next)
+    window.history.replaceState(null, '', `?${params.toString()}`)
+  }, [])
+
+  const meta = VARIANTS.find((v) => v.id === variant) ?? VARIANTS[0]!
+
+  return (
+    <div className="sig-page">
+      <Bar
+        lead={
+          <a href={sceneUrl('home')} className="sig-home-link" aria-label="Munari home">
+            <StaticMunariMark />
+          </a>
+        }
+        title={meta.title}
+        titleTag="h1"
+        instruction={meta.instruction}
+        linksLabel="Signature prototypes"
+        links={
+          <>
+            <span className="sig-nav-pills" role="group" aria-label="Select prototype">
+              <a
+                href={sceneUrl('beyond-prototype')}
+                className="sig-nav-pill sig-series-link"
+                title="Series II: Beyond flat UI prototypes"
+              >
+                ← Series II
+              </a>
+              {VARIANTS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="sig-nav-pill"
+                  aria-current={variant === item.id ? 'page' : undefined}
+                  onClick={() => selectVariant(item.id)}
+                >
+                  <span className="m-readout">{item.num}</span> {item.shortLabel}
+                </button>
+              ))}
+            </span>
+            <SignatureTelemetryReadout />
+          </>
+        }
+      />
+
+      <main className="sig-main">
+        {variant === 'sundial' && <SignatureSundial key="sundial" />}
+        {variant === 'concertina' && <SignatureConcertina key="concertina" />}
+        {variant === 'keywell' && <SignatureKeywell key="keywell" />}
+      </main>
+    </div>
+  )
+}
