@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `@zumer/snapdom` is now `^3.8.2` (was `^3.3.3`), both as the optional peer
+  dependency and in the lockfile. The `snapdomDefault` entry grows from 96.2
+  to 124.2 kB gzip, all of it snapDOM's own bundle (89.1 to 118.2 kB). Clipped
+  input-region captures read the wrapper's `zoom: initial` that 3.8.2 writes
+  on pages that do not lay out on the device grid.
 - The package now ships one module per source module, so an app that imports
   only some exports bundles only the modules they reach. An app importing
   only `encodedOutput` shrinks from 224.7 to 129.8 kB gzip. The minimal
