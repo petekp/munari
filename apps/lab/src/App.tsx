@@ -40,6 +40,7 @@ const DistortionWaveApp = lazy(() => import('./scenes/distortion-wave/Distortion
 const RainApp = lazy(() => import('./scenes/rain/Rain').then(m => ({ default: m.RainApp })))
 const StyleApp = lazy(() => import('./scenes/style/Style').then(m => ({ default: m.StyleApp })))
 const WhyApp = lazy(() => import('./scenes/why/Why').then(m => ({ default: m.WhyApp })))
+const PolymerPrototypeApp = lazy(() => import('./scenes/polymer-prototype/PolymerPrototype').then(m => ({ default: m.PolymerPrototypeApp })))
 const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
 
 // Each advertised demo's page, keyed by its catalog id. The `satisfies`
@@ -82,6 +83,7 @@ const LAB_SCENES = [
   'wordmark',
   'style',
   'why',
+  'polymer-prototype',
 ] as const
 
 type SceneId = 'home' | DemoId | (typeof LAB_SCENES)[number]
@@ -172,6 +174,8 @@ function studySceneFor(scene: SceneId) {
       return <StyleApp />
     case 'why':
       return <WhyApp />
+    case 'polymer-prototype':
+      return <PolymerPrototypeApp />
     case 'candidates':
       return <CandidatesApp />
     case 'gravity':
@@ -237,24 +241,26 @@ function SceneHud({ scene }: { scene: SceneId }) {
 }
 
 function isSitePage(scene: SceneId): boolean {
-  return scene === 'home' || scene === 'style' || scene === 'why'
+  return scene === 'home' || scene === 'style' || scene === 'why' || scene === 'polymer-prototype'
 }
 
 function sceneDocumentTitle(scene: SceneId): string {
   if (scene === 'home') return 'Munari · Live HTML in 3D'
   if (scene === 'style') return 'Style guide · Munari'
   if (scene === 'why') return 'Why Munari · Munari'
+  if (scene === 'polymer-prototype') return 'Polymer prototype · Munari'
   return `${demoFor(scene)?.title ?? scene} · Munari`
 }
 
 function omitsTrialNotice(scene: SceneId): boolean {
-  return scene === 'home' || scene === 'why' || scene === 'marble-hand' || scene === 'plume' || scene === 'postcard'
+  return scene === 'home' || scene === 'why' || scene === 'polymer-prototype' || scene === 'marble-hand' || scene === 'plume' || scene === 'postcard'
 }
 
 function renderSitePage(scene: SceneId) {
   if (scene === 'home') return <HomeApp onReady={revealSite} />
   if (scene === 'style') return <Suspense fallback={null}><StyleApp onReady={revealSite} /></Suspense>
   if (scene === 'why') return <Suspense fallback={null}><WhyApp onReady={revealSite} /></Suspense>
+  if (scene === 'polymer-prototype') return <Suspense fallback={null}><PolymerPrototypeApp onReady={revealSite} /></Suspense>
   return null
 }
 
