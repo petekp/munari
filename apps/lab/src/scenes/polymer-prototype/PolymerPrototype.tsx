@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { SurfaceCanvas, useSurfaceSupport } from '@petepetrash/munari'
 import { captureEngine } from '@petepetrash/munari/advanced'
+import { CaptureEngineStatus } from '../../components/CaptureEngineStatus'
 import { Button, Status, Tag } from '../../components/system'
 import { sceneUrl } from '../../captureMode'
 import { PolymerCanvasTelemetry } from './PolymerPrototypeSurface'
@@ -12,6 +13,7 @@ import {
   notifyPolymerTuning,
   polymerTelemetry,
   polymerTuning,
+  subscribePolymerHud,
   subscribePolymerTuning,
   type PolymerVariantId,
 } from './polymerPrototypeTuning'
@@ -131,9 +133,14 @@ function TelemetryHud({
       }, 650)
     }
     const unsub = subscribePolymerTuning(wake)
-    const bootTimer = window.setTimeout(() => setTick((n) => n + 1), 500)
+    const unsubHud = subscribePolymerHud(() => setTick((n) => n + 1))
+    const bootTimer = window.setTimeout(() => {
+      polymerTelemetry.rendersLastSecond = 0
+      setTick((n) => n + 1)
+    }, 650)
     return () => {
       unsub()
+      unsubHud()
       window.clearTimeout(bootTimer)
       if (settleTimer.current !== null) window.clearTimeout(settleTimer.current)
     }
@@ -161,10 +168,10 @@ function TelemetryHud({
       </div>
 
       <div className="poly-hud-metrics">
+        <CaptureEngineStatus />
         <Status status={active ? 'fallback' : 'live'}>
           {active ? 'Rendering interaction' : '0 fps · GPU idle'}
         </Status>
-        <Tag>Engine: {captureEngine().name}</Tag>
         <Tag>Surfaces: {polymerTelemetry.activeSurfaces}</Tag>
         <Tag>DPR: {polymerTelemetry.dpr.toFixed(2)}</Tag>
       </div>

@@ -174,3 +174,16 @@ export const polymerTelemetry: PolymerTelemetry = {
   activeSurfaces: 0,
   dpr: 1,
 }
+
+const hudListeners = new Set<Listener>()
+
+export function subscribePolymerHud(fn: Listener): () => void {
+  hudListeners.add(fn)
+  return () => {
+    hudListeners.delete(fn)
+  }
+}
+
+export function notifyPolymerHud(): void {
+  for (const fn of hudListeners) fn()
+}

@@ -32,6 +32,7 @@ import {
   type PolymerShadowUniforms,
 } from './polymerPrototypeNodes'
 import {
+  notifyPolymerHud,
   polymerTelemetry,
   polymerTuning,
   subscribePolymerTuning,
@@ -194,8 +195,10 @@ function PolymerMeshController({
   useEffect(() => {
     if (status.presentation === 'scene') {
       polymerTelemetry.activeSurfaces += 1
+      notifyPolymerHud()
       return () => {
         polymerTelemetry.activeSurfaces = Math.max(0, polymerTelemetry.activeSurfaces - 1)
+        notifyPolymerHud()
       }
     }
     return undefined

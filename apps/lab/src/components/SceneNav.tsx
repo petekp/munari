@@ -2,6 +2,7 @@
 // what the demo is and what to try, its place in the catalog, and the
 // neighbouring demos. The demo frame below keeps the rest of the window.
 
+import { CaptureEngineStatus } from './CaptureEngineStatus'
 import { MunariLogo } from './MunariLogo'
 import { DEMOS, demoFor, sourceFor } from './sceneCatalog'
 import { Bar } from './system'
@@ -31,6 +32,7 @@ export function SceneNav({ active, onSelect }: SceneNavProps) {
       titleTag="h1"
       instruction={demo?.instruction}
       links={<>
+        <CaptureEngineStatus />
         {index >= 0 && <span className="m-readout m-quiet">{plateNumber(index)} / {plateNumber(DEMOS.length - 1)}</span>}
         {previous && <a className="m-link m-link--nav" href={sceneUrl(previous.id)} onClick={go(previous.id)}>Previous<span className="sr-only">: {previous.title}</span></a>}
         {next && <a className="m-link m-link--nav" href={sceneUrl(next.id)} onClick={go(next.id)}>Next<span className="sr-only">: {next.title}</span></a>}

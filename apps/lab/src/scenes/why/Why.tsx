@@ -9,10 +9,9 @@
 // single-active demo frame.
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
-import { useSurfaceSupport } from '@petepetrash/munari'
-import { captureEngine } from '@petepetrash/munari/advanced'
+import { CaptureEngineStatus } from '../../components/CaptureEngineStatus'
 import { MunariLogo } from '../../components/MunariLogo'
-import { CopyBlock, Status, Tag } from '../../components/system'
+import { CopyBlock, Tag } from '../../components/system'
 import { GUIDE_URL, SOURCE_ROOT } from '../../components/sceneCatalog'
 import { sceneUrl } from '../../captureMode'
 import {
@@ -34,8 +33,6 @@ export interface WhyProps {
 type SpecimenTab = 'diagram' | 'code'
 
 function BrowserEnvironmentBar() {
-  const supported = useSurfaceSupport()
-  const engineName = supported ? captureEngine().name : null
   const hasNativeCanvas =
     'CanvasRenderingContext2D' in globalThis &&
     'drawElementImage' in CanvasRenderingContext2D.prototype
@@ -44,9 +41,7 @@ function BrowserEnvironmentBar() {
 
   return (
     <div className="why-live-env m-ui" aria-label="Detected browser capabilities">
-      <Status status={hasNativeCanvas ? 'live' : 'fallback'}>
-        This browser: {engineName ?? 'snapDOM fallback'}
-      </Status>
+      <CaptureEngineStatus />
       <Tag>HTML-in-canvas: {hasNativeCanvas ? 'enabled' : 'absent'}</Tag>
       <Tag>Element.moveBefore: {hasMoveBefore ? 'supported' : 'insertBefore restore'}</Tag>
       <Tag>Renderer: {hasWebGpu ? 'WebGPU' : 'WebGL 2'}</Tag>

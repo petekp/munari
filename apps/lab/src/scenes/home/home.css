@@ -52,6 +52,7 @@
 .home-stage-frame[data-loaded] { opacity: 1; }
 .home-stage-caption { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; padding-block: 14px; border-bottom: 1px solid var(--ink); font-size: 15px; }
 .home-stage-caption p { max-width: 70ch; margin: 0; }
+.home-stage-meta { display: inline-flex; flex: none; flex-wrap: wrap; align-items: center; gap: 18px; }
 .home-stage-caption a { flex: none; }
 @media (prefers-reduced-motion: reduce) { .home-stage-frame { transition: none; } }
 

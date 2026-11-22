@@ -152,7 +152,7 @@ export function WhyLiveStage({
         <div className="why-related m-small m-quiet">
           <span>More scenes for this capability:</span>
           {relatedScenes.map((scene) => (
-            <a key={scene.id} className="m-link" href={sceneUrl(scene.id, { capture: 'auto' })}>
+            <a key={scene.id} className="m-link" href={sceneUrl(scene.id)}>
               {scene.label}
             </a>
           ))}

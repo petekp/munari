@@ -3,10 +3,12 @@
 // width and is scaled down to the stage: a desktop width on wide screens, a
 // narrower one on phones so the text stays legible. The stage is never taller
 // than the window, so the whole demo fits on screen; a capped frame lays the
-// demo out at the shorter height instead of cropping it. `capture=auto` keeps
-// HTML-in-canvas where the browser has it and captures through snapDOM
-// everywhere else.
+// demo out at the shorter height instead of cropping it. The default `auto`
+// capture policy keeps HTML-in-canvas where the browser has it and captures
+// through snapDOM everywhere else; explicit `?capture=` overrides flow through
+// to the stage frame so the caption status matches it.
 import { useLayoutEffect, useRef, useState, type Ref } from 'react'
+import { CaptureEngineStatus } from '../../components/CaptureEngineStatus'
 import type { Demo } from '../../components/sceneCatalog'
 import { sceneUrl } from '../../captureMode'
 
@@ -51,7 +53,7 @@ export function HomeStage({ demo, ref }: { demo: Demo; ref?: Ref<HTMLElement> })
             key={demo.id}
             className="home-stage-frame"
             title={`${demo.title} demo`}
-            src={sceneUrl(demo.id, { framed: true, bare: true, capture: 'auto' })}
+            src={sceneUrl(demo.id, { framed: true, bare: true })}
             data-loaded={loaded === demo.id || undefined}
             onLoad={() => setLoaded(demo.id)}
             style={{ width: frameWidth, height: frameHeight, transform: `scale(${scale})` }}
@@ -60,7 +62,10 @@ export function HomeStage({ demo, ref }: { demo: Demo; ref?: Ref<HTMLElement> })
       </div>
       <figcaption className="home-stage-caption">
         <p><b>{demo.title}.</b> {demo.instruction}</p>
-        <a href={sceneUrl(demo.id, { capture: 'auto' })}>Open full page</a>
+        <span className="home-stage-meta">
+          <CaptureEngineStatus />
+          <a href={sceneUrl(demo.id)}>Open full page</a>
+        </span>
       </figcaption>
     </figure>
   )
