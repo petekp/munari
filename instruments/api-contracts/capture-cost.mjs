@@ -13,16 +13,16 @@ const output=process.env.API_PROOF_OUTPUT??path.join(tmpdir(),'munari-api/captur
 await mkdir(output,{recursive:true})
 const instrumentation={name:'capture-cost-observer',enforce:'pre',transform(source,id){
  if(id.endsWith('/capture.tsx'))return replaceSource(source,'export function useCaptureFrame(handle:CaptureHandle) {','export function useCaptureFrame(handle:CaptureHandle) { window.__captureConsumerRenders=(window.__captureConsumerRenders??0)+1;')
- const name=id.endsWith('/elementCapture.tsx')?'copyElementForCapture':id.endsWith('/Surface.tsx')?'snapshot':null
+ const name=id.endsWith('/elementCapture.tsx')?'copyElementForCapture':id.endsWith('/surfacePageSnapshot.ts')?'snapshotPageContent':null
  if(!name)return null
- const exported=name==='copyElementForCapture',declaration=`${exported?'export ':''}function ${name}(`
+ const declaration=`export function ${name}(`,kind=name==='snapshotPageContent'?'snapshot':name
  const renamed=`${name}Measured`
  return replaceSource(source,declaration,`function ${renamed}(`)+`
- ${exported?'export ':''}function ${name}(...args: Parameters<typeof ${renamed}>) {
+ export function ${name}(...args: Parameters<typeof ${renamed}>) {
    const started=performance.now();
    try{return ${renamed}(...args)} finally {
      const record=(window.__captureCost ??= []);
-     record.push({kind:${JSON.stringify(name)},ms:performance.now()-started,nodes:args[0].querySelectorAll('*').length+1});
+     record.push({kind:${JSON.stringify(kind)},ms:performance.now()-started,nodes:args[0].querySelectorAll('*').length+1});
    }
  }
  `

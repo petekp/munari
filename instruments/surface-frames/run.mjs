@@ -70,11 +70,12 @@ const probe = {
       return once(code, "'linear-gradient(180deg, rgba(6,8,12,0.62) 0%, rgba(6,8,12,0.44) 55%, rgba(6,8,12,0.30) 100%)'", "globalThis.gpuProbe ? '#ff00ff' : 'linear-gradient(180deg, rgba(6,8,12,0.62) 0%, rgba(6,8,12,0.44) 55%, rgba(6,8,12,0.30) 100%)'")
     }
     if (id.endsWith('/paint/rasterizedSource.ts')) {
-      code = once(code, '      const image = await rasterize(element, scaleX, scaleY)', `
-      const check = globalThis.frameProbe?.gallery
-      const card = element.querySelector('.gallery-card')
-      const item = card?.getAttribute('data-item')
-      const edit = card?.getAttribute('data-gallery-edit')
+      code = once(code, '    let drawn = false\n    try {\n      const image = await rasterize(element, scaleX, scaleY)', `    let drawn = false
+    const check = globalThis.frameProbe?.gallery
+    const card = element.querySelector('.gallery-card')
+    const item = card?.getAttribute('data-item')
+    const edit = card?.getAttribute('data-gallery-edit')
+    try {
       if (check && edit && edit !== '0') {
         check.pendingEdit = edit
         await check.fresh
@@ -84,11 +85,12 @@ const probe = {
         check.oldPending = true
         await check.old
       }`)
-      return once(code, '      body.completePaint(box, changesDuringPaint, read)', `
-      body.completePaint(box, changesDuringPaint, read)
-      if (check) {
-        check.captures.push({ item, edit, read })
-        if (item === 'genie' && edit === '0' && check.oldPending) check.oldPublished = true
+      return once(code, '      if (drawn && !disposed) body.completePaint(box, changesDuringPaint, read)', `      if (drawn && !disposed) {
+        body.completePaint(box, changesDuringPaint, read)
+        if (check) {
+          check.captures.push({ item, edit, read })
+          if (item === 'genie' && edit === '0' && check.oldPending) check.oldPublished = true
+        }
       }`)
     }
     if (id.endsWith('/lib/surfaceFrames.ts')) {

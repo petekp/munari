@@ -1,4 +1,4 @@
-// Input region proof — cached source pixels must match a fresh full Controls capture.
+// Input region proof — cached pixels match a fresh Controls capture.
 import assert from 'node:assert/strict'
 import {mkdir,writeFile} from 'node:fs/promises'
 import path from 'node:path'
@@ -7,13 +7,13 @@ import puppeteer from 'puppeteer-core'
 import {replaceSource} from '../light/replaceSource.mjs'
 const root=path.resolve(import.meta.dirname,'../..')
 const output=path.resolve(process.env.REGION_OUTPUT??'/tmp/munari-input-regions')
-assert.ok(!process.env.REGION_STORAGE||['cpu','gpu'].includes(process.env.REGION_STORAGE),'REGION_STORAGE must be cpu or gpu')
+assert.ok(!process.env.REGION_STORAGE||['cpu','gpu'].includes(process.env.REGION_STORAGE),'REGION_STORAGE: cpu|gpu')
 await mkdir(output,{recursive:true})
 const plugin={name:'region-quality',enforce:'pre',transform(source,id){
  if(id.endsWith('/paint/domTextureSource.ts')) {
   if(process.env.REGION_GPU_CARRY==='1')source=replaceSource(source,'const kctx = captureContext(scratch)',"const kctx = scratch.getContext('2d')")
   if(process.env.REGION_STORAGE)source=replaceSource(source,
-   "captureMemory = adapter?.info.isFallbackAdapter ? 'cpu' : 'gpu'",
+   `captureMemory = adapter?.info${source.includes('info?.')?'?':''}.isFallbackAdapter ? 'cpu' : 'gpu'`,
    `captureMemory = ${JSON.stringify(process.env.REGION_STORAGE)}`)
   return source
  }
@@ -643,7 +643,7 @@ try{
    document.getElementById('root').append(source.host);source.setHostPainted(true);window.regionProofBackgroundExtra={source,form,preparations}
   },'/@fs'+root)
   await page.waitForFunction(()=>Boolean(window.regionProofBackgroundExtra.source.currentPaint()))
-  assert.ok(await page.evaluate(()=>(window.regionProofBackgroundPreparations??0)>window.regionProofBackgroundExtra.preparations),'The disposal fixture must prepare a real background before its held capture')
+  assert.ok(await page.evaluate(()=>(window.regionProofBackgroundPreparations??0)>window.regionProofBackgroundExtra.preparations),'Disposal fixture must prepare background first')
   await page.evaluate(()=>{const {source,form}=window.regionProofBackgroundExtra;window.regionProofBackgroundHold=true;form.style.background='linear-gradient(135deg,rgb(240,215,235),rgb(225,175,205))';source.repaint({immediate:true})})
   await page.waitForFunction(()=>Boolean(window.regionProofBackgroundRelease))
   const pendingBackground=await page.evaluate(()=>{const {canvas,signal}=window.regionProofBackgroundPending;return {width:canvas.width,height:canvas.height,aborted:signal.aborted}});assert.ok(pendingBackground.width>0&&pendingBackground.height>0);assert.equal(pendingBackground.aborted,false)

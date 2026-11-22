@@ -1,5 +1,5 @@
-// Performance observer — served-module measurements stay outside the package.
-// Source revisions share the workload and dependencies; hashes identify library and lab changes.
+// Performance observer — served-module hooks outside the package.
+// Revisions share workload and dependencies; hashes identify source changes.
 import { execFileSync } from 'node:child_process'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
@@ -17,7 +17,7 @@ export function performanceObserver(root, commit, loadedSources, routeTiming = t
   const recordSource = (file, source) => {
     if (!measuredFile(file)) return
     const hash = createHash('sha256').update(source).digest('hex')
-    if (loadedSources[file]) assert.equal(loadedSources[file], hash, `Source changed during benchmark: ${file}`)
+    if (loadedSources[file]) assert.equal(loadedSources[file], hash, `Source changed: ${file}`)
     loadedSources[file] = hash
   }
   return {
@@ -38,7 +38,7 @@ export function performanceObserver(root, commit, loadedSources, routeTiming = t
       recordSource(file, source)
       if(captureDiagnostics)source=observeCaptureDiagnostics(source,file)
       if(captureStorage&&file==='packages/core/src/paint/domTextureSource.ts')return replaceSource(source,
-        "captureMemory = adapter?.info.isFallbackAdapter ? 'cpu' : 'gpu'",
+        `captureMemory = adapter?.info${source.includes('info?.')?'?':''}.isFallbackAdapter ? 'cpu' : 'gpu'`,
         `captureMemory = ${JSON.stringify(captureStorage)}`)
       if(file==='packages/react/src/snapdom.ts') {
         if(captureStages)source=observeSnapdom(source)

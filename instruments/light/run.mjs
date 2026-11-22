@@ -207,7 +207,7 @@ try {
   results.fallbacks={}
   // No GPU renderer: neither WebGPU nor the WebGL 2 fallback can start.
   // --enable-unsafe-webgpu keeps an adapter even with WebGPUService disabled.
-  for(const [name,flags,gpu] of [['native',[],WEBGPU_CHROME_ARGS],['no-gpu',['--disable-webgl','--disable-features=WebGPUService'],[]]]) {
+  for(const [name,flags,gpu] of [['native',['--disable-features=CanvasDrawElement'],WEBGPU_CHROME_ARGS],['no-gpu',['--disable-webgl','--disable-features=WebGPUService,CanvasDrawElement'],[]]]) {
     browser=await launch(flags,gpu)
     const fallback=await browser.newPage(),faults=[]
     fallback.on('pageerror',error=>faults.push(String(error)))
