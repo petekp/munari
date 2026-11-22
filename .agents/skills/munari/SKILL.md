@@ -106,8 +106,9 @@ Pass `live` to `Surface` or `CaptureContent` when its DOM or CSS changes on its
 own: an animation, a clock, or props/data that arrive after mount. Without `live`,
 both engines follow only user input, layout, fonts, images, transition ends, and
 `useSurfaceRefresh()`, and freeze CSS/Web Animations while in the scene. With
-`live`, HTML-in-canvas accepts every compositor paint and snapDOM paces
-re-captures to ~4/s.
+`live`, HTML-in-canvas accepts every compositor paint. snapDOM ignores a
+Surface's `live` and holds its content still in the scene; `CaptureContent`
+with `live` re-captures there at most ~4 times a second.
 
 Call `useSurfaceRefresh()` after canvas drawing. It returns a capture-request function for the enclosing
 Surface; pass a handle to select another Surface. Keep `live` enabled for ongoing

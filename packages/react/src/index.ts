@@ -16,8 +16,10 @@
 // than a relative path quietly reaching around it.
 
 // ── HTML, scene, and captured elements ───────────────────────────────────
-export { Surface, SceneSurface, useSurfaceStatus, useSurfaceRefresh, useSurfaceMotion, useSurfaceDriver, useFreezeSurface } from './primitives/Surface'
-export type { SurfaceProps, SurfaceRootProps, SurfaceHTMLProps, SceneSurfaceHTMLProps, SceneSurfaceRootProps, SceneSurfaceProps, SurfaceSceneProps, SurfaceControls, SurfaceDriverFrame, SurfaceDriverStep, SurfaceMotionFrame } from './primitives/Surface'
+export { Surface, SceneSurface } from './primitives/Surface'
+export { useSurfaceStatus, useSurfaceRefresh, useSurfaceMotion, useSurfaceDriver, useFreezeSurface } from './primitives/surface/surfaceStoreHooks'
+export type { SurfaceProps, SurfaceRootProps, SurfaceHTMLProps, SceneSurfaceHTMLProps, SceneSurfaceRootProps, SceneSurfaceProps, SurfaceSceneProps, SurfaceControls } from './primitives/Surface'
+export type { SurfaceDriverFrame, SurfaceDriverStep, SurfaceMotionFrame } from './primitives/surface/surfaceStoreHooks'
 export { useElementCapture, CaptureContent } from './primitives/elementCapture'
 export type { ElementCapture, ElementCaptureOptions, CaptureContentProps } from './primitives/elementCapture'
 export { useCaptureHandle, useCaptureFrame, useCaptureStatus } from './primitives/capture'

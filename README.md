@@ -42,7 +42,7 @@ browser and what they can draw.
 |---|---|---|
 | Needs | HTML-in-canvas support; enabled by default in Chrome 157+ | any browser with a document |
 | Draws | the live element | a rasterized copy of the subtree |
-| What the texture follows | user input, layout/font/image changes, transition ends, and `useSurfaceRefresh()`; ongoing changes need `live` | same; `live` re-captures at most ~4 times/s |
+| What the texture follows | user input, layout/font/image changes, transition ends, and `useSurfaceRefresh()`; ongoing changes need `live` | same, but a Surface ignores `live`; a live `useElementCapture` re-captures at most ~4 times/s |
 | Caret and selection | real, painted by the browser | not painted |
 | Everything else on the page | pixel-exact | close: laid-out lengths snap to whole CSS pixels, and vertical geometry can sit up to two device pixels off |
 | Input to texture, Knobs panel at dpr 2 | 12 ms | 37 ms for a change that lands on a quiet Surface; up to 150 ms more on one that is already re-capturing |
@@ -112,9 +112,12 @@ layout resizes, font/image loads, transition ends, and `useSurfaceRefresh()`,
 while pausing declarative CSS/Web Animations in the scene. Changes nobody asked
 for — a clock, an animation loop, or new props/data arriving from outside the
 Surface after mount — require `live`. With `live`, HTML-in-canvas accepts every
-compositor paint and snapDOM re-captures at most about four times a second.
-`useElementCapture` takes the same `live` option because it also maintains a
-copy of the native element.
+compositor paint. snapDOM ignores a Surface's `live`, because each of its
+captures is a full raster, so that content holds still in the scene there. Call
+the `useSurfaceRefresh()` function when a change must reach the scene on
+snapDOM. `useElementCapture` takes the same `live` option because it also
+maintains a copy of the native element; on snapDOM a live capture re-captures at
+most about four times a second.
 
 ```tsx
 <Surface inScene={inScene} live><Clock /></Surface>
@@ -508,7 +511,7 @@ remain available when you choose a rendering budget; large textures still obey t
 | `isTransitioning` | The handoff is progressing or awaiting preparation |
 | `supported`, `reason` | Capability/content support and an unavailable reason |
 | `engine` | `'html-in-canvas'` or `'snapdom'`; `null` when no engine can run |
-| `useFreezeSurface()` | Non-live content is frozen for the scene; stop your own clocks |
+| `useFreezeSurface()` | Content is frozen for the scene (any part without `live`, and every part on snapDOM); stop your own clocks |
 | `useSurfaceProgress().get()` | Raw 0..1 motion, identical to driver input |
 | `useSurfaceProgress().eased()` | The explicitly eased version of that motion |
 
@@ -677,54 +680,6 @@ then open its URL in Chrome 157 or later.
   `readSurfaceFrameState`, and capture inspection. These are for custom renderers.
 - The tracked [Munari skill](https://github.com/petekp/munari/blob/v0.4.1/.agents/skills/munari/SKILL.md) teaches this API to agents.
 
-## Repo shape
-
-| path | what it is |
-| --- | --- |
-| `packages/core` | the renderer-agnostic core; no dependencies, bundled into the package |
-| `packages/react` | the `@petepetrash/munari` package: React/three components over core |
-| `registry/` | source you copy into your project (nothing published) |
-| `apps/lab` | the demo and development app |
-| `instruments/` | browser probes and CI gates |
-| `tests/conformance/` | the test suites that define core's behavior |
-
-Dependencies point one way: apps depend on `packages/react`, which
-depends on `packages/core`. `tests/boundary.test.ts` checks the actual
-imports.
-
-See [AGENTS.md](https://github.com/petekp/munari/blob/v0.4.1/AGENTS.md) for the working rules, [docs/decisions.md](https://github.com/petekp/munari/blob/v0.4.1/docs/decisions.md)
-for the numbered design decisions, [docs/platform.md](https://github.com/petekp/munari/blob/v0.4.1/docs/platform.md) for what
-the platform is measured to do, [docs/authoring.md](https://github.com/petekp/munari/blob/v0.4.1/docs/authoring.md) for how
-to write markup a Surface can draw, and [docs/focus.md](https://github.com/petekp/munari/blob/v0.4.1/docs/focus.md) for the
-focus and spatial-navigation contract.
-
 ## Development
 
-```sh
-npm ci
-npm run lab              # Vite + a compatible local Chrome
-npm run dev              # Vite only
-npm run typecheck
-npm test
-npm run lint
-npm run gate:idle-zero   # browser gate: idle Surfaces cost 0 paints/s
-```
-
-[package.json](https://github.com/petekp/munari/blob/v0.4.1/package.json) lists available gate commands;
-[the CI workflow](https://github.com/petekp/munari/blob/v0.4.1/.github/workflows/ci.yml) selects the gates run on each push.
-[The instrument guide](https://github.com/petekp/munari/blob/v0.4.1/instruments/README.md) gives each check's scope and
-limits. Run GPU gates in series. A capability skip is not a passing behavior
-check; use `STRICT_CAPABILITY=1` where HTML-in-canvas must be present.
-
-`npm run build` stages the package with core bundled in and peers left
-external. The staged package includes the canonical root README, license,
-changelog, `llms.txt`, and Munari skill. To use a checkout's API in another
-project, run the build and install the staged `packages/react/dist` directory
-in that project. To publish, inspect the staged package, then publish from its
-directory:
-
-```sh
-npm run build
-npm pack --dry-run packages/react/dist
-npm publish packages/react/dist
-```
+The repo layout and the check commands are in `docs/development.md`.

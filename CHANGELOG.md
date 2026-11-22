@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- On snapDOM, a Surface ignores `live`. Its content holds still while the
+  scene has it, as content without `live` does, and `useFreezeSurface()`
+  turns true. HTML-in-canvas still follows a live Surface every frame.
+  `useElementCapture` and `CaptureContent` keep `live` on both engines. Call
+  the `useSurfaceRefresh()` function when a change must reach the scene on
+  snapDOM. The new `CaptureEngine.honorsSurfaceLive` field says which engines
+  follow a live Surface, and a custom engine must set it.
 - A scrolled container inside captured content now keeps its scroll
   position. `useElementCapture` and the copy a Surface captures while its
   content is on the page both showed the container scrolled to the top.

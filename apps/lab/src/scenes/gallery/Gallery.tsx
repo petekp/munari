@@ -362,9 +362,9 @@ export function GalleryApp() {
         <p>
           Five items, one sheet. A drop of glass spreads out of the item you
           are leaving, and the item you are arriving at is what you see
-          inside it. Both are live layouts the whole way across — their
-          clocks agree, and the moment a crossing lands you can click the
-          link on the card.
+          inside it. On HTML-in-canvas both are live layouts the whole way
+          across, with clocks that agree. On either engine, the moment a
+          crossing lands you can click the link on the card.
         </p>
       </div>
 

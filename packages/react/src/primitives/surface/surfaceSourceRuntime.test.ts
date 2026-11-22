@@ -166,6 +166,7 @@ describe('uploads after one paint', () => {
     const engine: CaptureEngine = {
       name: 'fake-raster',
       native: false,
+      honorsSurfaceLive: false,
       available: () => true,
       createSource: (content, width, height, sourceOptions) =>
         createRasterizedSource(

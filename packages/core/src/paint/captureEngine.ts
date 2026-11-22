@@ -4,8 +4,8 @@
 // The law: exactly one engine is installed per document, chosen at the app
 // entry, and nothing above `createDomTextureSource` ever learns which one
 // ran. Holds, handoffs, provenance, LOD, materials, anchors and the pointer
-// relay read `host` and `native` — both engine properties — and nothing
-// else. An `if (engine === …)` above this seam is the thing this module
+// relay read `host`, `native` and `honorsSurfaceLive` — engine properties —
+// and nothing else. An `if (engine === …)` above this seam is the thing this module
 // exists to make unnecessary.
 //
 // Why a setter and not a registry: two engines is a list of two. A registry
@@ -35,7 +35,7 @@ import {
  *
  * An engine is a plain object, installed once. Everything a consumer of a
  * source needs to know about the difference between engines is on the
- * source itself (`host`, `setHostPainted`) or on these two fields.
+ * source itself (`host`, `setHostPainted`) or on these fields.
  */
 export interface CaptureEngine {
   /** Identifies the engine in status, diagnostics and documentation. */
@@ -50,6 +50,14 @@ export interface CaptureEngine {
    * correctly from the texture and no error anywhere.
    */
   readonly native: boolean
+  /**
+   * True when a Surface part's `live` takes effect on this engine. Following
+   * content costs HTML-in-canvas one compositor paint per change. Each snapDOM
+   * capture is a full raster, so on snapDOM a Surface holds a live part still in
+   * the scene like any other. `useElementCapture` keeps its own `live` on every
+   * engine (decisions.md #64).
+   */
+  readonly honorsSurfaceLive: boolean
   /** Can this engine make a source here? Never throws; false in Node. */
   available(): boolean
   /** Build a source. Called only after `available()` answered true. */

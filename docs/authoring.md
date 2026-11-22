@@ -19,8 +19,8 @@ the content root's own opacity and transform hold either way. What differs:
 
 | | HTML-in-canvas | snapDOM |
 |---|---|---|
-| Content that changes on its own — an animation loop, a ticker, a clock, video frames, async prop updates | requires `live` ([decisions #64](decisions.md)); with `live`, captured every compositor paint | requires `live`, and then re-captured at most about four times a second ([decisions #62](decisions.md)) |
-| Decorative motion inside the subtree | paused in the scene unless `live` ([decisions #66](decisions.md)) | **frozen** at the first capture, unless it is a transition ([platform #22](platform.md)) |
+| Content that changes on its own — an animation loop, a ticker, a clock, video frames, async prop updates | requires `live` ([decisions #64](decisions.md)); with `live`, captured every compositor paint | not followed, `live` or not ([decisions #64](decisions.md)); call `useSurfaceRefresh()` when a change must show |
+| Decorative motion inside the subtree | paused in the scene unless `live` ([decisions #66](decisions.md)) | **frozen**: paused in the scene, `live` or not, and captured at its first frame unless it is a transition ([platform #22](platform.md)) |
 | Caret and text selection | painted by the browser | not painted — the texture shows neither |
 | `pointerRoute="auto"` | native: the browser hit-tests the real element through the pose | relay: pointer state arrives as twins |
 | `mask-image` in the subtree ([below](#no-mask-image-anywhere-in-a-drawn-subtree)) | blacks out the capture | not measured — write as if the same rule applies |
@@ -51,18 +51,21 @@ outside the Surface, which the source cannot tell from an animation: new props,
 a store update, data that arrives after mount, a tweak panel or keyboard
 shortcut elsewhere on the page writing into the content. Declare `live` on the `Surface`,
 `Surface.HTML`, `SceneSurface` or `SceneSurface.HTML` whose content does that
-and the scene must show it moving ([decisions #64](decisions.md)); HTML-in-canvas
-then accepts every compositor paint, and snapDOM re-captures it at most about
-four times a second. Write once for both engines and add `live` where motion or
-external updates inside a Surface are the point.
+and the scene must show it moving ([decisions #64](decisions.md)). HTML-in-canvas
+then accepts every compositor paint. snapDOM ignores `live`, because each of its
+captures is a full raster. A live Surface there holds still in the scene like any
+other, and `useFreezeSurface()` turns true so your own clocks can stop with it.
+Write once for both engines: add `live` where motion inside a Surface is the
+point, and call `useSurfaceRefresh()` where an outside update must reach the
+scene on snapDOM too.
 
 The frozen-motion row is the one that will surprise you. An infinite keyframe
 animation inside a snapDOM Surface signals `animationstart` once and nothing
 after, so the capture holds one frame of it forever, `live` or not. A CSS
 *transition* signals at both ends and lands its end state, which is why a
 transition lands its end state on both engines. Anything else that has to keep
-moving needs `live`, or `repaint()` on your own schedule, and each capture
-costs a full raster.
+moving needs `live` on HTML-in-canvas. On snapDOM only `repaint()` on your own
+schedule moves it, and each capture costs a full raster.
 
 The pixel-match row is the one to weigh before choosing snapDOM for content
 that sits beside its own DOM, and it is the one row you can author around.
@@ -265,15 +268,16 @@ updates; a panel that animates a descendant every frame is not.
 On snapDOM the budget is enforced rather than advisory, in two steps. A
 Surface that is not `live` spends nothing on a subtree that changes on its
 own: the change is not followed, and only the user's input, a resize, fonts,
-images, a transition's ends and `repaint()` reach the rasterizer. A `live`
-Surface follows every change, and a rasterized source then leaves 150 ms of
+images, a transition's ends and `repaint()` reach the rasterizer. A Surface's
+`live` does not change that on snapDOM ([decisions #64](decisions.md)). A live
+`useElementCapture` follows every change, and a rasterized source then leaves 150 ms of
 quiet after each capture before it starts another
 ([decisions #60](decisions.md)), because a whole-panel raster is tens of
 milliseconds of main thread and a subtree mutating every frame would otherwise
 take all of it — measured 51.4 fps through a drag against 60.1 fps with the
 gap. The gap runs from the END of a capture, so a subtree quiet for longer than
 the gap captures at once and only continuous mutation is held back: DOM motion
-inside a live Surface steps about four times a second rather than the eleven
+inside a live capture steps about four times a second rather than the eleven
 the raster cost alone allowed. Only the capture a lift asks for skips
 it ([decisions #65](decisions.md)).
 
@@ -346,31 +350,5 @@ failed upload (platform.md #34).
 - `docs/platform.md` — the measurements these rules come from
 - `docs/focus.md` — focus units, traversal, and directional navigation
 - `docs/decisions.md` — why each rule is shaped the way it is
-
-
-## Retained HTML and capture sources
-
-`Surface.HTML` retains one live instance. Page-owned preparation leaves that
-instance on the page and captures a copy of it, so what you see during a lift is
-your own element. It borrows the instance only when a copy would lose something
-the eye can check — a caret inside the content, or a selection across it. Then it
-shows the source bitmap through the native input rig, and an inert clone reserves
-layout (decisions.md #42, #63). Keep content-root dimensions
-honest; changing page parents uses a page target rather than remounting the content.
-Position-only slot changes are observed separately from capture and handoff work.
-
-`SceneSurface` has no page presentation. `useElementCapture` leaves its original
-element native and copies visual state, rebuilding the copy by the same rule a
-snapDOM Surface captures by: the user's input on the element and its answer,
-layout, stylesheets, fonts and transition ends, `refresh()`, and every mutation
-only when `live`. `CaptureContent` owns separately authored capture content. Captures reject unsupported media/custom elements unless excluded,
-and attached/removed sources clear stale frames. Source textures are borrowed by
-consumers and disposed only by their owner.
-
-Numeric authored dimensions must be positive and finite. An unmeasured native
-element waits for layout rather than being treated as invalid authored data.
-Companions use `useSurfaceBeforeRender` after frame pose writers; the callback may
-run for several cameras/targets in one animation frame. It updates companions,
-not the simulation clock. Canvas-relative placement follows the renderer
-canvas's live client rectangle, including inset, scroll and supported positive
-scale.
+- `docs/retained-html.md` — how a Surface keeps its one HTML instance and who
+  owns each capture source

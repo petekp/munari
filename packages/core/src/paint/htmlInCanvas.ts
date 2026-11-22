@@ -300,6 +300,7 @@ function createHtmlInCanvasSource(
 export const htmlInCanvasEngine: CaptureEngine = {
   name: 'html-in-canvas',
   native: true,
+  honorsSurfaceLive: true,
   available: () => detectHtmlInCanvas().drawElementImage,
   createSource: createHtmlInCanvasSource,
   refusal:

@@ -10,8 +10,7 @@ import { SurfaceAnchor } from './surface/SurfaceAnchor'
 import { SurfaceLitMaterial } from './surface/surfaceMaterials'
 import { SurfaceRootContext, SurfacePartContext, SurfaceTunnelContext, SurfaceHandleContext, DEFAULT_PART } from './surface/surfaceContext'
 import { surfaceStoreOf, useSurfaceHandle, type SurfaceHandle } from './surface/surfaceHandle'
-import { surfaceViewPresentation, type SurfaceStatus, type SurfaceViewPresentation, type SurfaceViewDestination } from './surface/surfaceStatus'
-import { useSurfaceDriver as useSurfaceDriverBinding, useSurfaceStoreOf } from './surface/useSurfaceDriver'
+import { surfaceViewPresentation, type SurfaceViewPresentation, type SurfaceViewDestination } from './surface/surfaceStatus'
 import { type SurfaceSize, type SurfaceSourceRuntime, type SurfaceResolution, type SurfacePartPublication } from './surface/surfaceSourceRuntime'
 import { useLatest } from './useLatest'
 import { usePageTargetAttachment, type PageTarget } from './pageTarget'
@@ -74,7 +73,8 @@ export interface SurfaceControls {
   /**
    * Fired when content freezes on entering the scene or thaws on returning to
    * the page. CSS/WAAPI motion freezes automatically; stop custom rAF/timers/video
-   * here. Never fires when `live` is set (`useFreezeSurface` reads the same state).
+   * here. Never fires when every part is `live` and the engine is HTML-in-canvas
+   * (`useFreezeSurface` reads the same state).
    */
   onFreezeChange?: (frozen: boolean) => void
   onReady?: () => void
@@ -126,8 +126,8 @@ export type SurfaceHTMLProps = {
    * prop update after mount. Without `live`, both engines follow user input,
    * layout, fonts, images, transition ends, and `useSurfaceRefresh()`, and
    * freeze CSS/Web Animations while in the scene (see `onFreezeChange`). With
-   * `live`, HTML-in-canvas accepts every compositor paint and snapDOM re-captures
-   * at a paced rate. Default `false`.
+   * `live`, HTML-in-canvas accepts every compositor paint. snapDOM ignores
+   * `live`, because each of its captures is a full raster. Default `false`.
    */
   live?: boolean
   onChrome?: (chrome: SurfaceChrome) => void
@@ -494,41 +494,3 @@ export const SceneSurface = Object.assign(BasicSceneSurface, {
   Anchor: SurfaceAnchor,
   LitMaterial: SurfaceLitMaterial,
 })
-
-function useRequiredSurfaceStore(hook: string, surface?: SurfaceHandle) {
-  const store = useSurfaceStoreOf(surface)
-  if (!store) throw new Error(`${hook} needs a Surface handle or an enclosing Surface.`)
-  return store
-}
-
-/** Request fresh captures from the enclosing Surface, or from the given handle. */
-export function useSurfaceRefresh(surface?: SurfaceHandle): () => void {
-  return useRequiredSurfaceStore('useSurfaceRefresh', surface).refresh
-}
-
-export function useSurfaceStatus(surface?: SurfaceHandle): SurfaceStatus {
-  const store = useRequiredSurfaceStore('useSurfaceStatus', surface)
-  const browserSupported = useSurfaceSupport()
-  const snapshot = useSyncExternalStore(store.subscribe, store.getStatus, store.getStatus)
-  return useMemo(() => ({ ...snapshot, supported: browserSupported && snapshot.supported }), [snapshot, browserSupported])
-}
-
-/** Is the Surface's content frozen for the scene? The `onFreezeChange` signal, as React state. */
-export function useFreezeSurface(surface?: SurfaceHandle): boolean {
-  const store = useRequiredSurfaceStore('useFreezeSurface', surface)
-  return useSyncExternalStore(store.subscribeFreeze, store.isFrozen, store.isFrozen)
-}
-
-export interface SurfaceDriverFrame { readonly dtMs: number; readonly progress: number; readonly target: SurfaceViewDestination }
-export type SurfaceDriverStep = (frame: SurfaceDriverFrame) => number
-export interface SurfaceMotionFrame { readonly dtMs:number; readonly position:number; readonly target:0|1; readonly scenePresented:boolean }
-
-export function useSurfaceDriver(step: SurfaceDriverStep | null, surface?: SurfaceHandle) {
-  useSurfaceDriverBinding(step === null ? null : frame => step({ ...frame, target: frame.target === 'canvas' ? 'scene' : 'page' }), surface)
-}
-
-export function useSurfaceMotion(step: (frame: SurfaceMotionFrame) => number, surface?: SurfaceHandle) {
-  const store = useRequiredSurfaceStore('useSurfaceMotion', surface)
-  useSurfaceDriver(frame => step({ dtMs:frame.dtMs, position:frame.progress, target:frame.target === 'scene' ? 1 : 0, scenePresented:store.getStatus().presentation === 'scene' }), surface)
-  return useMemo(()=>({get:()=>store.motionProgress()}),[store])
-}

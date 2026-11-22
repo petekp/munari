@@ -29,7 +29,8 @@ output. Preserve both distinctions when resolving a conflict.
 | Add snapDOM as a second capture engine | [Decision #60](decisions/capture.md#60) (with #61–#64) | Shipped 2026-09-10; completed plan archived in Git history |
 | Understand an architectural choice | [Decisions](decisions.md) | Current rules by number, grouped by area |
 | Check a browser-specific claim | [Platform](platform.md), [instruments](../instruments/README.md) | Measurements under the recorded conditions |
-| Write captured HTML | [Authoring](authoring.md) | Current rules derived from measurements |
+| Write captured HTML | [Authoring](authoring.md), [retained HTML](retained-html.md) | Current rules derived from measurements |
+| Work on the repo itself | [Development](development.md) | Repo layout and check commands |
 | Implement focus and spatial navigation | [Focus](focus.md) | Contract, implemented in the binding |
 | Check a kernel law | [Conformance suites](../tests/conformance/README.md) | Intended behavior with scoped evidence |
 | Find an implemented example | [Demo source map](../ALL-DEMO-API.md) | Current source links; verification belongs to each instrument |

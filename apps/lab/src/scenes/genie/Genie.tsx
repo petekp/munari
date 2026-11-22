@@ -89,7 +89,8 @@ import {
   pourOut,
 } from './genieDrive'
 import { dockFill, dockPose, dockRingDone, dockSwell } from './genieDock'
-import { BOUNCE_MARKS, holdBounceMarks, registerBounceCourt } from './genieBounce'
+import { holdBounceMarks } from './genieBounce'
+import { PlayLayer, StudyPattern, type StudyId } from './GenieWindowContent'
 import { genieTuning } from './genieTuning'
 import { GenieTweakPanel } from './GenieTweaks'
 import { showChrome } from '../../bareMode'
@@ -245,6 +246,10 @@ interface Scheda {
   /** The bay's drawing: a pane that fills when occupied, then the mark
    *  stroked over it, so the drawing itself never goes anywhere. */
   mark: React.ReactNode
+  /** The body moves on its own, and on HTML-in-canvas the flight shows it
+   *  moving. The film window does not ask: its frames reach the scene
+   *  through a FrameSurface, not through the capture. */
+  live?: boolean
 }
 
 // Dock order, left to right. The three figures, then the window that
@@ -253,6 +258,7 @@ const SCHEDE: Scheda[] = [
   {
     id: 'quadrato',
     title: 'quadrato',
+    live: true,
     mark: (
       <>
         <rect className="gen-icon-base" x="1.4" y="1.4" width="17.2" height="17.2" rx="0.8" />
@@ -264,6 +270,7 @@ const SCHEDE: Scheda[] = [
   {
     id: 'cerchio',
     title: 'cerchio',
+    live: true,
     mark: (
       <>
         <circle className="gen-icon-base" cx="10" cy="10" r="8.8" />
@@ -296,6 +303,7 @@ const SCHEDE: Scheda[] = [
   {
     id: 'scheda',
     title: 'scheda',
+    live: true,
     mark: (
       <>
         <rect className="gen-icon-base" x="0.9" y="2.2" width="18.2" height="15.6" rx="0.9" />
@@ -367,122 +375,7 @@ function windowStyle(zIndex: number, at: { x: number; y: number } | undefined): 
  *  end up underneath, so it is stated as a ceiling rather than as n + 1. */
 const OVERLAY_Z = 100
 
-// Two of the studies. Each figure is drawn at its viewBox size exactly,
-// so one strokeWidth means one rendered hairline — the same 1.5px the
-// bays are drawn at, which is what makes the big figure and its 20px bay
-// read as the same hand rather than two drawings of the same shape.
-//
-// The triangolo has no study. Its window is the film (below), and the
-// trade is the point: the other two windows show a figure drawn, this
-// one shows the man who drew them turning one by hand.
-type StudyId = 'quadrato' | 'cerchio'
-
 // ── the window ───────────────────────────────────────────────────────────
-
-type GenieMotionStyle = React.CSSProperties & {
-  '--line-delay'?: string
-  '--line-opacity'?: number
-}
-
-function StudyPattern({ kind }: { kind: StudyId }) {
-  const lines = Array.from({ length: kind === 'quadrato' ? 7 : 9 })
-  return (
-    <svg
-      className="gen-math-pattern"
-      data-pattern={kind}
-      viewBox="0 0 120 120"
-      aria-hidden
-    >
-      {lines.map((_, i) => {
-        const style: GenieMotionStyle = {
-          '--line-delay': `${i * 0.12}s`,
-          '--line-opacity': 0.28 + i * 0.075,
-        }
-        if (kind === 'quadrato') {
-          const inset = 12 + i * 4.8
-          return (
-            <rect
-              key={i}
-              className="gen-math-line"
-              x={inset}
-              y={inset}
-              width={120 - inset * 2}
-              height={120 - inset * 2}
-              rx={1.5 + i * 0.2}
-              pathLength="100"
-              transform={`rotate(${i * 11.25} 60 60)`}
-              style={style}
-            />
-          )
-        }
-        return (
-          <ellipse
-            key={i}
-            className="gen-math-line"
-            cx="60"
-            cy="60"
-            rx="46"
-            ry="19"
-            pathLength="100"
-            transform={`rotate(${i * 20} 60 60)`}
-            style={style}
-          />
-        )
-      })}
-    </svg>
-  )
-}
-
-// One bouncing mark. The box is the mark's rest diameter; the shared
-// simulation (genieBounce.ts) positions it by inline transform, so its
-// layout stays put and the capture sees the same numbers the page
-// draws. Strokes are non-scaling: the size knob resizes the figure,
-// not the pen.
-function BounceMark({ index }: { index: number }) {
-  const mark = BOUNCE_MARKS[index]
-  const d = mark.r * 2
-  return (
-    <div className="gen-bounce" data-mark={mark.id} style={{ width: d, height: d }}>
-      <svg
-        className="gen-bounce-figure"
-        viewBox="0 0 100 100"
-        style={{ color: mark.color }}
-        aria-hidden
-      >
-        {mark.id === 'quadrato' && (
-          <rect className="gen-mark-stroke" x="4" y="4" width="92" height="92" rx="6" />
-        )}
-        {mark.id === 'cerchio' && <circle className="gen-mark-stroke" cx="50" cy="50" r="46" />}
-        {mark.id === 'triangolo' && (
-          <polygon className="gen-mark-stroke" points="50,5 96,95 4,95" />
-        )}
-      </svg>
-    </div>
-  )
-}
-
-// The marks' layer, its own component so its court registers with the
-// simulation when it mounts.
-function PlayLayer() {
-  // Live content, not decoration — while the window is on the desk. The
-  // marks are HELD for the whole of a flight (`holdBounceMarks`), so the
-  // drain is the only thing moving in it and both engines draw the same
-  // picture; see that function for why the engines would otherwise
-  // disagree.
-  //
-  // The simulation writes inline transforms, so the snapshot of this window
-  // that the capture reads carries the same numbers as the live marks.
-  // Layout effect, so the marks are in position before their first paint.
-  const root = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => registerBounceCourt(root.current!), [])
-  return (
-    <div className="gen-play" aria-hidden ref={root}>
-      {BOUNCE_MARKS.map((mark, i) => (
-        <BounceMark key={mark.id} index={i} />
-      ))}
-    </div>
-  )
-}
 
 // The window whose content is DECODED VIDEO. Everything else on this
 // desk is markup the replay was always going to catch; a video frame is
@@ -2466,7 +2359,7 @@ export function GenieApp() {
               inScene={Boolean(air[s.id]) && air[s.id]?.requestedPresentation !== 'page'}
               onPresentationChange={view => onPresentedView(s.id, view)}
             >
-              <Surface.HTML pageClassName="gen-page-presentation" resolution={2}>
+              <Surface.HTML pageClassName="gen-page-presentation" resolution={2} live={s.live}>
                 {bodyFor(s)}
               </Surface.HTML>
             </Surface.Root>
