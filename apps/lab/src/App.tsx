@@ -42,6 +42,7 @@ const StyleApp = lazy(() => import('./scenes/style/Style').then(m => ({ default:
 const WhyApp = lazy(() => import('./scenes/why/Why').then(m => ({ default: m.WhyApp })))
 const PolymerPrototypeApp = lazy(() => import('./scenes/polymer-prototype/PolymerPrototype').then(m => ({ default: m.PolymerPrototypeApp })))
 const FrontierPrototypeApp = lazy(() => import('./scenes/frontier-prototype/FrontierPrototype').then(m => ({ default: m.FrontierPrototypeApp })))
+const BeyondPrototypeApp = lazy(() => import('./scenes/beyond-prototype/BeyondPrototype').then(m => ({ default: m.BeyondPrototypeApp })))
 const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
 
 // Each advertised demo's page, keyed by its catalog id. The `satisfies`
@@ -86,6 +87,7 @@ const LAB_SCENES = [
   'why',
   'polymer-prototype',
   'frontier-prototype',
+  'beyond-prototype',
 ] as const
 
 type SceneId = 'home' | DemoId | (typeof LAB_SCENES)[number]
@@ -180,6 +182,8 @@ function studySceneFor(scene: SceneId) {
       return <PolymerPrototypeApp />
     case 'frontier-prototype':
       return <FrontierPrototypeApp />
+    case 'beyond-prototype':
+      return <BeyondPrototypeApp />
     case 'candidates':
       return <CandidatesApp />
     case 'gravity':
@@ -244,18 +248,25 @@ function SceneHud({ scene }: { scene: SceneId }) {
   return null
 }
 
-const SITE_PAGES = new Set<SceneId>(['home', 'style', 'why', 'polymer-prototype', 'frontier-prototype'])
-const OMITS_NOTICE = new Set<SceneId>(['home', 'why', 'polymer-prototype', 'frontier-prototype', 'marble-hand', 'plume', 'postcard'])
 const SITE_TITLES = {
   home: 'Munari · Live HTML in 3D',
   style: 'Style guide · Munari',
   why: 'Why Munari · Munari',
   'polymer-prototype': 'Polymer prototype · Munari',
   'frontier-prototype': 'Frontier prototypes · Munari',
+  'beyond-prototype': 'Beyond flat UI · Munari',
 } as const
+const SITE_LAZY_PAGES = {
+  style: StyleApp,
+  why: WhyApp,
+  'polymer-prototype': PolymerPrototypeApp,
+  'frontier-prototype': FrontierPrototypeApp,
+  'beyond-prototype': BeyondPrototypeApp,
+} as const
+const OMITS_NOTICE = new Set<SceneId>(['home', 'why', 'polymer-prototype', 'frontier-prototype', 'beyond-prototype', 'marble-hand', 'plume', 'postcard'])
 
 function isSitePage(scene: SceneId): boolean {
-  return SITE_PAGES.has(scene)
+  return scene in SITE_TITLES
 }
 
 function sceneDocumentTitle(scene: SceneId): string {
@@ -272,10 +283,11 @@ function omitsTrialNotice(scene: SceneId): boolean {
 
 function renderSitePage(scene: SceneId) {
   if (scene === 'home') return <HomeApp onReady={revealSite} />
-  if (scene === 'style') return <Suspense fallback={null}><StyleApp onReady={revealSite} /></Suspense>
-  if (scene === 'why') return <Suspense fallback={null}><WhyApp onReady={revealSite} /></Suspense>
-  if (scene === 'polymer-prototype') return <Suspense fallback={null}><PolymerPrototypeApp onReady={revealSite} /></Suspense>
-  if (scene === 'frontier-prototype') return <Suspense fallback={null}><FrontierPrototypeApp onReady={revealSite} /></Suspense>
+  if (scene in SITE_LAZY_PAGES) {
+    // SAFETY: `in` narrows `scene` to a key of `SITE_LAZY_PAGES`.
+    const Page = SITE_LAZY_PAGES[scene as keyof typeof SITE_LAZY_PAGES]
+    return <Suspense fallback={null}><Page onReady={revealSite} /></Suspense>
+  }
   return null
 }
 

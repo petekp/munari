@@ -1,0 +1,556 @@
+/* Variant 02 (`BeyondXray`): Braun/TE industrial console + FR-4 PCB cutaway */
+
+.beyond-stage-wrap.bx-bench-mat {
+  display: grid;
+  place-items: center;
+  padding: clamp(14px, 3vw, 32px);
+  background:
+    radial-gradient(circle at 50% 0%, #272b33 0%, #15181d 72%),
+    #15181d;
+  border-color: #1f232b;
+}
+
+.bx-toolbar-hint {
+  color: var(--m-quiet);
+  font-size: 13px;
+}
+
+.bx-unit-frame {
+  position: relative;
+  box-sizing: border-box;
+  width: min(700px, 100%);
+  min-height: 428px;
+}
+
+.bx-pcb-slot {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.bx-pcb-slot--fallback {
+  position: static;
+  margin-top: 14px;
+  pointer-events: auto;
+}
+
+.bx-surface-page {
+  width: 100%;
+  height: 100%;
+}
+
+/* Machined jeweler's-loupe stem tab positioned at +42 deg outside the bezel */
+.bx-loupe-handle {
+  position: absolute;
+  z-index: 12;
+  transform: translate(-50%, -50%);
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #d8ab5c;
+  border-radius: 999px;
+  background: #1b1f26;
+  color: #f6e7c8;
+  font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.bx-loupe-handle--dragging {
+  cursor: grabbing;
+  background: #d8ab5c;
+  color: #14171c;
+}
+
+.bx-loupe-handle:focus-visible,
+.bx-tier-btn:focus-visible:not([data-pointer-focus]),
+.bx-step-btn:focus-visible:not([data-pointer-focus]),
+.bx-op-input:focus-visible:not([data-pointer-focus]),
+.bx-commit-btn:focus-visible:not([data-pointer-focus]),
+.bx-dip-btn:focus-visible:not([data-pointer-focus]) {
+  outline: 2px solid #18f2a6;
+  outline-offset: 2px;
+}
+
+/* ── Outer Consumer Console (Braun / Teenage Engineering Aluminum) ── */
+
+.bx-console {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  min-height: 428px;
+  padding: 20px;
+  border: 2px solid #2b2f36;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #f5f3ed 0%, #e7e4dc 100%);
+  color: #16181d;
+  font: 400 13.5px/1.35 Archivo, system-ui, sans-serif;
+}
+
+.bx-oled {
+  display: grid;
+  gap: 8px;
+  padding: 14px 18px;
+  border: 2px solid #262b30;
+  border-radius: 12px;
+  background: #0f1513;
+  color: #e8f7f0;
+}
+
+.bx-oled-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #82a396;
+  letter-spacing: 0.06em;
+}
+
+.bx-oled-clock {
+  padding: 3px 8px;
+  border-radius: 99px;
+  background: rgb(255 255 255 / 0.08);
+  color: #b7d4c8;
+}
+
+.bx-oled-clock--turbo {
+  background: rgb(24 242 166 / 0.20);
+  color: #42ffbe;
+}
+
+.bx-oled-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bx-oled-rate {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.bx-oled-rate strong {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffffff;
+}
+
+.bx-oled-rate span {
+  font: 500 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #9ec2b4;
+}
+
+.bx-oled-hex {
+  font: 700 20px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #ffca52;
+  letter-spacing: 0.04em;
+}
+
+.bx-oled-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bx-flag {
+  padding: 4px 8px;
+  border: 1px solid rgb(255 202 82 / 0.55);
+  border-radius: 6px;
+  background: rgb(255 202 82 / 0.16);
+  color: #ffd97d;
+  font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.bx-flag--dim {
+  border-color: rgb(255 255 255 / 0.15);
+  background: transparent;
+  color: #839c92;
+}
+
+.bx-console-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1.12fr 0.88fr;
+  gap: 18px;
+}
+
+.bx-controls-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.bx-field-group {
+  display: grid;
+  gap: 6px;
+}
+
+.bx-field-group--grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.bx-field-label {
+  font: 700 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.06em;
+  color: #5c6068;
+}
+
+.bx-tier-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.bx-tier-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 9px 10px;
+  border: 1px solid #9fa3ab;
+  border-radius: 9px;
+  background: #fbfaf7;
+  color: #181b20;
+  font: 600 12.5px/1.1 inherit;
+  cursor: pointer;
+}
+
+.bx-tier-btn b {
+  font: 700 14px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.bx-tier-btn[aria-pressed='true'] {
+  border-color: #16181d;
+  background: #181b20;
+  color: #ffffff;
+}
+
+.bx-split-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.bx-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #9fa3ab;
+  border-radius: 9px;
+  background: #fbfaf7;
+}
+
+.bx-step-btn {
+  width: 32px;
+  height: 34px;
+  border: 0;
+  background: transparent;
+  color: #16181d;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bx-step-val {
+  min-width: 44px;
+  text-align: center;
+  font: 700 12.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.bx-op-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid #9fa3ab;
+  border-radius: 9px;
+  background: #fbfaf7;
+  color: #16181d;
+  font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.bx-commit-btn {
+  height: 40px;
+  padding: 0 14px;
+  border: 1px solid #c94122;
+  border-radius: 10px;
+  background: #e64d2b;
+  color: #ffffff;
+  font: 700 13px/1 Archivo, system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.bx-commit-btn:hover {
+  background: #d34221;
+}
+
+.bx-sealed-bay {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 224px;
+  padding: 14px;
+  border: 1px solid #c5c2b8;
+  border-radius: 12px;
+  background: #dfdcd3;
+  color: #636770;
+  font: 700 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.05em;
+}
+
+.bx-bay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bx-screw {
+  width: 10px;
+  height: 10px;
+  border: 1px solid #8a8d94;
+  border-radius: 99px;
+  background: #b8b6ae;
+}
+
+.bx-vent-grille {
+  display: grid;
+  gap: 9px;
+  padding: 10px 0;
+}
+
+.bx-vent-slot {
+  height: 6px;
+  border-radius: 99px;
+  background: #bebbb1;
+}
+
+.bx-bay-foot {
+  color: #545860;
+}
+
+/* ── Subsurface FR-4 Gold-Trace PCB (`<Surface.HTML>`) ── */
+
+.bx-pcb-root {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
+  border-radius: 18px;
+  background: #071d16;
+  color: #d7faec;
+  font: 600 11px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  user-select: none;
+}
+
+.bx-pcb-root--fallback {
+  border: 2px solid #d8ab5c;
+}
+
+.bx-pcb-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.bx-pcb-ribbon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 76px;
+  padding: 12px 16px;
+  border: 1px solid #2d7a60;
+  border-radius: 10px;
+  background: rgb(5 18 14 / 0.88);
+  color: #ffca52;
+}
+
+.bx-pcb-grid {
+  position: relative;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1.12fr 0.88fr;
+  gap: 18px;
+  align-items: center;
+}
+
+.bx-asic-zone {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.bx-asic-package {
+  display: grid;
+  gap: 5px;
+  width: 164px;
+  padding: 14px 16px;
+  border: 2px solid #d8ab5c;
+  border-radius: 10px;
+  background: #101619;
+  color: #f4f7f5;
+}
+
+.bx-silk-code {
+  color: #84ccb1;
+  font-size: 10px;
+}
+
+.bx-asic-package strong {
+  font-size: 17px;
+  color: #ffca52;
+}
+
+.bx-asic-sub {
+  color: #9be8cb;
+  font-size: 10.5px;
+}
+
+.bx-smd-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #9be8cb;
+  font-size: 10px;
+}
+
+.bx-smd-led {
+  width: 9px;
+  height: 9px;
+  border-radius: 99px;
+  background: #285243;
+}
+
+.bx-smd-led--on {
+  background: #18f2a6;
+}
+
+.bx-dip-zone {
+  display: grid;
+  place-items: center;
+  min-height: 224px;
+}
+
+/* Compact 168 px hardware DIP switch block — fits 100% inside the 222 px crystal core! */
+.bx-dip-bank {
+  box-sizing: border-box;
+  display: grid;
+  gap: 6px;
+  width: 168px;
+  padding: 9px 10px;
+  border: 2px solid #d8ab5c;
+  border-radius: 10px;
+  background: #0b241c;
+}
+
+.bx-dip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #ffd36e;
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+}
+
+.bx-dip-gold-pad {
+  width: 14px;
+  height: 7px;
+  border-radius: 2px;
+  background: #ffca52;
+}
+
+.bx-dip-list {
+  display: grid;
+  gap: 5px;
+}
+
+.bx-dip-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-height: 29px;
+  padding: 0 7px;
+  border: 1px solid #2f755d;
+  border-radius: 6px;
+  background: #081b14;
+  color: #e8fdf4;
+  font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+
+.bx-dip-btn:is(:hover, [data-hover]) {
+  border-color: #ffca52;
+  background: #103025;
+}
+
+.bx-dip-btn:is(:active, [data-active]) {
+  background: #164032;
+}
+
+.bx-dip-meta b {
+  color: #ffca52;
+}
+
+.bx-dip-rocker {
+  flex: none;
+  position: relative;
+  width: 28px;
+  height: 15px;
+  border: 1px solid #579c83;
+  border-radius: 99px;
+  background: #162e26;
+}
+
+.bx-dip-rocker--on {
+  border-color: #18f2a6;
+  background: #14a874;
+}
+
+.bx-dip-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 99px;
+  background: #ffffff;
+}
+
+.bx-dip-rocker--on .bx-dip-thumb {
+  left: 15px;
+}
+
+@media (max-width: 680px) {
+  .bx-console-body,
+  .bx-pcb-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bx-oled-rate strong {
+    font-size: 26px;
+  }
+
+  .bx-split-row {
+    flex-wrap: wrap;
+  }
+}

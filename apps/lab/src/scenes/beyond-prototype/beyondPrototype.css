@@ -1,0 +1,586 @@
+/* Beyond flat UI (`?scene=beyond-prototype`) — Series II gallery shell plus
+ * Variant 01 (`BeyondDieline`) 9-panel 696x504 packaging-net rules. */
+
+[data-pointer-focus]:focus-visible {
+  outline: none;
+}
+
+.beyond-page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--m-paper);
+  color: var(--m-ink);
+  font: 400 15px/1.5 var(--m-sans);
+}
+
+.beyond-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.beyond-home-link {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  text-decoration: none;
+}
+
+.beyond-logo-svg {
+  display: block;
+  height: 22px;
+  width: auto;
+}
+
+.beyond-nav-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.beyond-nav-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--m-rule);
+  background: var(--m-paper);
+  color: var(--m-ink);
+  font: 500 13px/1 var(--m-sans);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.beyond-nav-pill:hover {
+  border-color: var(--m-ink);
+}
+
+.beyond-nav-pill[aria-current='page'] {
+  border-color: var(--m-ink);
+  background: var(--m-ink);
+  color: var(--m-paper);
+}
+
+.beyond-series-link {
+  color: var(--m-quiet);
+}
+
+.beyond-bar-telemetry {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.beyond-page .m-bar-links {
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 8px 16px;
+}
+
+.beyond-main {
+  box-sizing: border-box;
+  flex: 1;
+  width: min(1280px, 100% - 2 * clamp(14px, 2.5vw, 32px));
+  margin-inline: auto;
+  padding-block: 14px 64px;
+}
+
+.beyond-bench {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.beyond-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+
+.beyond-controls-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.beyond-slider-wrap {
+  width: min(250px, 100%);
+}
+
+.beyond-stage-wrap {
+  position: relative;
+  box-sizing: border-box;
+  min-height: clamp(500px, 72vh, 650px);
+  border: 1px solid var(--m-ink);
+  background: var(--m-field);
+  overflow: hidden;
+}
+
+.beyond-overlay-canvas {
+  position: absolute !important;
+  inset: 0;
+  z-index: 6;
+}
+
+/* ── Variant 01 (`BeyondDieline`): Cutting Mat & 696x504 9-Panel Net ── */
+
+.beyond-stage-wrap.bd-cutting-mat {
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(90deg, rgb(255 255 255 / 0.045) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(0deg, rgb(255 255 255 / 0.045) 1px, transparent 1px) 0 0 / 28px 28px,
+    #19201e;
+  border-color: #19201e;
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.beyond-stage-wrap.bd-cutting-mat:active {
+  cursor: grabbing;
+}
+
+.bd-mat-hud {
+  position: absolute;
+  top: 12px;
+  left: 14px;
+  right: 14px;
+  z-index: 12;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.bd-orbit-grip {
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid rgb(255 255 255 / 0.22);
+  border-radius: 999px;
+  background: rgb(14 19 18 / 0.88);
+  color: #eef5f1;
+  font: 600 11.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.bd-orbit-grip:focus-visible,
+.bd-front-input:focus-visible:not([data-pointer-focus]),
+.bd-swatch-btn:focus-visible:not([data-pointer-focus]),
+.bd-lot-btn:focus-visible:not([data-pointer-focus]),
+.bd-power-btn:focus-visible:not([data-pointer-focus]),
+.bd-seal-btn:focus-visible:not([data-pointer-focus]) {
+  outline: 2px solid #ffd466;
+  outline-offset: 2px;
+}
+
+.bd-mat-caption {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgb(14 19 18 / 0.74);
+  color: rgb(226 236 230 / 0.78);
+  font: 500 12px/1.2 Archivo, system-ui, sans-serif;
+}
+
+.bd-page-slot--scene {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* Standalone 696 x 504 carton net matching `DIELINE_PANELS` to 0.0 px */
+.bd-net-root {
+  position: relative;
+  box-sizing: border-box;
+  background: transparent;
+  color: #14161a;
+  font: 500 11.5px/1.25 Archivo, system-ui, sans-serif;
+  user-select: none;
+}
+
+/* Solid exterior die-cuts; single dashed score seams strictly on interior fold hinges */
+.bd-panel {
+  position: absolute;
+  box-sizing: border-box;
+  background: #f7f4ec;
+  border: 1px solid rgb(20 22 26 / 0.28);
+  overflow: hidden;
+}
+
+.bd-panel--dust-left,
+.bd-panel--dust-right {
+  top: 102px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border-bottom: 1px dashed rgb(20 22 26 / 0.45);
+  border-radius: 8px 8px 0 0;
+  background: #d8be98;
+  color: rgb(20 22 26 / 0.56);
+  font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.bd-panel--dust-left {
+  left: 32px;
+  width: 103px;
+}
+
+.bd-panel--dust-right {
+  left: 353px;
+  width: 103px;
+}
+
+.bd-panel--tuck {
+  left: 144px;
+  top: 10px;
+  width: 200px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-bottom: 1px dashed rgb(20 22 26 / 0.45);
+  border-radius: 10px 10px 0 0;
+  background: #e9e3d3;
+  font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.06em;
+  color: #4f5259;
+}
+
+.bd-panel--top {
+  left: 136px;
+  top: 44px;
+  width: 216px;
+  height: 112px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 11px 13px;
+  border-top-width: 4px;
+  border-bottom: 1px dashed rgb(20 22 26 / 0.48);
+}
+
+.bd-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.bd-top-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 99px;
+}
+
+.bd-top-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 9px;
+  font: 700 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.bd-panel--left {
+  left: 24px;
+  top: 156px;
+  width: 112px;
+  height: 216px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 11px;
+  border-right: 1px dashed rgb(20 22 26 / 0.48);
+}
+
+.bd-left-stripe {
+  width: 100%;
+  height: 10px;
+}
+
+.bd-spine-meta {
+  display: grid;
+  gap: 5px;
+}
+
+.bd-spine-meta strong {
+  font-size: 13px;
+  line-height: 1.1;
+  word-break: break-word;
+}
+
+.bd-spine-pill {
+  display: inline-block;
+  width: fit-content;
+  padding: 3px 5px;
+  border: 1px solid #14161a;
+  font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.bd-barcode {
+  height: 26px;
+  background: repeating-linear-gradient(
+    90deg,
+    #14161a 0 2px,
+    transparent 2px 5px,
+    #14161a 5px 8px,
+    transparent 8px 11px
+  );
+}
+
+.bd-panel--front {
+  left: 136px;
+  top: 156px;
+  width: 216px;
+  height: 216px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 0;
+}
+
+.bd-front-banner {
+  display: grid;
+  gap: 6px;
+  padding: 13px;
+}
+
+.bd-front-kicker,
+.bd-mono-kicker {
+  font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.06em;
+  opacity: 0.88;
+}
+
+/* Flush Swiss display typography printed directly on the ink band */
+.bd-front-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  padding: 0 0 2px;
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 0.65);
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: 800 17px/1 Archivo, system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  cursor: text;
+}
+
+.bd-front-body {
+  display: grid;
+  gap: 10px;
+  padding: 10px 13px 13px;
+}
+
+/* Pantone-style rectangular ink specification chips */
+.bd-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.bd-swatch-btn {
+  display: grid;
+  padding: 0;
+  border: 1px solid #14161a;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.bd-swatch-btn:is(:hover, [data-hover]) {
+  transform: translateY(-1px);
+}
+
+.bd-swatch-btn:is(:active, [data-active]) {
+  background: #e8e4da;
+}
+
+.bd-swatch-btn[aria-pressed='true'] {
+  outline: 2px solid #14161a;
+  outline-offset: 1px;
+}
+
+.bd-swatch-fill {
+  display: block;
+  width: 100%;
+  height: 18px;
+}
+
+.bd-swatch-code {
+  padding: 2px 0;
+  font: 700 8.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #14161a;
+  text-align: center;
+}
+
+.bd-lot-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid #14161a;
+  background: #ffffff;
+  color: #14161a;
+  font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+
+.bd-lot-btn:is(:hover, [data-hover]),
+.bd-lot-btn:is(:active, [data-active]) {
+  background: #14161a;
+  color: #ffffff;
+}
+
+.bd-panel--right {
+  left: 352px;
+  top: 156px;
+  width: 112px;
+  height: 216px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 11px;
+  border-left: 1px dashed rgb(20 22 26 / 0.48);
+  border-right: 1px dashed rgb(20 22 26 / 0.48);
+}
+
+.bd-power-group {
+  display: grid;
+  border: 1px solid #14161a;
+}
+
+.bd-power-btn {
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-bottom: 1px solid #14161a;
+  background: #ffffff;
+  color: #14161a;
+  font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+
+.bd-power-btn:last-child {
+  border-bottom: 0;
+}
+
+.bd-power-btn:is(:hover, [data-hover]) {
+  background: #eae6dc;
+}
+
+.bd-power-btn:is(:active, [data-active]),
+.bd-power-btn[aria-pressed='true'] {
+  background: #14161a;
+  color: #ffffff;
+}
+
+.bd-mono-foot {
+  font: 600 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #5b5f68;
+}
+
+.bd-panel--back {
+  left: 464px;
+  top: 156px;
+  width: 216px;
+  height: 216px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 13px;
+}
+
+.bd-back-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #14161a;
+}
+
+.bd-back-code {
+  font: 700 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.bd-back-copy {
+  margin: 0;
+  color: #363940;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.bd-seal-btn {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #14161a;
+  background: #ffffff;
+  color: #14161a;
+  font: 700 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+
+.bd-seal-btn:is(:hover, [data-hover]) {
+  background: #eae6dc;
+}
+
+.bd-seal-btn:is(:active, [data-active]),
+.bd-seal-btn[aria-pressed='true'] {
+  background: #14161a;
+  color: #ffffff;
+}
+
+.bd-panel--bottom {
+  left: 136px;
+  top: 372px;
+  width: 216px;
+  height: 112px;
+  display: grid;
+  align-items: center;
+  padding: 13px;
+  border-top: 1px dashed rgb(20 22 26 / 0.48);
+  background: #efeadd;
+}
+
+.bd-bottom-grid {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.bd-recycle-mark {
+  padding: 5px 7px;
+  border: 2px solid #14161a;
+  font: 800 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@media (max-width: 600px) {
+  .beyond-stage-wrap {
+    min-height: clamp(390px, 56vh, 470px);
+  }
+
+  .bd-mat-caption {
+    display: none;
+  }
+}

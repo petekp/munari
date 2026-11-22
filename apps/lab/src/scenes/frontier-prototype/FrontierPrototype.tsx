@@ -225,6 +225,14 @@ export function FrontierPrototypeApp({ onReady }: { readonly onReady?: () => voi
                   <span className="m-readout">{item.num}</span> {item.shortLabel}
                 </button>
               ))}
+              <a
+                href={sceneUrl('beyond-prototype')}
+                className="frontier-nav-pill"
+                style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                title="Series II: Beyond flat UI prototypes"
+              >
+                Series II →
+              </a>
             </span>
             <FrontierTelemetryReadout />
           </>

@@ -1,0 +1,256 @@
+/* Variant 03 (`BeyondHologram`): Bragg diffraction & lenticular security pass */
+
+.beyond-stage-wrap.bh-velvet-stage {
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background:
+    radial-gradient(circle at 50% 36%, #1f2432 0%, #0d1017 70%),
+    #0d1017;
+  border-color: #1c202a;
+}
+
+.bh-stage-hud {
+  position: absolute;
+  top: 14px;
+  left: 16px;
+  z-index: 12;
+}
+
+.bh-tilt-handle {
+  height: 28px;
+  padding: 0 11px;
+  border: 1px solid rgb(255 255 255 / 0.16);
+  border-radius: 999px;
+  background: rgb(16 20 28 / 0.85);
+  color: #dfe6f4;
+  font: 600 11.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+
+.bh-tilt-handle:focus-visible,
+.bh-bearer-input:focus-visible:not([data-pointer-focus]),
+.bh-card-btn:focus-visible:not([data-pointer-focus]) {
+  outline: 2px solid #49e6ff;
+  outline-offset: 2px;
+}
+
+.bh-page-slot--scene {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.bh-fallback-twin {
+  margin-top: 12px;
+}
+
+/* ── Primary Holographic Pass (`468 x 304`, exact pixel zones) ── */
+
+.bh-card-root {
+  position: relative;
+  box-sizing: border-box;
+  border-radius: 20px;
+  background: transparent;
+  color: #f3f6fc;
+  font: 400 13px/1.3 Archivo, system-ui, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+.bh-card-root--fallback {
+  border: 1px solid rgb(255 255 255 / 0.22);
+  background: #14171f;
+}
+
+.bh-top-meta {
+  position: absolute;
+  left: 26px;
+  top: 24px;
+  width: 306px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bh-serial {
+  font: 600 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.08em;
+  color: rgb(214 224 242 / 0.62);
+}
+
+.bh-tier-pill {
+  font: 700 13px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.05em;
+}
+
+.bh-bearer-block {
+  position: absolute;
+  left: 26px;
+  top: 78px;
+  width: 306px;
+  display: grid;
+  gap: 6px;
+}
+
+.bh-label {
+  font: 700 9.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.07em;
+  color: rgb(210 220 238 / 0.56);
+}
+
+.bh-bearer-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid rgb(255 255 255 / 0.20);
+  border-radius: 9px;
+  background: rgb(8 10 16 / 0.62);
+  color: #ffffff;
+  font: 700 18px/1 Archivo, system-ui, sans-serif;
+  letter-spacing: 0.03em;
+  cursor: text;
+}
+
+/* Exact [26..332, 164..228] CSS pixel registration with `LENTICULAR_RECT` */
+.bh-lenticular-slot,
+.bh-twin-root {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border: 1px solid rgb(120 228 255 / 0.36);
+  border-radius: 8px;
+  background: rgb(9 15 24 / 0.88);
+  color: #e9f6ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.bh-lenticular-slot {
+  position: absolute;
+  left: 26px;
+  top: 164px;
+  width: 306px;
+  height: 64px;
+}
+
+.bh-twin-root {
+  border-color: rgb(255 204 102 / 0.52);
+  background: #1a1224;
+  color: #ffe8b3;
+}
+
+.bh-lent-kicker {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: rgb(176 218 245 / 0.72);
+}
+
+.bh-twin-root .bh-lent-kicker {
+  color: #ffc766;
+}
+
+.bh-lent-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.bh-lent-sub {
+  font-size: 11.5px;
+  color: #6fe3ff;
+}
+
+.bh-lent-value--pin {
+  color: #ffffff;
+}
+
+.bh-lent-badge {
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgb(255 196 86 / 0.22);
+  color: #ffd57a;
+  font-size: 10.5px;
+}
+
+.bh-actions-row {
+  position: absolute;
+  left: 26px;
+  top: 244px;
+  width: 306px;
+  display: flex;
+  gap: 8px;
+}
+
+.bh-card-btn {
+  flex: 1;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgb(255 255 255 / 0.22);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.08);
+  color: #f4f7fc;
+  font: 600 12px/1 Archivo, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.bh-card-btn:is(:hover, [data-hover]) {
+  background: rgb(255 255 255 / 0.16);
+}
+
+.bh-card-btn:is(:active, [data-active]) {
+  background: rgb(255 255 255 / 0.24);
+}
+
+.bh-card-btn--accent {
+  border-color: rgb(73 230 255 / 0.55);
+  background: rgb(32 168 204 / 0.22);
+  color: #dcfeff;
+}
+
+/* Right-hand diffraction foil strip (`x = 358..416`) & rosette seal (`387, 74`) */
+.bh-foil-column {
+  position: absolute;
+  left: 358px;
+  top: 0;
+  width: 58px;
+  height: 304px;
+  pointer-events: none;
+}
+
+.bh-seal-emblem {
+  position: absolute;
+  left: 50%;
+  top: 74px;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  color: rgb(12 16 24 / 0.72);
+}
+
+.bh-seal-svg {
+  width: 46px;
+  height: 46px;
+}
+
+.bh-ribbon-microtext {
+  position: absolute;
+  left: 50%;
+  bottom: 92px;
+  transform: translateX(-50%) rotate(-90deg);
+  white-space: nowrap;
+  font: 700 9px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.12em;
+  color: rgb(14 18 24 / 0.76);
+}
