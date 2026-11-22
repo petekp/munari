@@ -81,7 +81,7 @@ Changing a rule needs evidence and matching changes to its owning tests (#2). Br
 | <a id="61"></a>[#61](decisions/handoff.md#61) | A handoff works without `moveBefore` |
 | <a id="62"></a>[#62](decisions/capture.md#62) | snapDOM pays for fonts once and paces a live source by a period |
 | <a id="63"></a>[#63](decisions/handoff.md#63) | Preparation borrows the live node only for a caret |
-| <a id="64"></a>[#64](decisions/capture.md#64) | `live` means the same on every engine |
+| <a id="64"></a>[#64](decisions/capture.md#64) | What a texture follows, and where `live` applies |
 | <a id="65"></a>[#65](decisions/handoff.md#65) | A lift releases the page only onto pixels read after the lift began |
 | <a id="66"></a>[#66](decisions/handoff.md#66) | Declarative motion stands still while a canvas holds the content |
 | <a id="67"></a>[#67](decisions/handoff.md#67) | Consumer clocks stop on `onFreezeChange`, before the capture |

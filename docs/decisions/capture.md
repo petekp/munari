@@ -102,13 +102,19 @@ On CPU-backed canvases, a field's text is drawn with Canvas 2D only after a test
 
 <a id="64"></a>
 
-## #64 — `live` means the same on every engine
+## #64 — What a texture follows, and where `live` applies
 
-Without `live`, a texture keeps its picture until a reason to repaint arrives, on every engine. Engines differ in cost and pacing (#60, #62), not in what they follow.
+Without `live`, a texture keeps its picture until a reason to repaint arrives, on every engine. Engines differ in cost and pacing (#60, #62), not in what they follow without `live`.
 
 `PAINT_EVENTS` in `inputWindow.ts` lists the reasons that count whatever `live` says: user input on the content, scroll, a font or image loading, a transition or animation starting or ending, a resize, and an explicit `repaint()`. The middle of an animation is not a reason. A painted host outranks `live` (#63). A scroll that `restoreScroll` caused is not a reason. A failed native paint keeps pending explicit requests for the next compositor callback.
 
-`captureEngines.test.ts` runs this law over both engines. An untouched Surface with a CSS keyframe costs 1 capture in 3 s, against 361 when the native engine followed every frame.
+A Surface part's `live` takes effect only on an engine whose `CaptureEngine.honorsSurfaceLive` is true. HTML-in-canvas sets it, because following content costs one compositor paint per change. snapDOM does not, because each of its captures is a full raster that a live part would repeat at the #62 period. On snapDOM a live part is built and published as not live, so a canvas holding it holds its motion (#66) and `useFreezeSurface()` turns true (#67). Content that must change in the scene on every engine calls `useSurfaceRefresh()`.
+
+The source host reads the field from the engine that built the part's source. A later `setCaptureEngine` leaves existing parts on their engine's answer, and a part built afterwards publishes the new engine's answer. A custom engine must set the field. `useElementCapture` and `CaptureContent` keep `live` on every engine, because their texture is their only display.
+
+On snapDOM, the lab scenes that declare `live` on a Surface hold still in the scene: Refraction, Gallery, Optics, Workspace and the analyze candidate. Genie declares `live` on quadrato, cerchio and scheda, drops it while a window rests in the dock, and takes it back when a restore flight starts.
+
+`captureEngines.test.ts` runs the law over both engines. An untouched Surface with a CSS keyframe costs 1 capture in 3 s, against 361 when the native engine followed every frame. `SurfaceRoot.test.tsx` checks that a live part is built and published live only on HTML-in-canvas. Measured 2026-11-21 in headless Chrome 157 at 60 Hz: a live Genie window on HTML-in-canvas moved on every frame the canvas held it, and on snapDOM it was frozen on every held frame and took 3 to 5 captures. At each swap the capture is one frame behind the content, about 0.5 CSS px of a mark's motion. Three live Genie windows added 12 to 16 ms of main-thread work a second at 1x CPU, with the frame rate unchanged at 60. Docked, they painted as often and showed nothing, which is why Genie drops `live` there.
 
 <a id="74"></a>
 
