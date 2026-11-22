@@ -57,7 +57,6 @@ import {
   useSurfaceSupport,
 } from '@petepetrash/munari'
 import {
-  cameraDistance,
   FrameSurface,
   paintStats,
   presentationReceiptSatisfies,
@@ -93,6 +92,7 @@ import { holdBounceMarks } from './genieBounce'
 import { PlayLayer, StudyPattern, type StudyId } from './GenieWindowContent'
 import { genieTuning } from './genieTuning'
 import { GenieTweakPanel } from './GenieTweaks'
+import { FOV, PixelPerfect } from './GenieCamera'
 import { showChrome } from '../../bareMode'
 import {
   createGenieFilmMaterial,
@@ -118,7 +118,6 @@ import { closestFrom } from '../../lib/dom'
 import { plainAttribute } from '../../lib/geometry'
 import './genie.css'
 
-const FOV = 42
 // Subdivision is vertical-heavy: the funnel's curvature lives almost
 // entirely in y, and a flat sheet renders identically at any tessellation
 // so the rest cost is zero.
@@ -521,25 +520,6 @@ function WindowBody({
       </div>
     </div>
   )
-}
-
-// ── the camera: z = 0 is the viewport, 1 world unit = 1 CSS px ──────────
-
-function PixelPerfect() {
-  // SAFETY: r3f types the store's camera as the base class and hands back a
-  // PerspectiveCamera unless the Canvas asks for `orthographic`. This one
-  // does not, and could not: fitting the frustum to the viewport is what
-  // makes a CSS pixel a world unit, and orthographic has no fov to fit.
-  const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
-  const size = useThree((s) => s.size)
-  useEffect(() => {
-    camera.fov = FOV
-    camera.position.set(0, 0, cameraDistance(size.height, FOV))
-    camera.near = 1
-    camera.far = camera.position.z * 3
-    camera.updateProjectionMatrix()
-  }, [camera, size.height])
-  return null
 }
 
 // ── the sheet's material ────────────────────────────────────────────────
@@ -1826,6 +1806,10 @@ export function GenieApp() {
   // put away? True while it is docked and for the whole of a restore,
   // which starts docked. The two hides compose, and neither has to know
   // when the other turns.
+  // Docked and not on its way back out. Its slot is hidden and its Surface
+  // is on the page, so nothing shows its content, and a live window drops
+  // `live` until a restore starts.
+  const restingInDock = (win: WinId) => dockedSet.has(win) && air[win]?.direction !== 'restoring'
   const hiddenFor = (win: WinId) => {
     const a = air[win]
     if (a) return a.direction === 'restoring'
@@ -1841,7 +1825,7 @@ export function GenieApp() {
   // `front` is read inside the capture root, that snap is IN THE
   // TEXTURE, not a page-side detail the flight hides.
   const front =
-    [...order].reverse().find((w) => !dockedSet.has(w) || air[w]?.direction === 'restoring') ?? null
+    [...order].reverse().find((w) => !restingInDock(w)) ?? null
 
   const slotOf = (win: WinId) => slotRefs.current[win] ?? null
   const ringOf = (win: WinId): Ring => {
@@ -2359,7 +2343,7 @@ export function GenieApp() {
               inScene={Boolean(air[s.id]) && air[s.id]?.requestedPresentation !== 'page'}
               onPresentationChange={view => onPresentedView(s.id, view)}
             >
-              <Surface.HTML pageClassName="gen-page-presentation" resolution={2} live={s.live}>
+              <Surface.HTML pageClassName="gen-page-presentation" resolution={2} live={s.live && !restingInDock(s.id)}>
                 {bodyFor(s)}
               </Surface.HTML>
             </Surface.Root>
