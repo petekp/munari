@@ -1,7 +1,5 @@
-// Style guide — the site system shown with its own classes. Every specimen is
-// the real component CSS (components/system/system.css) over the real tokens,
-// so the page changes when the system does. States at rest use the same
-// `[data-hover]` and `[data-active]` twins a captured Surface receives.
+// Style guide — live specimens of components/system/system.css over site tokens.
+// States at rest use the same `[data-hover]` and `[data-active]` twins a Surface receives.
 import { useEffect, useState, type ReactNode } from 'react'
 import { MunariLogo } from '../../components/MunariLogo'
 import { Bar, Button, Check, CopyBlock, Dial, Field, Input, Notice, Panel, PanelSection, Plate, Radio, Select, Slider, StageCaption, Status, Tag, TextArea, TextButton, Toggle, UnitInput, Window, type PointerState } from '../../components/system'
@@ -74,6 +72,7 @@ export function StyleApp({ onReady }: StyleProps) {
         </a>
         <nav aria-label="Project" className="m-ui">
           <a className="m-link m-link--nav" href={sceneUrl('home')}>Demos</a>
+          <a className="m-link m-link--nav" href={sceneUrl('why')}>Why Munari</a>
           <a className="m-link m-link--nav" href={GUIDE_URL} target="_blank" rel="noreferrer">Guide</a>
           <a className="m-link m-link--nav" href={SOURCE_ROOT} target="_blank" rel="noreferrer">GitHub</a>
         </nav>

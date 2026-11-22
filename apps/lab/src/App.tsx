@@ -39,6 +39,7 @@ const LampApp = lazy(() => import('./scenes/lamp/Lamp').then(m => ({ default: m.
 const DistortionWaveApp = lazy(() => import('./scenes/distortion-wave/DistortionWave').then(m => ({ default: m.DistortionWaveApp })))
 const RainApp = lazy(() => import('./scenes/rain/Rain').then(m => ({ default: m.RainApp })))
 const StyleApp = lazy(() => import('./scenes/style/Style').then(m => ({ default: m.StyleApp })))
+const WhyApp = lazy(() => import('./scenes/why/Why').then(m => ({ default: m.WhyApp })))
 const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
 
 // Each advertised demo's page, keyed by its catalog id. The `satisfies`
@@ -80,6 +81,7 @@ const LAB_SCENES = [
   'distortion-wave',
   'wordmark',
   'style',
+  'why',
 ] as const
 
 type SceneId = 'home' | DemoId | (typeof LAB_SCENES)[number]
@@ -168,6 +170,8 @@ function studySceneFor(scene: SceneId) {
       return <WordmarkApp />
     case 'style':
       return <StyleApp />
+    case 'why':
+      return <WhyApp />
     case 'candidates':
       return <CandidatesApp />
     case 'gravity':
@@ -232,6 +236,28 @@ function SceneHud({ scene }: { scene: SceneId }) {
   return null
 }
 
+function isSitePage(scene: SceneId): boolean {
+  return scene === 'home' || scene === 'style' || scene === 'why'
+}
+
+function sceneDocumentTitle(scene: SceneId): string {
+  if (scene === 'home') return 'Munari · Live HTML in 3D'
+  if (scene === 'style') return 'Style guide · Munari'
+  if (scene === 'why') return 'Why Munari · Munari'
+  return `${demoFor(scene)?.title ?? scene} · Munari`
+}
+
+function omitsTrialNotice(scene: SceneId): boolean {
+  return scene === 'home' || scene === 'why' || scene === 'marble-hand' || scene === 'plume' || scene === 'postcard'
+}
+
+function renderSitePage(scene: SceneId) {
+  if (scene === 'home') return <HomeApp onReady={revealSite} />
+  if (scene === 'style') return <Suspense fallback={null}><StyleApp onReady={revealSite} /></Suspense>
+  if (scene === 'why') return <Suspense fallback={null}><WhyApp onReady={revealSite} /></Suspense>
+  return null
+}
+
 export default function App() {
   const unsupported = !useSurfaceSupport()
   const [scene, setScene] = useState(readScene)
@@ -242,12 +268,12 @@ export default function App() {
   useLayoutEffect(() => {
     const style = document.documentElement.style
     const previous = style.getPropertyValue('--document-background')
-    style.setProperty('--document-background', showShell || scene === 'home' || scene === 'style' ? '#fff' : 'var(--bench)')
+    style.setProperty('--document-background', showShell || isSitePage(scene) ? '#fff' : 'var(--bench)')
     return () => { style.setProperty('--document-background', previous) }
   }, [scene])
 
   useEffect(() => {
-    document.title = scene === 'home' ? 'Munari · Live HTML in 3D' : scene === 'style' ? 'Style guide · Munari' : `${demoFor(scene)?.title ?? scene} · Munari`
+    document.title = sceneDocumentTitle(scene)
   }, [scene])
 
   // …and the URL stays authoritative afterwards. Without this, navigating
@@ -319,7 +345,7 @@ export default function App() {
   // The overview holds no demo; Marble Hand, Plume, and Postcard explain
   // capability in their own UI.
   const notice =
-    showChrome && unsupported && scene !== 'home' && scene !== 'marble-hand' && scene !== 'plume' && scene !== 'postcard' ? (
+    showChrome && unsupported && !omitsTrialNotice(scene) ? (
       <details className="trial-notice">
         <summary>Standard HTML mode</summary>
         <p className="hint">
@@ -330,16 +356,12 @@ export default function App() {
       </details>
     ) : null
 
-  // The overview is its own full-width page with no sidebar. Every demo
-  // assumes a window-sized canvas, so each keeps its own frame beside the
-  // navigation. Replacing a frame on navigation avoids an extra joint-history
-  // entry.
-  if (showShell && scene === 'home') {
-    return <SceneBoundary key={scene} scene={scene}><HomeApp onReady={revealSite} /></SceneBoundary>
-  }
-  // The style guide is a page of the site, like the overview, not a demo.
-  if (showShell && scene === 'style') {
-    return <SceneBoundary key={scene} scene={scene}><Suspense fallback={null}><StyleApp onReady={revealSite} /></Suspense></SceneBoundary>
+  // Full-width site pages (overview, style guide, Why Munari) have no sidebar.
+  // Every demo assumes a window-sized canvas, so each keeps its own frame beside
+  // navigation; replacing a frame avoids an extra joint-history entry.
+  const sitePage = showShell ? renderSitePage(scene) : null
+  if (sitePage !== null) {
+    return <SceneBoundary key={scene} scene={scene}>{sitePage}</SceneBoundary>
   }
   if (showShell) {
     const frameSrc = sceneUrl(scene, { framed: true })

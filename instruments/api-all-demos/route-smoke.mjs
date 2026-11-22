@@ -24,7 +24,7 @@ const markers = {
   veil: '.veil-page', knobs: '.knb-page', optics: '.opt-page', logo: '.logo-page .logo-word', selection: '.sel-prose',
   candidates: '.cand-rail', refraction: '.refraction-page', gallery: '.gallery-page', crystal: '.crystal-page',
   controls: '.controls-page', 'marble-hand': '.mh-app', plume: '.plume-page', gravity: '.gv-poem', lamp: '.lamp-page',
-  rain: '.rain-page', wordmark: '.wordmark-page', style: '.style-page .m-display',
+  rain: '.rain-page', 'distortion-wave': '.wave-page', wordmark: '.wordmark-page', style: '.style-page .m-display', why: '.why-page .m-display',
   light: '.light-page[data-page-ready="true"] .light-masthead-title',
   postcard: '.light-page[data-page-ready="true"] .postcard-hero-holder',
 }
@@ -65,7 +65,7 @@ try {
       await page.evaluate(() => document.fonts.ready)
       const selected = await page.evaluate(async ({ scene, candidate }) => {
         const { demoFor } = await import('/src/components/sceneCatalog.ts')
-        const expectedTitle = scene === 'home' ? 'Munari · Live HTML in 3D' : scene === 'style' ? 'Style guide · Munari' : `${demoFor(scene)?.title ?? scene} · Munari`
+        const expectedTitle = scene === 'home' ? 'Munari · Live HTML in 3D' : scene === 'style' ? 'Style guide · Munari' : scene === 'why' ? 'Why Munari · Munari' : `${demoFor(scene)?.title ?? scene} · Munari`
         return {
           title: document.title, expectedTitle,
           candidate: document.querySelector('.cand-rail [aria-current="page"] strong')?.textContent?.toLowerCase() ?? null,

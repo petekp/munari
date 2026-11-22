@@ -39,6 +39,7 @@ records commands, measured limits, and what each check can establish.
 | `distortion-wave` | [DistortionWave](apps/lab/src/scenes/distortion-wave/DistortionWave.tsx) | Outgoing and incoming `CaptureContent` snapshots revealing native state changes along traveling shader waves |
 | `wordmark` | [Wordmark](apps/lab/src/scenes/wordmark/Wordmark.tsx), [MunariLogo](apps/lab/src/components/MunariLogo.tsx) | Independently morphing 3D letter meshes and reusable site wordmark |
 | `style` | [Style](apps/lab/src/scenes/style/Style.tsx) | Live token and component system reference sheet; no Surface handoff |
+| `why` | [Why](apps/lab/src/scenes/why/Why.tsx), [diagrams](apps/lab/src/scenes/why/whyDiagrams.tsx), [stage](apps/lab/src/scenes/why/whyStage.tsx) | Interactive visual walkthrough of Munari's value props, specimens, and on-demand demo stage |
 
 ## Candidate studies
 

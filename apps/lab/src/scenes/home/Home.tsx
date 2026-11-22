@@ -46,6 +46,7 @@ export function HomeApp({ onReady }: HomeProps) {
           <span aria-hidden><MunariLogo ground="light" /></span>
         </a>
         <nav aria-label="Project">
+          <a href={sceneUrl('why')}>Why Munari</a>
           <a href={GUIDE_URL} target="_blank" rel="noreferrer">Guide</a>
           <a href={SOURCE_ROOT} target="_blank" rel="noreferrer">GitHub</a>
         </nav>
@@ -106,6 +107,7 @@ export function HomeApp({ onReady }: HomeProps) {
       <footer className="home-footer">
         <p>Named for the Italian designer Bruno Munari.</p>
         <span className="home-footer-links">
+          <a href={sceneUrl('why')}>Why Munari</a>
           <a href={sceneUrl('style')}>Style guide</a>
           <a href={`${SOURCE_ROOT}/issues`} target="_blank" rel="noreferrer">Feedback</a>
         </span>
