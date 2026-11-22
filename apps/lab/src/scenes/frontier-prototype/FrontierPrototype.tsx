@@ -35,7 +35,7 @@ const VARIANTS: readonly VariantEntry[] = [
     num: '01',
     shortLabel: 'Cmd+K',
     title: 'Refractive Cmd+K',
-    instruction: 'Drag the 30 px acrylic collar across the color bands, or filter commands while prose stays selectable.',
+    instruction: 'Drag bar to refract HTML.',
   },
   {
     id: 'letterpress',

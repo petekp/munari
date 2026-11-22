@@ -1,8 +1,9 @@
-// Variant A: Refractive polymer Cmd+K palette over a Swiss / Munari poster specimen.
+// Variant 01 (`FrontierCmdk`): Optical Liquid-Crystal Command Bar.
 //
-// Bold color bands, coordinate rules, and display typography run directly behind
-// the 30 px crystal bevel so Snell refraction and RGB dispersion read immediately,
-// while the document underneath stays native selectable HTML at 0 fps idle.
+// Pairs a translucent, borderless command palette `<Surface>` with Munari's
+// physical rounded-rect SDF meniscus refraction, 5-tap spectral dispersion,
+// and 16-tap hardware trilinear mipmap frost over a live selectable HTML folio —
+// idling at `0 fps` when stationary.
 
 import {
   useCallback,
@@ -26,45 +27,75 @@ import {
   useElementCapture,
   useSurfaceNodes,
   useSurfacePaintedSize,
+  useSurfaceRefresh,
   useSurfaceStatus,
   useSurfaceSupport,
   type CaptureHandle,
   type ElementCapture,
 } from '@petepetrash/munari'
-import { Button, Tag } from '../../components/system'
+import { Button } from '../../components/system'
+import {
+  CMDK_COMMANDS,
+  FrontierCmdkDialog,
+  type CommandItem,
+} from './FrontierCmdkDialog'
 import { FrontierCmdkPoster } from './FrontierCmdkPoster'
 import {
+  CMDK_LENSES,
   CMDK_SHADOW_PAD,
+  applyCmdkLens,
   createCmdkMaterial,
   createCmdkShadowMaterial,
   createCmdkUniforms,
+  type CmdkLensId,
   type CmdkUniforms,
 } from './frontierCmdkNodes'
 import {
   FrontierCanvasTelemetry,
   FrontierPixelCamera,
-  createPaperPlaceholderTexture,
   retainActiveSurface,
   useReducedMotion,
 } from './frontierStage'
+import './frontierCmdk.css'
 
 const noRaycast = () => {}
 
-interface CommandItem {
-  readonly id: string
-  readonly label: string
-  readonly hint: string
-  readonly shortcut: string
+function createMipmapPlaceholder(): THREE.DataTexture {
+  const data = new Uint8Array([246, 244, 238, 255])
+  const tex = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.generateMipmaps = true
+  tex.minFilter = THREE.LinearMipmapLinearFilter
+  tex.needsUpdate = true
+  return tex
 }
 
-const COMMANDS: readonly CommandItem[] = [
-  { id: 'prism-boost', label: 'Toggle flint-glass high dispersion', hint: '0.64 RGB wavelength split', shortcut: 'P' },
-  { id: 'theme-poster', label: 'Switch poster to Munari color bands', hint: 'Coral, sky & ink bars', shortcut: '1' },
-  { id: 'theme-grid', label: 'Switch poster to architectural grid', hint: 'Precision rule refraction', shortcut: '2' },
-  { id: 'light-left', label: 'Move studio lamp to morning left', hint: 'Casts right caustic shadow', shortcut: 'L' },
-  { id: 'light-right', label: 'Move studio lamp to evening right', hint: 'Casts left caustic shadow', shortcut: 'R' },
-  { id: 'insert-note', label: 'Append live note to native HTML below', hint: 'Updates DOM underneath', shortcut: 'N' },
-]
+function useSlotSize(
+  ref: { readonly current: HTMLElement | null },
+  fallbackW: number,
+  fallbackH: number,
+  active: boolean,
+): readonly [number, number] {
+  const [size, setSize] = useState<readonly [number, number]>([fallbackW, fallbackH])
+
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el || !active) return undefined
+    const measure = () => {
+      const r = el.getBoundingClientRect()
+      if (r.width <= 0 || r.height <= 0) return
+      const nw = Math.max(1, Math.round(r.width))
+      const nh = Math.max(1, Math.round(r.height))
+      setSize((prev) => (prev[0] === nw && prev[1] === nh ? prev : [nw, nh]))
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [active, ref])
+
+  return size
+}
 
 function CmdkOpticalSlot({
   bgCapture,
@@ -75,7 +106,7 @@ function CmdkOpticalSlot({
 }) {
   const surface = useSurfaceNodes()
   const bgFrames = useCaptureFrame(bgCapture)
-  const [blank] = useState(createPaperPlaceholderTexture)
+  const [blank] = useState(createMipmapPlaceholder)
   const [bgMap] = useState(() => texture(blank))
 
   const material = useMemo(
@@ -95,7 +126,7 @@ function CmdkOpticalSlot({
     const latest = bgFrames.get()
     if (latest) {
       bgMap.value = latest.texture
-      uniforms.bgTexAspect.value = latest.height > 0 ? latest.width / latest.height : 1
+      uniforms.bgReady.value = 1
     }
   })
 
@@ -112,14 +143,14 @@ function CmdkShadowSkirt({
   const painted = useSurfacePaintedSize()
   const meshRef = useRef<THREE.Mesh>(null)
   const material = useMemo(() => createCmdkShadowMaterial(uniforms), [uniforms])
-  useEffect(() => () => material.dispose(), [uniforms, material])
+  useEffect(() => () => material.dispose(), [material])
 
   useFrame(() => {
     const mesh = meshRef.current
     if (!mesh) return
     const [pw, ph] = painted()
-    const w = Math.max(pw || uniforms.panelSize.value.x, 1)
-    const h = Math.max(ph || uniforms.panelSize.value.y, 1)
+    const w = Math.max(pw || uniforms.panelRectCss.value.z, 1)
+    const h = Math.max(ph || uniforms.panelRectCss.value.w, 1)
     mesh.scale.set((w + CMDK_SHADOW_PAD * 2) / w, (h + CMDK_SHADOW_PAD * 2) / h, 1)
   })
 
@@ -141,18 +172,22 @@ function CmdkScenePresenter({
   bgCapture,
   slotElRef,
   lightPosRef,
-  flintGlass,
+  lens,
+  syncKey,
   wakeRef,
 }: {
   readonly bgCapture: ElementCapture
   readonly slotElRef: { readonly current: HTMLDivElement | null }
   readonly lightPosRef: { readonly current: { u: number; v: number } }
-  readonly flintGlass: boolean
+  readonly lens: CmdkLensId
+  readonly syncKey: string
   readonly wakeRef: { current: (() => void) | null }
 }) {
   const status = useSurfaceStatus()
+  const refreshSurface = useSurfaceRefresh()
   const invalidate = useThree((s) => s.invalidate)
   const uniforms = useMemo(createCmdkUniforms, [])
+  const prevSyncRef = useRef(syncKey)
 
   useEffect(() => {
     wakeRef.current = () => invalidate()
@@ -161,12 +196,17 @@ function CmdkScenePresenter({
     }
   }, [invalidate, wakeRef])
 
-  useEffect(() => {
-    uniforms.refractStrength.value = flintGlass ? 0.175 : 0.115
-    uniforms.dispersion.value = flintGlass ? 0.64 : 0.44
-    uniforms.polymerOpacity.value = flintGlass ? 0.52 : 0.60
+  useLayoutEffect(() => {
+    applyCmdkLens(uniforms, lens)
     invalidate()
-  }, [flintGlass, uniforms, invalidate])
+  }, [lens, uniforms, invalidate])
+
+  useEffect(() => {
+    if (prevSyncRef.current !== syncKey) {
+      prevSyncRef.current = syncKey
+      refreshSurface()
+    }
+  }, [refreshSurface, syncKey])
 
   useEffect(() => {
     if (status.presentation === 'scene') return retainActiveSurface()
@@ -178,12 +218,13 @@ function CmdkScenePresenter({
     const bgBounds = bgCapture.getBounds()
     if (!slot || !bgBounds || bgBounds.width <= 0 || bgBounds.height <= 0) return
     const sr = slot.getBoundingClientRect()
-    uniforms.panelSize.value.set(Math.max(sr.width, 1), Math.max(sr.height, 1))
-    const offsetU = (sr.left - bgBounds.left) / bgBounds.width
-    const offsetV = 1 - (sr.top + sr.height - bgBounds.top) / bgBounds.height
-    const scaleU = sr.width / bgBounds.width
-    const scaleV = sr.height / bgBounds.height
-    uniforms.bgUvRect.value.set(offsetU, offsetV, scaleU, scaleV)
+    uniforms.bgSizeCss.value.set(bgBounds.width, bgBounds.height)
+    uniforms.panelRectCss.value.set(
+      sr.left - bgBounds.left,
+      sr.top - bgBounds.top,
+      Math.max(sr.width, 1),
+      Math.max(sr.height, 1),
+    )
 
     const lx = bgBounds.left + lightPosRef.current.u * bgBounds.width
     const ly = bgBounds.top + lightPosRef.current.v * bgBounds.height
@@ -195,6 +236,7 @@ function CmdkScenePresenter({
   return (
     <Surface.Mesh
       placement="match-dom"
+      pointerRoute="auto"
       renderOrder={2}
       material={<CmdkOpticalSlot bgCapture={bgCapture} uniforms={uniforms} />}
     >
@@ -207,19 +249,21 @@ export function FrontierCmdk() {
   const supported = useSurfaceSupport()
   const reducedMotion = useReducedMotion()
   const canvasId = useId()
-  const titleId = useId()
   const inputId = useId()
   const listboxId = useId()
-  const articleCapture = useElementCapture()
+  // Pinned 1.5x resolution ensures Munari builds a full hardware trilinear mipmap chain
+  // (`surfaceSourceRuntime.ts` `applyFilterPolicy`): mip 0 stays crisp for the crystal bezel
+  // while mip 4.35 delivers silky, ghost-free frosted diffusion in the interior well.
+  const articleCapture = useElementCapture({ resolution: 1.5 })
 
   const [open, setOpen] = useState(true)
   const [query, setQuery] = useState('')
   const [activeIdx, setActiveIdx] = useState(0)
-  const [docTheme, setDocTheme] = useState<'poster' | 'grid'>('poster')
-  const [flintGlass, setFlintGlass] = useState(false)
+  const [lens, setLens] = useState<CmdkLensId>('crown')
+  const [docTheme, setDocTheme] = useState<'folio' | 'studio'>('folio')
   const [notes, setNotes] = useState<string[]>([])
-  const [lampUi, setLampUi] = useState({ u: 0.16, v: 0.08 })
-  const [lastAction, setLastAction] = useState('Drag the top glass collar across the bold stripes')
+  const [lampSide, setLampSide] = useState<'left' | 'right'>('left')
+  const [dragHover, setDragHover] = useState(false)
 
   const stageRef = useRef<HTMLDivElement>(null)
   const slotRef = useRef<HTMLDivElement>(null)
@@ -231,11 +275,13 @@ export function FrontierCmdk() {
   const lightPosRef = useRef({ u: 0.16, v: 0.08 })
   const wakeCanvasRef = useRef<(() => void) | null>(null)
 
+  const [slotW, slotH] = useSlotSize(slotRef, 548, 344, open)
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return COMMANDS
-    return COMMANDS.filter(
-      (item) => item.label.toLowerCase().includes(q) || item.hint.toLowerCase().includes(q),
+    if (!q) return CMDK_COMMANDS
+    return CMDK_COMMANDS.filter(
+      (item) => item.label.toLowerCase().includes(q) || item.meta.toLowerCase().includes(q),
     )
   }, [query])
 
@@ -250,7 +296,9 @@ export function FrontierCmdk() {
     const list = listRef.current
     if (!list) return
     const item = list.children[activeIdx]
-    if (item instanceof HTMLElement) item.scrollIntoView({ block: 'nearest' })
+    if (item instanceof HTMLElement && list.scrollHeight > list.clientHeight) {
+      item.scrollIntoView({ block: 'nearest' })
+    }
   }, [activeIdx])
 
   const refreshBg = useCallback(() => {
@@ -260,37 +308,49 @@ export function FrontierCmdk() {
     })
   }, [articleCapture])
 
-  const setLampPosition = useCallback((u: number, v: number) => {
-    lightPosRef.current = { u, v }
-    setLampUi({ u, v })
-    wakeCanvasRef.current?.()
-  }, [])
+  const toggleLampSweep = useCallback(() => {
+    const next = lampSide === 'left' ? 'right' : 'left'
+    setLampSide(next)
+    const targetU = next === 'left' ? 0.14 : 0.86
+    if (reducedMotion) {
+      lightPosRef.current = { u: targetU, v: 0.08 }
+      wakeCanvasRef.current?.()
+      return
+    }
+    const startU = lightPosRef.current.u
+    const t0 = performance.now()
+    const dur = 360
+    const step = (now: number) => {
+      const t = Math.min(1, (now - t0) / dur)
+      const ease = 1 - Math.pow(1 - t, 3)
+      lightPosRef.current = { u: startU + (targetU - startU) * ease, v: 0.08 }
+      wakeCanvasRef.current?.()
+      if (t < 1) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }, [lampSide, reducedMotion])
 
   const executeCommand = useCallback(
     (cmd: CommandItem | undefined) => {
       if (!cmd) return
-      if (cmd.id === 'theme-poster') {
-        setDocTheme('poster')
+      if (cmd.id === 'lens-flint') {
+        setLens((cur) => (cur === 'flint' ? 'crown' : 'flint'))
+      } else if (cmd.id === 'lens-smoked') {
+        setLens((cur) => (cur === 'smoked' ? 'crown' : 'smoked'))
+      } else if (cmd.id === 'toggle-ground') {
+        setDocTheme((t) => (t === 'folio' ? 'studio' : 'folio'))
         refreshBg()
-      } else if (cmd.id === 'theme-grid') {
-        setDocTheme('grid')
-        refreshBg()
-      } else if (cmd.id === 'light-left') {
-        setLampPosition(0.14, 0.08)
-      } else if (cmd.id === 'light-right') {
-        setLampPosition(0.86, 0.08)
-      } else if (cmd.id === 'prism-boost') {
-        setFlintGlass((v) => !v)
+      } else if (cmd.id === 'sweep-lamp') {
+        toggleLampSweep()
       } else if (cmd.id === 'insert-note') {
         setNotes((prev) => [
           ...prev.slice(-2),
-          `Live DOM update #${prev.length + 1}: Refracted in real time while prose stays selectable.`,
+          `Note #${prev.length + 1} appended to native DOM — refracted live at 0 fps idle.`,
         ])
         refreshBg()
       }
-      setLastAction(cmd.label)
     },
-    [refreshBg, setLampPosition],
+    [refreshBg, toggleLampSweep],
   )
 
   useEffect(() => {
@@ -326,9 +386,8 @@ export function FrontierCmdk() {
     executeCommand(filtered[activeIdx] ?? filtered[0])
   }
 
-  // Native viewport-space drag overlay positioned over the palette's top grip bar
   const onGripDown = (event: PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return
+    if (event.button !== 0 || !event.nativeEvent.isTrusted) return
     event.currentTarget.setPointerCapture(event.pointerId)
     dragStartRef.current = {
       px: event.clientX,
@@ -361,7 +420,7 @@ export function FrontierCmdk() {
   }
 
   const onStagePointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (reducedMotion || dragStartRef.current) return
+    if (!event.nativeEvent.isTrusted || reducedMotion || dragStartRef.current) return
     const stage = stageRef.current
     if (!stage) return
     const r = stage.getBoundingClientRect()
@@ -373,8 +432,7 @@ export function FrontierCmdk() {
     wakeCanvasRef.current?.()
   }
 
-  const activeItem = filtered[activeIdx]
-  const activeOptionId = activeItem ? `${listboxId}-${activeItem.id}` : undefined
+  const syncKey = `${lens}:${query}:${activeIdx}:${docTheme}:${dragHover ? 1 : 0}`
 
   return (
     <div className="frontier-bench">
@@ -383,21 +441,27 @@ export function FrontierCmdk() {
           <Button compact variant={open ? 'solid' : 'outline'} onClick={() => setOpen((v) => !v)}>
             {open ? 'Palette open (⌘K)' : 'Open palette (⌘K)'}
           </Button>
-          <Button compact variant={flintGlass ? 'solid' : 'outline'} onClick={() => setFlintGlass((v) => !v)}>
-            {flintGlass ? 'Lens: Flint prism (0.64)' : 'Lens: Crown acrylic (0.44)'}
-          </Button>
+          {(['crown', 'flint', 'smoked'] as const).map((id) => (
+            <Button
+              key={id}
+              compact
+              variant={lens === id ? 'solid' : 'outline'}
+              onClick={() => setLens(id)}
+            >
+              {CMDK_LENSES[id].label}
+            </Button>
+          ))}
           <Button
             compact
-            variant="outline"
+            variant={docTheme === 'studio' ? 'solid' : 'outline'}
             onClick={() => {
-              setDocTheme((t) => (t === 'poster' ? 'grid' : 'poster'))
+              setDocTheme((t) => (t === 'folio' ? 'studio' : 'folio'))
               refreshBg()
             }}
           >
-            Ground: {docTheme === 'poster' ? 'Munari stripes' : 'Precision grid'}
+            {docTheme === 'folio' ? 'Ground: Editorial folio' : 'Ground: Dark studio'}
           </Button>
         </div>
-        <Tag>{lastAction}</Tag>
       </div>
 
       <div
@@ -405,12 +469,6 @@ export function FrontierCmdk() {
         className="frontier-stage-wrap frontier-cmdk-stage"
         onPointerMove={onStagePointerMove}
       >
-        <span
-          className="frontier-lamp-pip"
-          style={{ left: `${lampUi.u * 100}%`, top: `${lampUi.v * 100}%` }}
-          aria-hidden="true"
-        />
-
         <FrontierCmdkPoster
           articleRef={articleCapture.ref}
           docTheme={docTheme}
@@ -421,8 +479,10 @@ export function FrontierCmdk() {
         {open && (
           <div
             ref={gripOverlayRef}
-            className="frontier-cmdk-grip-hit"
-            title="Drag palette across stripes"
+            className="cmdk-grip-hit"
+            title="Drag command bar across color blocks"
+            onPointerEnter={() => setDragHover(true)}
+            onPointerLeave={() => setDragHover(false)}
             onPointerDown={onGripDown}
             onPointerMove={onGripMove}
             onPointerUp={onGripUp}
@@ -432,100 +492,45 @@ export function FrontierCmdk() {
 
         <div
           ref={slotRef}
-          className="frontier-cmdk-slot"
+          className="cmdk-slot"
           style={{ display: open ? 'block' : 'none' }}
         >
           <Surface.Root canvasId={canvasId} inScene={supported && open}>
-            <Surface.HTML>
-              <div className={`frontier-cmdk-root${!supported ? ' frontier-cmdk-root--fallback' : ''}`}>
-                <dialog ref={dialogRef} className="frontier-cmdk-dialog" aria-labelledby={titleId}>
-                  <div className="frontier-cmdk-well">
-                    <div className="frontier-cmdk-grip">
-                      <span id={titleId} className="frontier-cmdk-title">
-                        Drag glass rim across stripes
-                      </span>
-                      <button
-                        type="button"
-                        className="frontier-cmdk-close"
-                        onClick={() => setOpen(false)}
-                      >
-                        Esc
-                      </button>
-                    </div>
-
-                    <form className="frontier-cmdk-form" onSubmit={onFormSubmit}>
-                      <label htmlFor={inputId} className="frontier-sr-only">
-                        Filter commands
-                      </label>
-                      <input
-                        id={inputId}
-                        type="search"
-                        role="combobox"
-                        aria-expanded={open}
-                        aria-controls={listboxId}
-                        aria-activedescendant={activeOptionId}
-                        aria-autocomplete="list"
-                        className="frontier-cmdk-input"
-                        placeholder="Search optical or document commands…"
-                        value={query}
-                        onChange={(e) => {
-                          setQuery(e.target.value)
-                          setActiveIdx(0)
-                        }}
-                        onKeyDown={onInputKeyDown}
-                      />
-                      <button type="submit" className="frontier-cmdk-submit">
-                        Run
-                      </button>
-                    </form>
-
-                    <ul
-                      ref={listRef}
-                      id={listboxId}
-                      className="frontier-cmdk-list"
-                      role="listbox"
-                      aria-label="Available commands"
-                    >
-                      {filtered.length === 0 ? (
-                        <li role="option" aria-selected={false} aria-disabled="true" className="frontier-cmdk-empty">
-                          No matching commands.
-                        </li>
-                      ) : (
-                        filtered.map((item, idx) => {
-                          const selected = idx === activeIdx
-                          return (
-                            <li
-                              key={item.id}
-                              id={`${listboxId}-${item.id}`}
-                              role="option"
-                              aria-selected={selected}
-                              className="frontier-cmdk-option"
-                              data-selected={selected || undefined}
-                              onClick={() => {
-                                setActiveIdx(idx)
-                                executeCommand(item)
-                              }}
-                            >
-                              <span>
-                                <b>{item.label}</b>
-                                <small>{item.hint}</small>
-                              </span>
-                              <kbd>{item.shortcut}</kbd>
-                            </li>
-                          )
-                        })
-                      )}
-                    </ul>
-                  </div>
-                </dialog>
-              </div>
+            <Surface.HTML size={[slotW, slotH]}>
+              <FrontierCmdkDialog
+                dialogRef={dialogRef}
+                listRef={listRef}
+                inputId={inputId}
+                listboxId={listboxId}
+                open={open}
+                supported={supported}
+                lens={lens}
+                docTheme={docTheme}
+                dragHover={dragHover}
+                query={query}
+                activeIdx={activeIdx}
+                filtered={filtered}
+                onChangeQuery={(next) => {
+                  setQuery(next)
+                  setActiveIdx(0)
+                }}
+                onInputKeyDown={onInputKeyDown}
+                onFormSubmit={onFormSubmit}
+                onClose={() => setOpen(false)}
+                onHoverIdx={setActiveIdx}
+                onExecuteIdx={(idx, item) => {
+                  setActiveIdx(idx)
+                  executeCommand(item)
+                }}
+              />
             </Surface.HTML>
             <Surface.Scene>
               <CmdkScenePresenter
                 bgCapture={articleCapture}
                 slotElRef={slotRef}
                 lightPosRef={lightPosRef}
-                flintGlass={flintGlass}
+                lens={lens}
+                syncKey={syncKey}
                 wakeRef={wakeCanvasRef}
               />
             </Surface.Scene>
@@ -537,7 +542,7 @@ export function FrontierCmdk() {
             id={canvasId}
             frameloop="demand"
             pointerMode="surfaces"
-            gl={{ alpha: true, antialias: false, depth: false }}
+            gl={{ alpha: true, antialias: true, depth: false }}
             onCreated={({ gl }) => gl.setClearAlpha(0)}
             className="frontier-overlay-canvas"
           >

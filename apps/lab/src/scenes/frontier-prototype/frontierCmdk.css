@@ -1,0 +1,635 @@
+/* Variant 01 (`FrontierCmdk`): Optical Liquid-Crystal Command Bar & Editorial Folio */
+
+.frontier-cmdk-stage {
+  display: grid;
+  place-items: stretch;
+}
+
+/* ── Underlying Native HTML Editorial / Studio Folio ──────────────────────── */
+
+.cmdk-backdrop {
+  --scrollbar-thumb: rgba(15, 23, 42, 0.28);
+  --scrollbar-track: transparent;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+
+  box-sizing: border-box;
+  width: 100%;
+  height: clamp(510px, 75vh, 700px);
+  overflow-y: auto;
+  padding: clamp(20px, 3.2vw, 34px) clamp(20px, 4vw, 48px);
+  font-family: var(--m-sans);
+  user-select: text;
+}
+
+.cmdk-backdrop--folio {
+  background:
+    linear-gradient(90deg, rgba(20, 24, 33, 0.035) 1px, transparent 1px) 0 0 / 36px 36px,
+    linear-gradient(0deg, rgba(20, 24, 33, 0.035) 1px, transparent 1px) 0 0 / 36px 36px,
+    #f6f4ee;
+  color: #14171f;
+}
+
+.cmdk-backdrop--studio {
+  --scrollbar-thumb: rgba(226, 232, 240, 0.28);
+  background:
+    radial-gradient(80% 65% at 50% 26%, rgba(56, 189, 248, 0.12) 0%, rgba(15, 18, 26, 0) 68%),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px) 0 0 / 36px 36px,
+    linear-gradient(0deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px) 0 0 / 36px 36px,
+    #0e1118;
+  color: #f1f5f9;
+}
+
+.cmdk-folio-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  opacity: 0.68;
+}
+
+/* Sized so the 548 px resting palette slices directly through Coral on the left,
+ * Cobalt + Amber across the top meniscus, and Emerald diagonal stripes on the right! */
+.cmdk-art-band {
+  max-width: 820px;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: 1.15fr 1fr 1fr 1.15fr;
+  gap: 12px;
+  height: 204px;
+  margin-bottom: 26px;
+}
+
+.cmdk-art-block {
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cmdk-art-block--coral {
+  background: linear-gradient(145deg, #ff6b57 0%, #e04838 100%);
+}
+
+.cmdk-art-block--cobalt {
+  background: linear-gradient(145deg, #2563eb 0%, #1d4ed8 55%, #38bdf8 100%);
+}
+
+.cmdk-art-block--amber {
+  background: linear-gradient(145deg, #fbbf24 0%, #f59e0b 65%, #ea580c 100%);
+}
+
+.cmdk-art-block--emerald {
+  background: linear-gradient(145deg, #10b981 0%, #059669 65%, #0d9488 100%);
+}
+
+.cmdk-art-disc {
+  width: 76px;
+  height: 76px;
+  border-radius: 999px;
+}
+
+.cmdk-art-disc--ivory {
+  background: #fbf9f3;
+}
+
+.cmdk-art-diamond {
+  width: 66px;
+  height: 66px;
+  border-radius: 14px;
+  transform: rotate(45deg);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.cmdk-art-ring {
+  width: 84px;
+  height: 84px;
+  border-radius: 999px;
+  border: 12px solid rgba(255, 255, 255, 0.88);
+  box-sizing: border-box;
+}
+
+.cmdk-art-stripes {
+  width: 100%;
+  height: 100%;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.32) 0 8px,
+    transparent 8px 17px
+  );
+}
+
+.cmdk-editorial-body {
+  max-width: 820px;
+  margin-inline: auto;
+  display: grid;
+  gap: 22px;
+}
+
+.cmdk-editorial-lead {
+  display: grid;
+  gap: 8px;
+  max-width: 60ch;
+}
+
+.cmdk-editorial-h2 {
+  margin: 0;
+  font-size: clamp(28px, 3.6vw, 40px);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.cmdk-editorial-sub {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.58;
+  opacity: 0.82;
+}
+
+.cmdk-editorial-cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 28px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.cmdk-editorial-col h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.cmdk-editorial-col p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  opacity: 0.76;
+}
+
+.cmdk-notes-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.cmdk-note-pill {
+  margin: 0;
+  padding: 9px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #2563eb 10%, transparent);
+  border: 1px solid color-mix(in srgb, #2563eb 28%, transparent);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.cmdk-note-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #2563eb;
+  flex: 0 0 auto;
+}
+
+/* ── Floating Optical Command Bar Slot & Drag Handle ──────────────────────── */
+
+.cmdk-slot {
+  position: absolute;
+  top: 76px;
+  left: max(12px, calc(50% - 274px));
+  width: min(548px, calc(100% - 24px));
+  z-index: 4;
+}
+
+/* Viewport-space drag target over the top 28 px drag-bar zone (never blocks input!) */
+.cmdk-grip-hit {
+  position: absolute;
+  top: 76px;
+  left: max(24px, calc(50% - 262px));
+  width: min(524px, calc(100% - 48px));
+  height: 28px;
+  z-index: 9;
+  cursor: grab;
+  touch-action: none;
+}
+
+.cmdk-grip-hit:active {
+  cursor: grabbing;
+}
+
+/* Captured Command Bar Root — generous 20px inset keeps all rows inside the flat frosted well
+ * (`bevelWidth = 18px`, `border-radius = 26px`, inner capsule `border-radius = 9px`). */
+.cmdk-root,
+.ui-root .cmdk-root {
+  --cmdk-ink: #0d1117;
+  --cmdk-muted: rgba(13, 17, 23, 0.56);
+  --cmdk-hairline: rgba(13, 17, 23, 0.08);
+  --cmdk-chip-bg: rgba(13, 17, 23, 0.045);
+  --cmdk-chip-border: rgba(13, 17, 23, 0.095);
+  --cmdk-hover-bg: rgba(255, 255, 255, 0.38);
+  /* Luminous elevated white-crystal capsule on Crown & Flint */
+  --cmdk-sel-bg: rgba(255, 255, 255, 0.72);
+  --cmdk-sel-border: rgba(13, 17, 23, 0.08);
+  --cmdk-sel-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 2px 6px rgba(13, 17, 23, 0.05);
+  --cmdk-sel-ink: #090c12;
+  --cmdk-sel-muted: rgba(13, 17, 23, 0.62);
+  --cmdk-sel-chip-bg: rgba(13, 17, 23, 0.055);
+  --cmdk-sel-chip-border: rgba(13, 17, 23, 0.12);
+  --cmdk-pill: rgba(13, 17, 23, 0.18);
+  --cmdk-pill-hover: rgba(13, 17, 23, 0.36);
+  --scrollbar-thumb: rgba(13, 17, 23, 0.24);
+  --scrollbar-track: transparent;
+
+  box-sizing: border-box;
+  width: 100%;
+  padding: 13px 20px 16px;
+  border-radius: 26px;
+  background: transparent;
+  color: var(--cmdk-ink);
+  font-family: var(--m-sans);
+  user-select: none;
+}
+
+.cmdk-root--smoked,
+.ui-root .cmdk-root--smoked {
+  --cmdk-ink: #f8fafc;
+  --cmdk-muted: rgba(226, 232, 240, 0.66);
+  --cmdk-hairline: rgba(255, 255, 255, 0.045);
+  --cmdk-chip-bg: rgba(255, 255, 255, 0.028);
+  --cmdk-chip-border: rgba(255, 255, 255, 0.08);
+  --cmdk-hover-bg: rgba(255, 255, 255, 0.025);
+  --cmdk-sel-bg: rgba(255, 255, 255, 0.038);
+  --cmdk-sel-border: rgba(255, 255, 255, 0.095);
+  --cmdk-sel-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 2px 8px rgba(0, 0, 0, 0.24);
+  --cmdk-sel-ink: #ffffff;
+  --cmdk-sel-muted: rgba(226, 232, 240, 0.78);
+  --cmdk-sel-chip-bg: rgba(255, 255, 255, 0.05);
+  --cmdk-sel-chip-border: rgba(255, 255, 255, 0.13);
+  --cmdk-pill: rgba(255, 255, 255, 0.12);
+  --cmdk-pill-hover: rgba(255, 255, 255, 0.28);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.22);
+}
+
+.cmdk-root--fallback {
+  background: rgba(252, 251, 248, 0.96);
+  border: 1px solid rgba(13, 17, 23, 0.16);
+  box-shadow: 0 22px 48px rgba(13, 17, 23, 0.16);
+}
+
+.cmdk-root--fallback.cmdk-root--smoked {
+  background: rgba(18, 21, 30, 0.96);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+/* Scope `display` strictly to `dialog[open]` per modern-web-guidance `dialog` */
+.cmdk-dialog {
+  position: static;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.cmdk-dialog[open] {
+  display: block;
+}
+
+.cmdk-drag-zone {
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cmdk-drag-pill {
+  width: 34px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--cmdk-pill);
+}
+
+.cmdk-drag-pill--hover {
+  width: 44px;
+  background: var(--cmdk-pill-hover);
+}
+
+/* Locked to exact `10px` inline padding, `28px` icon column, and `11px` gap matching `.cmdk-option` */
+.cmdk-search-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 11px;
+  height: 44px;
+  padding: 0 10px 3px;
+  border-bottom: 1px solid var(--cmdk-hairline);
+}
+
+.cmdk-search-icon-col {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--cmdk-muted);
+}
+
+.cmdk-search-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.cmdk-input {
+  min-width: 0;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--cmdk-ink);
+  font-family: var(--m-sans);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.cmdk-input::placeholder {
+  color: var(--cmdk-muted);
+  font-weight: 400;
+}
+
+.cmdk-input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.cmdk-input:focus-visible {
+  outline: none;
+}
+
+.cmdk-match-count {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--cmdk-muted);
+  white-space: nowrap;
+}
+
+.cmdk-esc-btn {
+  grid-column: -2 / -1;
+  min-width: 32px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 5px;
+  border: 1px solid var(--cmdk-chip-border);
+  background: var(--cmdk-chip-bg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 1px 0 var(--cmdk-hairline);
+  color: var(--cmdk-muted);
+  font-family: var(--m-sans);
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.cmdk-esc-btn:is(:hover, [data-hover]) {
+  color: var(--cmdk-ink);
+  border-color: var(--cmdk-muted);
+}
+
+.cmdk-esc-btn:is(:active, [data-active]) {
+  background: var(--cmdk-hover-bg);
+}
+
+.cmdk-esc-btn:focus-visible:not([data-pointer-focus]) {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/* Command List — fits all 5 commands cleanly (`240px`) with zero scrollbar on both HTML-in-canvas and snapDOM */
+.cmdk-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  display: grid;
+  gap: 2px;
+  max-height: 256px;
+  overflow-y: auto;
+}
+
+@supports not (scrollbar-color: auto) {
+  .cmdk-backdrop,
+  .cmdk-list {
+    scrollbar-width: auto;
+  }
+  .cmdk-backdrop::-webkit-scrollbar,
+  .cmdk-list::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .cmdk-backdrop::-webkit-scrollbar-thumb,
+  .cmdk-list::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
+  }
+  .cmdk-backdrop::-webkit-scrollbar-track,
+  .cmdk-list::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+}
+
+.cmdk-option {
+  box-sizing: border-box;
+  height: 44px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 11px;
+  color: var(--cmdk-ink);
+  cursor: pointer;
+}
+
+.cmdk-option:is(:hover, [data-hover]) {
+  background: var(--cmdk-hover-bg);
+}
+
+.cmdk-option[data-selected] {
+  background: var(--cmdk-sel-bg);
+  border-color: var(--cmdk-sel-border);
+  color: var(--cmdk-sel-ink);
+  box-shadow: var(--cmdk-sel-shadow);
+}
+
+.cmdk-icon-tile {
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  background: var(--cmdk-chip-bg);
+  border: 1px solid var(--cmdk-chip-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+.cmdk-option[data-selected] .cmdk-icon-tile {
+  background: var(--cmdk-sel-chip-bg);
+  border-color: var(--cmdk-sel-chip-border);
+}
+
+.cmdk-icon-svg {
+  width: 15px;
+  height: 15px;
+}
+
+.cmdk-opt-label {
+  font-size: 13.8px;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cmdk-opt-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--cmdk-muted);
+  white-space: nowrap;
+}
+
+.cmdk-option[data-selected] .cmdk-opt-meta {
+  color: var(--cmdk-sel-muted);
+}
+
+.cmdk-active-pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #10b981;
+}
+
+.cmdk-kbd {
+  min-width: 32px;
+  height: 22px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 5px;
+  border: 1px solid var(--cmdk-chip-border);
+  background: var(--cmdk-chip-bg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 1px 0 var(--cmdk-hairline);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-family: var(--m-sans);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--cmdk-muted);
+}
+
+.cmdk-option[data-selected] .cmdk-kbd {
+  background: var(--cmdk-sel-chip-bg);
+  border-color: var(--cmdk-sel-chip-border);
+  color: var(--cmdk-sel-ink);
+}
+
+.cmdk-empty {
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13.5px;
+  color: var(--cmdk-muted);
+}
+
+.cmdk-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px 0;
+  border-top: 1px solid var(--cmdk-hairline);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
+  color: var(--cmdk-muted);
+}
+
+.cmdk-footer-spec {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.cmdk-spec-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #38bdf8;
+}
+
+.cmdk-footer-hints {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 640px) {
+  .cmdk-root,
+  .ui-root .cmdk-root {
+    padding: 11px 15px 14px;
+  }
+
+  .cmdk-search-row {
+    gap: 8px;
+    padding: 0 6px 3px;
+  }
+
+  .cmdk-input {
+    font-size: 13.8px;
+  }
+
+  .cmdk-art-band {
+    grid-template-columns: repeat(2, 1fr);
+    height: 152px;
+  }
+
+  .cmdk-editorial-cols {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .cmdk-opt-meta,
+  .cmdk-footer-hints {
+    display: none;
+  }
+
+  .cmdk-option {
+    padding: 0 6px;
+    gap: 9px;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+  }
+}
