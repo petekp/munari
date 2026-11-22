@@ -41,6 +41,7 @@ const RainApp = lazy(() => import('./scenes/rain/Rain').then(m => ({ default: m.
 const StyleApp = lazy(() => import('./scenes/style/Style').then(m => ({ default: m.StyleApp })))
 const WhyApp = lazy(() => import('./scenes/why/Why').then(m => ({ default: m.WhyApp })))
 const PolymerPrototypeApp = lazy(() => import('./scenes/polymer-prototype/PolymerPrototype').then(m => ({ default: m.PolymerPrototypeApp })))
+const FrontierPrototypeApp = lazy(() => import('./scenes/frontier-prototype/FrontierPrototype').then(m => ({ default: m.FrontierPrototypeApp })))
 const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
 
 // Each advertised demo's page, keyed by its catalog id. The `satisfies`
@@ -84,6 +85,7 @@ const LAB_SCENES = [
   'style',
   'why',
   'polymer-prototype',
+  'frontier-prototype',
 ] as const
 
 type SceneId = 'home' | DemoId | (typeof LAB_SCENES)[number]
@@ -176,6 +178,8 @@ function studySceneFor(scene: SceneId) {
       return <WhyApp />
     case 'polymer-prototype':
       return <PolymerPrototypeApp />
+    case 'frontier-prototype':
+      return <FrontierPrototypeApp />
     case 'candidates':
       return <CandidatesApp />
     case 'gravity':
@@ -240,20 +244,30 @@ function SceneHud({ scene }: { scene: SceneId }) {
   return null
 }
 
+const SITE_PAGES = new Set<SceneId>(['home', 'style', 'why', 'polymer-prototype', 'frontier-prototype'])
+const OMITS_NOTICE = new Set<SceneId>(['home', 'why', 'polymer-prototype', 'frontier-prototype', 'marble-hand', 'plume', 'postcard'])
+const SITE_TITLES = {
+  home: 'Munari · Live HTML in 3D',
+  style: 'Style guide · Munari',
+  why: 'Why Munari · Munari',
+  'polymer-prototype': 'Polymer prototype · Munari',
+  'frontier-prototype': 'Frontier prototypes · Munari',
+} as const
+
 function isSitePage(scene: SceneId): boolean {
-  return scene === 'home' || scene === 'style' || scene === 'why' || scene === 'polymer-prototype'
+  return SITE_PAGES.has(scene)
 }
 
 function sceneDocumentTitle(scene: SceneId): string {
-  if (scene === 'home') return 'Munari · Live HTML in 3D'
-  if (scene === 'style') return 'Style guide · Munari'
-  if (scene === 'why') return 'Why Munari · Munari'
-  if (scene === 'polymer-prototype') return 'Polymer prototype · Munari'
+  if (scene in SITE_TITLES) {
+    // SAFETY: `in` narrows `scene` to a key of `SITE_TITLES`.
+    return SITE_TITLES[scene as keyof typeof SITE_TITLES]
+  }
   return `${demoFor(scene)?.title ?? scene} · Munari`
 }
 
 function omitsTrialNotice(scene: SceneId): boolean {
-  return scene === 'home' || scene === 'why' || scene === 'polymer-prototype' || scene === 'marble-hand' || scene === 'plume' || scene === 'postcard'
+  return OMITS_NOTICE.has(scene)
 }
 
 function renderSitePage(scene: SceneId) {
@@ -261,6 +275,7 @@ function renderSitePage(scene: SceneId) {
   if (scene === 'style') return <Suspense fallback={null}><StyleApp onReady={revealSite} /></Suspense>
   if (scene === 'why') return <Suspense fallback={null}><WhyApp onReady={revealSite} /></Suspense>
   if (scene === 'polymer-prototype') return <Suspense fallback={null}><PolymerPrototypeApp onReady={revealSite} /></Suspense>
+  if (scene === 'frontier-prototype') return <Suspense fallback={null}><FrontierPrototypeApp onReady={revealSite} /></Suspense>
   return null
 }
 
