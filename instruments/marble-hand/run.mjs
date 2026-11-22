@@ -2336,15 +2336,15 @@ async function verifyReflectionUnavailable(port, headless) {
     watchEnvironmentRequests(page)
     const errors = []
     page.on('pageerror', (error) => errors.push(String(error)))
-    await page.goto(`http://127.0.0.1:${port}/?scene=marble-hand&framed`, { waitUntil: 'domcontentloaded' })
+    await page.goto(`http://127.0.0.1:${port}/?scene=marble-hand&framed&capture=none`, { waitUntil: 'domcontentloaded' })
     const available = await page.evaluate(() => {
       const canvas = document.createElement('canvas')
       const context = canvas.getContext('2d')
       return context !== null && 'drawElementImage' in context && 'requestPaint' in canvas
     })
     if (available) {
-      if (strict) throw new Error('no-flag fallback is untested: Chrome exposes HTML-in-canvas without the flag')
-      console.warn('marble-hand no-flag clause SKIPPED: this browser exposes HTML-in-canvas without the flag')
+      if (strict) throw new Error('no-flag fallback is untested: Chrome exposes HTML-in-canvas')
+      console.warn('marble-hand no-flag SKIPPED: Chrome exposes HTML-in-canvas without the flag')
       return false
     }
     await page.waitForSelector(`${panelSelector} [data-marble-reflection-notice]`, { visible: true, timeout: 30_000 })

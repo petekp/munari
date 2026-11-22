@@ -1,31 +1,30 @@
 // Which capture engine this lab window runs.
 //
-// `?capture=snapdom` forces snapDOM even in a flagged Chrome, which is what
-// makes a side-by-side comparison possible in ONE browser: the two engines
-// are not supersets of each other, and a parity check that had to swap
-// browsers would be comparing renderers as well as engines.
-// `?capture=auto` takes the fallback rule an app would ship — native where
-// the trial exists, snapDOM everywhere else. No param leaves the library's
-// own default in place.
+// By default (`auto`), the lab behaves like a real cross-browser app: native
+// HTML-in-canvas where Chrome exposes `drawElementImage`, and automatic
+// fallback to snapDOM everywhere else — with no URL parameter required.
 //
-// Read once at module load, like `?bare`: the URL is authoritative, a reader
-// cannot change it without a reload, and an engine installed after a Surface
-// mounts does not reach it.
+// `?capture=snapdom` forces snapDOM even in Chrome 157+, enabling side-by-side
+// engine parity checks in one browser. `?capture=none` omits snapDOM so
+// degradation instruments can verify native-HTML fallback when no capture
+// engine is installed.
 
-export type CaptureMode = 'snapdom' | 'auto'
+export type CaptureMode = 'snapdom' | 'auto' | 'none'
 
 const requested = new URLSearchParams(window.location.search).get('capture')
 
-/** The engine this window was asked for, or null for the library default. */
-export const CAPTURE_MODE: CaptureMode | null =
-  requested === 'snapdom' || requested === 'auto' ? requested : null
+/** The engine policy for this window (`auto` by default). */
+export const CAPTURE_MODE: CaptureMode =
+  requested === 'snapdom' || requested === 'none' ? requested : 'auto'
 
 const SHELL_PARAMS = new Set(['scene', 'capture', 'framed', 'bare'])
 
-// A destination installs its capture engine before mounting any Surface.
-// Preserve the selection across full-page links, history changes, and frames,
-// along with any extra query parameters targeting the same scene.
-export function sceneUrl(scene: string, options: { framed?: boolean; bare?: boolean; capture?: CaptureMode } = {}): string {
+// Preserve explicit non-default capture overrides (`snapdom` / `none`) across
+// links, history updates, and frames while keeping default URLs clean.
+export function sceneUrl(
+  scene: string,
+  options: { framed?: boolean; bare?: boolean; capture?: CaptureMode } = {},
+): string {
   const current = new URLSearchParams(window.location.search)
   const query = new URLSearchParams({ scene })
   if (current.get('scene') === scene) {
@@ -34,7 +33,7 @@ export function sceneUrl(scene: string, options: { framed?: boolean; bare?: bool
     }
   }
   const capture = options.capture ?? CAPTURE_MODE
-  if (capture) query.set('capture', capture)
+  if (capture !== 'auto') query.set('capture', capture)
   if (options.framed) query.set('framed', '')
   if (options.bare) query.set('bare', '')
   return `/?${query}`

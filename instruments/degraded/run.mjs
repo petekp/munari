@@ -83,7 +83,7 @@ try {
       if (text.startsWith('Failed to load resource')) return
       errors.push(text)
     })
-    await page.goto(`http://localhost:${port}/?scene=${scene}&bare`, { waitUntil: 'load' })
+    await page.goto(`http://localhost:${port}/?scene=${scene}&bare&capture=none`, { waitUntil: 'load' })
     await page.waitForSelector(ready, { timeout: 20_000 })
     await sleep(500)
     const capability = await page.evaluate(() => 'drawElementImage' in CanvasRenderingContext2D.prototype)

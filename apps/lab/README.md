@@ -27,12 +27,13 @@ renderer.
 Use the real scene route for visual work. `?bare` removes the surrounding UI
 and can remove content under test; use it only when an instrument requires it.
 
-`?capture=snapdom` runs every Surface through the snapDOM engine instead of
-HTML-in-canvas, and `?capture=auto` installs snapDOM as a fallback while
-keeping HTML-in-canvas where the browser has it — the way a real app would
-call `enableSnapdomCapture()`. Without the parameter the lab never imports
-the snapDOM entry at all. The parameter rides navigation, so a scene opened
-under one engine stays on it. `window.__munari.engine()` reports which one
+By default (`auto`), the lab uses native HTML-in-canvas where Chrome exposes it
+and dynamically imports `@petepetrash/munari/snapdom` as an automatic fallback
+everywhere else — regardless of URL parameters. `?capture=snapdom` forces every
+Surface onto snapDOM even in Chrome 157+ for side-by-side parity checks, and
+`?capture=none` skips the snapDOM fallback so browser gates can verify
+native-HTML degradation when no capture engine is installed. Non-default
+overrides ride navigation; `window.__munari.engine()` reports which engine
 answered.
 
 ## Overview

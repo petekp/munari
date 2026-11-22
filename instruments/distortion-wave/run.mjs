@@ -26,6 +26,7 @@ async function openPage(browser, mode) {
   const url = new URL(base)
   const query = new URLSearchParams({ scene: 'distortion-wave', framed: '' })
   if (mode === 'snapdom') query.set('capture', 'snapdom')
+  else if (mode === 'disabled') query.set('capture', 'none')
   url.search = query
   await page.goto(url.href, { waitUntil: 'networkidle0' })
   await page.waitForSelector('.wave-like')

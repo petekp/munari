@@ -134,7 +134,7 @@ try{
     // Hiding navigator.gpu is a browser without WebGPU; Three then tries the disabled WebGL 2.
     if(disabled)await fallback.evaluateOnNewDocument(()=>Object.defineProperty(Navigator.prototype,'gpu',{get:()=>undefined}))
     await setChromeViewport(fallback,{width:1200,height:900})
-    await fallback.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=light&framed`,{waitUntil:'load'})
+    await fallback.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=light&framed&capture=none`,{waitUntil:'load'})
     const content=fallback
     await content.waitForSelector('.light-headline-shaders');await content.evaluate(()=>document.fonts.ready)
     if(disabled)await content.waitForSelector('.light-host[data-degraded]')

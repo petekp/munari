@@ -213,7 +213,7 @@ try {
     fallback.on('pageerror',error=>faults.push(String(error)))
     await setChromeViewport(fallback,{width:1200,height:900})
     await fallback.emulateMediaFeatures([{name:'prefers-reduced-motion',value:'reduce'}])
-    await fallback.goto(labUrl('light'),{waitUntil:'load'})
+    await fallback.goto(`${labUrl('light')}&capture=none`,{waitUntil:'load'})
     await fallback.waitForSelector('.light-masthead-title',{visible:true})
     if(name==='native') {
       await fallback.waitForFunction(()=>window.__lightMaterial?.values.inkReady.value===1)
@@ -226,7 +226,7 @@ try {
     results.fallbacks[name]=await fallback.evaluate(()=>({captureAvailable:'drawElementImage' in CanvasRenderingContext2D.prototype,lightVisible:!!document.querySelector('.light-handle')?.getClientRects().length,overflow:document.querySelector('.light-page').scrollWidth>innerWidth}))
     await fallback.screenshot({path:path.join(output,`${name}.png`)})
     if(name==='no-gpu'){
-      await fallback.goto(labUrl('postcard'),{waitUntil:'load'})
+      await fallback.goto(`${labUrl('postcard')}&capture=none`,{waitUntil:'load'})
       await fallback.waitForSelector('.light-handle[data-degraded]')
       await fallback.hover('.postcard-hero-row button')
       results.fallbacks[name].postcardShadow=await fallback.$eval('.postcard-hero-row button',button=>getComputedStyle(button).boxShadow)

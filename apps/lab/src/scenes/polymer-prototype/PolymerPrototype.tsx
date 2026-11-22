@@ -2,7 +2,7 @@
 // casting coherent global-light soft shadows at 0 fps idle (?scene=polymer-prototype&variant=A|B|C).
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
-import { supportsSurfaces, SurfaceCanvas, useSurfaceSupport } from '@petepetrash/munari'
+import { SurfaceCanvas, useSurfaceSupport } from '@petepetrash/munari'
 import { captureEngine } from '@petepetrash/munari/advanced'
 import { Button, Status, Tag } from '../../components/system'
 import { sceneUrl } from '../../captureMode'
@@ -17,13 +17,6 @@ import {
 } from './polymerPrototypeTuning'
 import { VariantA, VariantB, VariantC } from './PolymerPrototypeVariants'
 import './polymerPrototype.css'
-
-// Auto-install snapDOM when opened in unflagged browsers (e.g. IDE webviews, Safari, Firefox)
-// without `?capture=auto`, while leaving native HTML-in-canvas untouched in Chrome 157+.
-if (!supportsSurfaces()) {
-  const { enableSnapdomCapture } = await import('@petepetrash/munari/snapdom')
-  enableSnapdomCapture({ isolatedTextInputs: '[data-munari-capture-region]' })
-}
 
 interface VariantMeta {
   readonly id: PolymerVariantId

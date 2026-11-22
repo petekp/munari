@@ -105,6 +105,10 @@ function launchStartupBrowser({capture, gpu}) {
   })
 }
 
+function startupSceneUrl(baseUrl, scene, capture) {
+  return `${baseUrl}/?scene=${scene}&framed${capture ? '' : '&capture=none'}`
+}
+
 async function measure({name, scene, width = 1440, height = 1000, capture = true, gpu = true, early = false, fontDelay = 0, brokenFonts = false, stalledWorker = false, reduced = true, hiddenMs = 0}) {
   const directory = path.join(output, name)
   await mkdir(directory, {recursive: true})
@@ -186,7 +190,7 @@ async function measure({name, scene, width = 1440, height = 1000, capture = true
   // A second tab in front hides the page while it loads.
   const cover = hiddenMs ? await browser.newPage() : null
   await cover?.bringToFront()
-  await page.goto(`${url}/?scene=${scene}&framed`, {waitUntil: 'load'})
+  await page.goto(startupSceneUrl(url, scene, capture), {waitUntil: 'load'})
   if (cover) {
     const hiddenAtLoad = await page.evaluate(() => document.visibilityState === 'hidden')
     await delay(hiddenMs)

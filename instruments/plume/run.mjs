@@ -1080,11 +1080,11 @@ async function verifyMobile(instance, url) {
 async function verifyFallback(url, headless) {
   fallbackBrowser = await launch(headless, false)
   if (await capable(fallbackBrowser)) {
-    if (strict) throw new Error('no-flag fallback is untested: Chrome exposes HTML-in-canvas without the flag')
-    console.warn('plume no-flag clause SKIPPED: Chrome already has HTML-in-canvas without the flag')
+    if (strict) throw new Error('no-flag fallback untested: Chrome exposes HTML-in-canvas')
+    console.warn('plume no-flag SKIPPED: Chrome already has HTML-in-canvas')
     return false
   }
-  const page = await openPage(fallbackBrowser, url)
+  const page = await openPage(fallbackBrowser, `${url}&capture=none`)
   await page.waitForSelector('.plume-page[data-degraded]')
   await verifyPanel(page)
   await verifyIntrinsicSize(page, false)
