@@ -2,6 +2,7 @@
 // page recorder's log (frame gaps against the pre-press baseline, handoff,
 // three's work, API calls, long frames, repaints), and traceSummary reads the
 // flight's Chrome trace (main-thread owners, GPU-process pipeline builds).
+// loadSummary reads the same log for the page load before the first press.
 //
 // The trace is aligned to page time through the performance.mark set in the
 // same evaluate as pressAt. A trace without that mark, or without CPU samples
@@ -67,6 +68,32 @@ export function summarize(flight) {
       })),
     paints,
     shaderHashes: log.shaders.filter(inWindow).map((s) => s.hash),
+  }
+}
+
+// The load from the scene's mount until the page settled: how long the
+// prewarm kept data-genie-prewarm at building, every frame gap over
+// LOAD_GAP_MS, and each blocking pipeline build with its three label (the
+// mipmap pass is mipmap-<format>-<view>). Times are from the mount.
+const LOAD_GAP_MS = 50
+export function loadSummary(log, settledAt) {
+  const mountedAt = log.prewarm[0]?.t
+  assert.ok(mountedAt !== undefined, 'the page recorder never saw the scene mount')
+  const readyAt = log.prewarm.find((p) => p.value === 'ready')?.t
+  const gaps = []
+  for (let i = 1; i < log.frames.length; i++) {
+    if (log.frames[i] > mountedAt && log.frames[i] <= settledAt) gaps.push({ t: log.frames[i], gap: log.frames[i] - log.frames[i - 1] })
+  }
+  const loading = (e) => e.start >= mountedAt && e.start <= settledAt
+  const asyncBuilds = log.api.filter((a) => a.what === 'createRenderPipelineAsync:resolved' && loading(a))
+  return {
+    prewarmBuildingMs: readyAt === undefined ? null : round(readyAt - mountedAt),
+    settledAfterMs: round(settledAt - mountedAt),
+    longestGapMs: round(Math.max(0, ...gaps.map((g) => g.gap))),
+    longGaps: gaps.filter((g) => g.gap > LOAD_GAP_MS).map((g) => ({ atMs: round(g.t - g.gap - mountedAt), gapMs: round(g.gap) })),
+    blockingPipelines: log.api.filter((a) => a.what === 'createRenderPipeline' && loading(a)).map((a) => ({ atMs: round(a.start - mountedAt), label: a.label ?? null })),
+    asyncPipelines: { n: asyncBuilds.length, longestMs: round(Math.max(0, ...asyncBuilds.map((a) => a.ms))) },
+    longFrames: log.loaf.filter((e) => loading(e) && e.duration > LOAD_GAP_MS).map((e) => ({ atMs: round(e.start - mountedAt), durationMs: round(e.duration), blockingMs: round(e.blocking) })),
   }
 }
 

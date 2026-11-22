@@ -16,6 +16,12 @@ the GPU process, including ones a cache answers. After the flights, each
 distinct pipeline is compiled again from unique source, so its own cold
 compile time is known.
 
+Before the first press, each load prints its `pageLoad`, counted from the
+scene's mount: `prewarmBuildingMs` (how long `data-genie-prewarm` stays
+`building`), every frame gap over 50 ms, and each blocking pipeline build
+with its three label. three's mipmap pass is `mipmap-<format>-<view>`, such as
+`mipmap-rgba8unorm-srgb-2d-array`.
+
 The environment selects what runs:
 
 - `ENGINES` (`html-in-canvas,snapdom`) and `SHADERS` (`cached,fresh`).

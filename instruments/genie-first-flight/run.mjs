@@ -11,7 +11,9 @@
 // distinct pipeline is compiled again from unique source with
 // createRenderPipelineAsync, so its own cold compile time is known, labelled by
 // the flight that first built it. Traced browsers keep tracing through that
-// replay (compileCheck.mjs).
+// replay (compileCheck.mjs). Per load it records what the load itself spends:
+// how long the prewarm builds, the long frame gaps after the scene mounts, and
+// each blocking pipeline build, three's mipmap pass among them.
 //
 // The fault: Pete reported a very noticeable hitch on the first Genie
 // interaction after load and none on later ones (2026-11-21). Measured here
@@ -74,7 +76,7 @@ import { createServer } from 'vite'
 import { replaceSource } from '../light/replaceSource.mjs'
 import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
 import { compileCheck, tracedReplay } from './compileCheck.mjs'
-import { round, summarize, TAIL_MS, traceSummary } from './flightSummary.mjs'
+import { loadSummary, round, summarize, TAIL_MS, traceSummary } from './flightSummary.mjs'
 import { INSTALL } from './pageInstall.mjs'
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..')
@@ -212,10 +214,15 @@ async function openGenie(browser, { engine, shaders, prewarm, base }) {
     { timeout: 30_000 },
   )
   await sleep(1500)
+  const pageLoad = await page.evaluate(() => {
+    const { frames, prewarm, api, loaf } = window.__ff
+    return { log: { frames, prewarm, api, loaf }, settledAt: performance.now() }
+  })
   const env = await page.evaluate(() => ({ shadersAtLoad: window.__ff.shaders.map((s) => s.hash), engine: window.__munari.engine(), backend: window.__ff.backend, adapter: window.__ff.adapter, webgl: window.__ff.webgl ?? null, dpr: devicePixelRatio, ua: navigator.userAgent }))
   assert.equal(env.engine, engine, 'the page installed a different capture engine')
   const prewarmState = await page.$eval('.gen-page', (el) => el.getAttribute('data-genie-prewarm'))
   assert.equal(prewarmState, prewarm === 'on' ? 'ready' : 'off', 'the page prewarm state differs from PREWARM')
+  env.pageLoad = loadSummary(pageLoad.log, pageLoad.settledAt)
   return { page, errors, env }
 }
 
@@ -250,6 +257,7 @@ try {
       try {
         for (let load = 0; load < LOADS; load++) {
           const { page, errors, env } = await openGenie(browser, { engine, shaders, prewarm, base })
+          console.log(JSON.stringify({ engine, shaders, prewarm, browser: b, load, pageLoad: env.pageLoad }))
           const order = ['cerchio', 'quadrato', 'scheda']
           // A: the first candidate whose lamp is pressable now; B: the next.
           let a = null

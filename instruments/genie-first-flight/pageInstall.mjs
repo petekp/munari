@@ -11,7 +11,7 @@
 // Everything it records is in page milliseconds (performance.now()).
 export const INSTALL = () => {
   const now = () => performance.now()
-  const log = { adapter: null, backend: null, frames: [], loaf: [], api: [], three: [], dom: [], shaders: [] }
+  const log = { adapter: null, backend: null, frames: [], loaf: [], api: [], three: [], dom: [], shaders: [], prewarm: [] }
   window.__ff = log
   const tick = (t) => {
     log.frames.push(t)
@@ -34,8 +34,9 @@ export const INSTALL = () => {
     proto[name] = function (...args) {
       const start = now()
       const result = original.apply(this, args)
-      log.api.push({ what, start, ms: now() - start })
-      if (result instanceof Promise) result.then(() => log.api.push({ what: what + ':resolved', start, ms: now() - start }), () => {})
+      const label = args[0]?.label
+      log.api.push({ what, start, ms: now() - start, label })
+      if (result instanceof Promise) result.then(() => log.api.push({ what: what + ':resolved', start, ms: now() - start, label }), () => {})
       return result
     }
   }
@@ -154,6 +155,15 @@ export const INSTALL = () => {
   }
   hook()
   document.addEventListener('DOMContentLoaded', () => {
+    // The page's prewarm state from the moment the scene mounts until the
+    // prewarm is ready or switched off; nothing is observed after that.
+    const prewarm = new MutationObserver(() => {
+      const value = document.querySelector('.gen-page')?.getAttribute('data-genie-prewarm') ?? null
+      if (value === null || log.prewarm.at(-1)?.value === value) return
+      log.prewarm.push({ t: now(), value })
+      if (value !== 'building') prewarm.disconnect()
+    })
+    prewarm.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-genie-prewarm'] })
     new MutationObserver((records) => {
       for (const m of records) {
         const el = m.target
