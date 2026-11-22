@@ -56,7 +56,11 @@ try {
       return (
         canvas instanceof HTMLCanvasElement &&
         canvas.dataset.genieFilmReady === 'true' &&
-        Number(canvas.dataset.genieFilmGeneration) > 0
+        Number(canvas.dataset.genieFilmGeneration) > 0 &&
+        // A click before the prewarm finishes waits for cold pipelines, and
+        // the window repaints during that wait, so the first anchor set comes
+        // from a later paint than the reorder below expects.
+        document.querySelector('.gen-page')?.getAttribute('data-genie-prewarm') === 'ready'
       )
     },
     { timeout: 20_000 },
