@@ -78,7 +78,10 @@ const staged = {
 // resolves only inside this workspace, so a surviving import is an install
 // failure for every consumer — and a silent one here, because the workspace
 // itself resolves it fine. Check the emitted artifact, not the intent.
-const javascript = readdirSync(dist).filter((entry) => entry.endsWith('.js'))
+// The build emits one module per source module, nested by folder, so the scan
+// walks every folder: a top-level-only scan would miss a kernel import in a
+// nested module.
+const javascript = readdirSync(dist, { recursive: true }).filter((entry) => entry.endsWith('.js'))
 for (const entry of javascript) {
   const emitted = readFileSync(join(dist, entry), 'utf8')
   if (!emitted.includes('@munari/core')) continue

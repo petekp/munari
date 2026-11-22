@@ -32,7 +32,8 @@
 // Ownership: this module owns the snapDOM call and the fallback rule.
 // `@munari/core` owns the source, the ledger and the parking.
 
-import { createInputRegionRasterizer, UnsupportedRegionCaptureError, type CaptureRegionOptions } from './snapdomInputRegions'
+import type { createInputRegionRasterizer } from './snapdomInputRegions'
+import { UnsupportedRegionCaptureError, type CaptureRegionOptions } from './snapdomRegionContract'
 import { snapdom, type CaptureMeta, type SnapdomPlugin } from '@zumer/snapdom'
 import { retainNormalizedSvg } from './snapdomInputSvg'
 import { fieldPseudoElementPlugin } from './snapdomFieldPseudoElements'
@@ -347,6 +348,7 @@ export function enableSnapdomCapture(options: SnapdomCaptureOptions = {}): void 
             const invalidate = refreshPending
             refreshPending = false
             if (!regions && element.querySelector(selector)) {
+              const { createInputRegionRasterizer } = await import('./snapdomInputRegions')
               regions = createInputRegionRasterizer(element, selector, rasterize)
             }
             if (invalidate) regions?.invalidate()

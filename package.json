@@ -83,7 +83,8 @@
     "probe:api-routes": "node instruments/api-all-demos/route-smoke.mjs",
     "probe:api-gestures": "node instruments/api-all-demos/gestures.mjs",
     "probe:api-composition-check": "node instruments/api-composition/lifecycle.mjs",
-    "probe:api-contracts": "node instruments/api-contracts/lifecycle.mjs"
+    "probe:api-contracts": "node instruments/api-contracts/lifecycle.mjs",
+    "gate:payload": "node instruments/payload/run.mjs"
   },
   "devDependencies": {
     "@oxlint/plugins": "^1.78.0",

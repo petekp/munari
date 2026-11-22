@@ -1,6 +1,6 @@
 # Opt-in payload proposal
 
-**Status: proposed, 2026-11-21. Nothing in this document is built.**
+**Status: proposed, 2026-11-21. Step 1 is built (2026-11-22); everything after it is unbuilt.**
 
 This proposal rests on [payload-optimization-research.md](payload-optimization-research.md)
 and on the builds in [the appendix](#appendix-measurement-method). Names marked
@@ -90,11 +90,13 @@ This step changes the package build and no public API.
   module today, and the error is thrown at lines 168 to 184. A module imported
   both ways stays in the main bundle. The research measured the default
   `/snapdom` code at 18.5 kB, and 8.2 kB without the rasterizer
-  ([research §1.2](payload-optimization-research.md#12-munaris-own-code-size-peers-externalized)). This split is not built.
-- The measurement script moves to `instruments/payload/` *(proposed)*. A budget
-  check fails when an entry grows past its recorded size plus a stated margin.
-  It catches a helper that starts importing `Surface`, a kernel import that
-  pulls in R3F, and `/snapdom` loading the rasterizer eagerly.
+  ([research §1.2](payload-optimization-research.md#12-munaris-own-code-size-peers-externalized)). The split is built. The default `/snapdom` entry loads 96.2 kB gzip, snapDOM itself included, and the rasterizer's 9.3 kB loads on first use.
+- The budget check is [instruments/payload/](../instruments/payload/run.mjs),
+  run with `npm run gate:payload` after `npm run build`. It builds five small
+  apps against the staged package and fails an entry that grows past its
+  recorded size plus a margin. It catches a helper that starts importing
+  `Surface`, a kernel import that pulls in R3F, and `/snapdom` loading the
+  rasterizer eagerly. CI runs it as its own job.
 
 Pure annotations and moving `copyFieldState` are left out. The unbundled build
 reached the source column's numbers without them. The `'use client'` plugin
@@ -105,8 +107,14 @@ To verify Step 1, run `npm run build`, the measurement script, `npm test`,
 packed package in a temporary consumer outside the repository and import each
 public entry.
 
-The build config and staging script are package tooling, so Step 1 needs Pete's
-approval. Running the budget check in CI is a separate approval.
+Pete approved the build config and staging script change, and one CI job for the
+budget check, on 2026-11-22.
+
+The built package, measured by `npm run gate:payload`, gives these sizes in kB
+gzip: `encodedOutput` only 129.8, `useElementCapture` in one component 92.0,
+`createDomTextureSource` from `/advanced` 3.4, `/snapdom` default 96.2, and the
+minimal `<Surface>` in `<SurfaceCanvas>` 531.6. The check records exact bytes in
+[budgets.json](../instruments/payload/budgets.json).
 
 ## Step 2: move to R3F 10, and keep `<Canvas>` until then
 
@@ -215,7 +223,7 @@ improvement plan proposes `useCaptureSupport`. Neither depends on the other.
 
 ## Rollout
 
-1. Step 1. Needs approval for the package tooling change.
+1. Step 1. Built.
 2. A browser check of the lazy canvas pattern, then the README recipe.
 3. The R3F 10 migration, after a stable release, measured with the same script.
 

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- The package now ships one module per source module, so an app that imports
+  only some exports bundles only the modules they reach. An app importing
+  only `encodedOutput` shrinks from 224.7 to 129.8 kB gzip. The minimal
+  `<Surface>` app is unchanged at about 532 kB.
+- `@petepetrash/munari/snapdom` loads the input-region rasterizer the first
+  time `isolatedTextInputs` content is captured, rather than with the entry.
+  `enableSnapdomCapture` is still synchronous.
 - A scrolled container inside captured content now keeps its scroll
   position. `useElementCapture` and the copy a Surface captures while its
   content is on the page both showed the container scrolled to the top.

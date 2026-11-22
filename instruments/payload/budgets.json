@@ -1,0 +1,22 @@
+{
+  "advancedKernel": {
+    "gzipBytes": 3426,
+    "marginBytes": 1000
+  },
+  "elementCapture": {
+    "gzipBytes": 92005,
+    "marginBytes": 2000
+  },
+  "encodedOutput": {
+    "gzipBytes": 129841,
+    "marginBytes": 2000
+  },
+  "snapdomDefault": {
+    "gzipBytes": 96186,
+    "marginBytes": 1000
+  },
+  "surface": {
+    "gzipBytes": 531641,
+    "marginBytes": 2000
+  }
+}

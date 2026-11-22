@@ -21,6 +21,21 @@ jobs:
       - run: npm run lint
       - run: npm test
 
+  # Measures the staged package, so it builds first. It waits for `checks` so a
+  # broken build or type error is reported there and not as a size failure.
+  payload-budget:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm run gate:payload
+
   # Browser gates are sequential on purpose. Each launches a real Chrome;
   # parallel jobs exhausted the hosted runner and closed targets mid-probe.
   # Gates not listed in this file run only locally; instruments/README.md

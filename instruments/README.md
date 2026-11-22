@@ -254,38 +254,8 @@ the zoom and emission corrections.
 
 ## Flexible postcard
 
-`npm run probe:postcard-edges` freezes a curl on the real page and compares its
-composited silhouette with a supersampled lighting draw. A half-density draw
-is the negative control; native edge error must be below 65% of that control.
-The test reads the actual mesh alpha to select boundary pixels, checks that
-the reference buffer was not clamped, and exercises a larger 4x-density window.
-The lighting band must retain native density and cover the viewport when its
-offscreen margin shrinks to fit the browser's buffer limit. `HEADED=1` preserves
-native density for the main comparison; `PAPER_OUTPUT` selects the evidence folder.
-`EDGE_BASELINE_ONLY=1` saves a before image without asserting the new contract.
-All pose and density controls affect only the served copy. Decision
-[#53](../docs/decisions.md#53) records the rendering change and measured result.
-
-`npm run probe:postcard-paper` checks the real paper mesh, its rendered outline,
-corner response, stamp impulse, native field input and exact return. A flat
-geometry control runs with `PAPER_FLAT=1`; it must remain planar and produce
-the corresponding straight-edged outline. The probe keeps the display canvas's
-buffer only in its served copy so it can inspect rendered alpha. Its timing is
-diagnostic; `probe:postcard` retains the unrecorded frame-gap contract.
-
-`PAPER_RECORD=1` saves a short Chrome sequence and encodes `postcard.mp4` with
-ffmpeg. `PAPER_OUTPUT` selects the output directory, `CHROME_PATH` selects Chrome,
-and `HEADED=1` uses visible Chrome at native display density. Recordings and
-screenshots stay outside the repository.
-
-`npm run probe:postcard-paper-shadows` checks the actual lighting renderer with
-a known curl. The curved geometry must change the cast shadow and shade visible
-parts of its own surface. Removing only the shadow-depth texture is the control;
-the flat sheet must remain free of self-shadow acne. This check renders on
-WebGPU by default and does not need HTML capture. With `MUNARI_BACKEND=webgl2`
-it needs `EXT_color_buffer_float` for the half-float shadow map. These are local
-commands; CI membership is unchanged. Decision [#51](../docs/decisions.md#51)
-records the model and its bounds.
+The edge, paper and paper-shadow probes are described in
+[postcard-paper/README.md](postcard-paper/README.md).
 
 ## Detail issue regressions
 
@@ -1373,6 +1343,32 @@ preparation, frame intervals and main-thread work across input and handoff.
 The [benchmark guide](performance/README.md) describes paired Git baselines,
 observer overhead and screenshot evidence. It is a local diagnostic with no
 CI membership or portable speed threshold.
+
+## Payload budget
+
+`npm run gate:payload` measures what each public import costs a consumer, in
+gzip bytes. Run `npm run build` first: it measures `packages/react/dist`, the
+package that is published. Five small apps in `instruments/payload/entries/`
+import it through the published specifiers and Vite builds each in production
+mode. The size is the entry chunk plus every chunk it imports statically. A
+chunk reached only through a dynamic `import()` is listed as deferred and not
+counted, which is how `/snapdom` shows that it leaves the input-region
+rasterizer out until `isolatedTextInputs` content is captured.
+
+Each entry passes while it stays at or under its recorded size plus its margin
+in `budgets.json`. A failure names the entry. The margins are 1 kB for the two
+small entries (`advancedKernel`, `snapdomDefault`) and 2 kB for the others.
+They absorb a dependency patch release and are far below what a change of
+imports costs: a kernel entry that also imports `Surface` measures 224 kB, and
+an eager rasterizer import adds 7.4 kB to `snapdomDefault`. Both faults were
+run on 2026-11-22 and the check failed on the named entry each time.
+
+The sizes are gzip over the tsdown output staged by `stage-manifest.mjs`, with
+Vite 8.2.0, `three` 0.186.1, `@react-three/fiber` 9.8.1 and snapDOM 3.3.3 from
+the lockfile. After a dependency upgrade or an intended change of imports,
+re-measure and update `budgets.json` in the same commit. The check has no
+browser, so it says nothing about whether a page behaves. CI runs it as the
+`payload-budget` job after `checks`.
 
 ## House rules
 

@@ -1,6 +1,6 @@
 # Opt-in payload architecture research
 
-> **Status: Measured research and proposed architecture (unbuilt).** Measured 2026-11-21 on `stewardship/full` against `@petepetrash/munari@0.4.1`, `three@0.186.1`, `@react-three/fiber@9.8.1`, `@zumer/snapdom@3.3.3`, `react@19`, and Vite 8 (Rolldown, `NODE_ENV="production"`, `minify: true`, `gzip -9`, `brotli -q 11`). None of the proposed package subpaths or build changes below are implemented yet. Their scripts are not committed; [the opt-in proposal](opt-in-dx-proposal.md#appendix-measurement-method) re-measures the figures it uses.
+> **Status: Measured research and proposed architecture (unbuilt except [Step 1](opt-in-dx-proposal.md#step-1-build-output-that-follows-imports)).** Measured 2026-11-21 on `stewardship/full` against `@petepetrash/munari@0.4.1`, `three@0.186.1`, `@react-three/fiber@9.8.1`, `@zumer/snapdom@3.3.3`, `react@19`, and Vite 8 (Rolldown, `NODE_ENV="production"`, `minify: true`, `gzip -9`, `brotli -q 11`). None of the proposed package subpaths or build changes below are implemented yet. Their scripts are not committed; [the opt-in proposal](opt-in-dx-proposal.md#appendix-measurement-method) re-measures the figures it uses.
 
 A minimal flat unlit `<Surface>` inside `<SurfaceCanvas>` currently ships **`1,874.5 kB` min / `519.6 kB` gzip / `399.4 kB` brotli** (`+462.3 kB` gzip over React 19) — **97.8%** of the payload of an app importing every capability in `@petepetrash/munari` (`529.8 kB` gzip). Adding static `@petepetrash/munari/snapdom` brings total payload to **`2,177.5 kB` min / `617.7 kB` gzip**.
 
@@ -94,7 +94,7 @@ All four phases preserve [decisions.md #1](decisions.md#1) (one published packag
 
 ### Phase 1 — Zero-breaking-change build & chunk fixes
 1. **Unbundled ESM output in `tsdown` + pure annotations:**
-   - Emit per-module ESM (`unbundle: true` while keeping `@munari/core` bundled into internal `dist/_core/*` files), annotate `/* @__PURE__ */ Object.assign(...)` in [Surface.tsx](../packages/react/src/primitives/Surface.tsx) and `/* @__PURE__ */ createContext(...)`, and lazily allocate module-scope `new THREE.*()` scratch vectors.
+   - Per-module ESM output is built ([proposal Step 1](opt-in-dx-proposal.md#step-1-build-output-that-follows-imports)). Pure annotations on `Object.assign` and `createContext`, and lazy `new THREE.*()` scratch vectors, stay proposed.
    - Extract the 18-line `copyFieldState` / `applyCopyScrolls` helpers out of [elementCapture.tsx](../packages/react/src/primitives/elementCapture.tsx) so `Surface` and `elementCapture` sever their cross-import.
    - **Gain:** `encodedOutput` drops from `39.6 kB` gz -> **`0.2 kB` gz** of Munari code (peers external). In a whole app it then costs exactly the `three/tsl` functions it calls; `FocusScene` + `Dial` (`8.7 kB` gz) stop bundling for the 27/28 scenes that omit them.
 2. **Dynamic `import()` for `isolatedTextInputs` in `@petepetrash/munari/snapdom`:**

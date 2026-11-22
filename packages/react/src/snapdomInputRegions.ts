@@ -7,15 +7,7 @@ import { captureContext, captureMemoryChosen, listenForRepaintSignals } from '@m
 import { createInputSvgTemplate } from './snapdomInputSvg'
 import { prepareInputTextPainter, type InputTextPainter } from './snapdomInputText'
 import { createFullBackgroundCache } from './snapdomFullBackground'
-
-export interface CaptureRegionOptions {
-  clip?: { x: number; y: number; width: number; height: number }
-  invalidate?: boolean
-  retainRootLayout?: boolean
-  decodeFull?: (url: string, width: number, height: number) => Promise<HTMLImageElement>
-}
-
-export class UnsupportedRegionCaptureError extends Error {}
+import { UnsupportedRegionCaptureError, type CaptureRegionOptions } from './snapdomRegionContract'
 
 interface SerializedStyle {
   readonly names: readonly string[]
