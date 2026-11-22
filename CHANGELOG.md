@@ -2,12 +2,13 @@
 
 ## Unreleased
 
-- A `Surface.Mesh` or `FrameSurface` no longer freezes the canvas on its
-  first draw. three built each missing render pipeline at the draw with a
-  blocking call. With shaders that no browser cache held, every frame froze
-  for 150-270 ms, as on Genie's first flight. A presenter now builds its
-  pipelines asynchronously and first draws once they are ready. Until then its
-  content stays on the page.
+- A `Surface.Mesh`, or a `FrameSurface` given a `presentation` requirement,
+  no longer freezes the canvas on its first draw. three built each missing
+  render pipeline at the draw with a blocking call. With shaders that no
+  browser cache held, every frame froze for 150-270 ms, as on Genie's first
+  flight. Such a presenter now builds its pipelines asynchronously and first
+  draws once they are ready. Until then the content stays where it was. A
+  `FrameSurface` without a requirement still draws at once.
 - `Surface.Prewarm` builds pipelines for presenters that mount later, so
   their first draw waits for nothing. It takes meshes that wear those
   presenters' materials, the `alpha` they use, and an `onReady` callback.

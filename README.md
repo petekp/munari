@@ -338,14 +338,14 @@ throws "is not part of the THREE namespace" until you register it with R3F's
 
 #### First draws and Surface.Prewarm
 
-A `Surface.Mesh` or `FrameSurface` in a `SurfaceCanvas` first draws once
-its render pipelines are built. Until then its content stays on the page. A
-shader that no browser cache holds can take a few hundred milliseconds to
-build, and the content waits that long before it moves into the scene.
+A `Surface.Mesh` in a `SurfaceCanvas`, and a `FrameSurface` given a
+`presentation` requirement, first draw once their render pipelines are built.
+Until then the content stays where it was. A shader that no browser cache
+holds can take a few hundred milliseconds to build, and the content waits
+that long to move into the scene.
 
-To build those pipelines before they are needed, mount `Surface.Prewarm` in
-the `SurfaceCanvas` with meshes that wear the materials your presenters will
-use:
+To build them ahead, mount `Surface.Prewarm` in the `SurfaceCanvas` with
+meshes that wear your presenters' materials:
 
 ```tsx
 <SurfaceCanvas>

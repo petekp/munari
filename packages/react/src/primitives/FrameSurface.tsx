@@ -58,6 +58,7 @@ import { beginSurfacePass, drawnByOverride, type SurfaceObservedPass } from './s
 import { useSurfaceCompiled } from './surface/surfaceCompile'
 import { useLatest } from './useLatest'
 import { blankCanvas, canvasIsOriginClean } from './canvasOrigin'
+import { hearingGatedRaycast } from './hearingGatedRaycast'
 import { isDevelopmentRuntime } from '../lib/developmentRuntime'
 
 export interface FrameDrawReceipt {
@@ -351,21 +352,6 @@ const warnRejectedPresentation = (message: string) => {
   if (isDevelopmentRuntime()) console.warn(message)
 }
 
-/**
- * A raycast that exists only while `hears()` answers true. Declining at the
- * raycast rather than in handlers means no raycaster — r3f's or a scene's
- * own — ever counts the mesh as a pointer target while the page copy is the
- * presented one.
- */
-export function hearingGatedRaycast(
-  hears: () => boolean,
-): (this: THREE.Mesh, raycaster: THREE.Raycaster, intersects: THREE.Intersection[]) => void {
-  return function raycast(raycaster, intersects) {
-    if (!hears()) return
-    THREE.Mesh.prototype.raycast.call(this, raycaster, intersects)
-  }
-}
-
 export function assertFrameMaterialSupported(
   source: FrameSource,
   material: 'unlit' | 'standard' | 'none',
@@ -411,7 +397,10 @@ export function FrameSurface({
   const warnedTransferRef = useRef<number | null>(null)
   const warnedHearingRef = useRef(false)
   const [mesh, setMesh] = useState<THREE.Mesh | null>(null)
-  const compiled = useSurfaceCompiled(mesh)
+  // Only a crossing has another presenter that keeps showing the content
+  // while the pipelines build. Without one, a hidden mesh leaves a blank frame,
+  // so it draws as three builds them.
+  const compiled = useSurfaceCompiled(mesh, presentation !== undefined)
 
   // A presentation requirement is the one moment this component KNOWS it is
   // a Surface handoff. With neither `surface` nor an authored `raycast`, the

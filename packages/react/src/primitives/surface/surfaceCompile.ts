@@ -276,13 +276,14 @@ export function surfaceCompilerOf(renderer: RootState['gl'] | WebGPURenderer): S
 /**
  * Whether `mesh` may draw: false until every pipeline its current material
  * draws with is built. Outside a SurfaceCanvas there is no compiler and the
- * answer is true at once.
+ * answer is true at once. With `wait` false the mesh draws at once too.
  *
- * Only a presenter's first material is held back. Hiding a mesh that has
- * already drawn would take pixels off a screen the page no longer covers, so
- * a material replaced after that draws as three builds it.
+ * Only a presenter's first material is held back, and only when `wait` held
+ * at its first frame. Hiding a mesh that has already drawn would take pixels
+ * off a screen the page no longer covers, so a material replaced after that
+ * draws as three builds it.
  */
-export function useSurfaceCompiled(mesh: THREE.Mesh | null): boolean {
+export function useSurfaceCompiled(mesh: THREE.Mesh | null, wait = true): boolean {
   const gl = useThree((state) => state.gl)
   const [compiledMesh, setCompiledMesh] = useState<THREE.Mesh | null>(null)
   const pending = useRef<{ readonly mesh: THREE.Mesh; readonly material: THREE.Material; readonly compilation: SurfaceCompilation } | null>(null)
@@ -296,7 +297,7 @@ export function useSurfaceCompiled(mesh: THREE.Mesh | null): boolean {
     current?.compilation.release()
     pending.current = null
     const compiler = surfaceCompilerOf(gl)
-    if (!compiler || Array.isArray(material)) {
+    if (!wait || !compiler || Array.isArray(material)) {
       setCompiledMesh(mesh)
       return
     }
@@ -315,5 +316,5 @@ export function useSurfaceCompiled(mesh: THREE.Mesh | null): boolean {
     },
     [],
   )
-  return compiled
+  return compiled || !wait
 }

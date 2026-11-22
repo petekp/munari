@@ -28,6 +28,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -52,6 +53,7 @@ import {
   useSurfacePaintedSize,
   useSurfaceSourceRoot,
   useSurfaceTexture,
+  useSurfaceNodes,
   useSurfaceSupport,
 } from '@petepetrash/munari'
 import {
@@ -77,12 +79,14 @@ import {
 } from './genieLaw'
 import {
   DRIVE_DEFAULTS,
+  type DriveBox,
   driveCommit,
   driveGrabStep,
   drivePresentationStep,
   driveSpringPresentationStep,
   easeInCubic,
   pourOut,
+  restingDrive,
 } from './genieDrive'
 import { dockFill, dockPose, dockRingDone, dockSwell } from './genieDock'
 import { holdBounceMarks } from './genieBounce'
@@ -91,7 +95,8 @@ import { genieTuning } from './genieTuning'
 import { GenieTweakPanel } from './GenieTweaks'
 import { FOV, PixelPerfect } from './GenieCamera'
 import { showChrome } from '../../bareMode'
-import { FilmCompositeMaterial, GenieMaterial } from './GenieMaterials'
+import { createGenieMaterial, createGenieShade } from './genieNodes'
+import { FilmCompositeMaterial, SHADE_FADE } from './GenieFilmMaterial'
 import {
   GENIE_FILM_HEIGHT,
   GENIE_FILM_WIDTH,
@@ -176,39 +181,6 @@ interface GenieFlight {
     radius: number
   }
 }
-
-// ── the drive box: who owns t right now, shared by refs ─────────────────
-//
-// clock   an untouched flight, eased time
-// grab    a hand: t is wherever the hand says (driveGrabStep)
-// spring  after release: analytic spring to the committed wall
-// settle  after a landing at rest: the wobble consuming arrival momentum
-
-interface DriveBox {
-  mode: 'clock' | 'grab' | 'spring' | 'settle'
-  t: number
-  v: number
-  /** Progress actually drawn. It only differs from t while catching up
-   *  after a hand moved during the hidden texture handoff. */
-  visibleT: number
-  grabT: number
-  target: 0 | 1
-  clockStart: number | null
-  settleTau: number
-  settleV: number
-}
-
-const restingDrive = (): DriveBox => ({
-  mode: 'clock',
-  t: 0,
-  v: 0,
-  visibleT: 0,
-  grabT: 0,
-  target: 1,
-  clockStart: null,
-  settleTau: 0,
-  settleV: 0,
-})
 
 // ── the desk's four windows ─────────────────────────────────────────────
 //
@@ -515,6 +487,17 @@ function WindowBody({
 }
 
 // ── the sheet's material ────────────────────────────────────────────────
+
+function GenieMaterial({ shade }: { shade: [number, number] }) {
+  const surface = useSurfaceNodes()
+  const [values] = useState(() => createGenieShade(SHADE_FADE))
+  values.edge.value.set(shade[0], shade[1])
+  // Surface creates every DOM texture premultiplied (decisions.md #5).
+  // This material only owns the matching blend rule (genieNodes.ts).
+  const material = useMemo(() => createGenieMaterial(surface, values), [surface, values])
+  useLayoutEffect(() => () => material.dispose(), [material])
+  return <primitive object={material} attach="material" />
+}
 
 /** The film's own box inside the window capture, named on the canvas that
  *  holds it. One key, but the transaction rule is the point: the composite

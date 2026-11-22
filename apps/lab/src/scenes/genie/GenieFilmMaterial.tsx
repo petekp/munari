@@ -1,21 +1,21 @@
-// Genie's materials — the sheet's shaded material and the film composite,
-// as components a mesh wears.
+// Genie's film material — the film composite as a component a mesh wears,
+// and the shade fade it shares with the sheet's material.
 //
-// The node graphs and their blend rules live in genieNodes.ts. These
-// components own the uniforms each frame sets, and dispose what they build.
+// The node graph and its blend rule live in genieNodes.ts. This component
+// owns the uniforms each frame sets, and disposes what it builds.
 //
-// Ownership: Genie.tsx mounts them on a flight's meshes and on the prewarm
-// meshes that build their pipelines at load.
+// Ownership: Genie.tsx mounts it on the film flight's mesh and on the prewarm
+// mesh that builds its pipelines at load. The sheet's material stays in
+// Genie.tsx, where gate:genie-pose-flash patches it at serve time.
 
 import { useLayoutEffect, useMemo, useState } from 'react'
 import type * as THREE from 'three'
 import type { MeshBasicNodeMaterial } from 'three/webgpu'
-import { type SourceUvRect, useSurfaceNodes } from '@petepetrash/munari'
+import type { SourceUvRect } from '@petepetrash/munari'
 import { useFrameTexture } from '@petepetrash/munari/advanced'
 import {
   createGenieFilmMaterial,
   createGenieFilmPlacement,
-  createGenieMaterial,
   createGenieShade,
 } from './genieNodes'
 
@@ -42,18 +42,7 @@ import {
  *  dissolution rather than trailing it and takes the smear with it. The
  *  ceiling stays clear of 1.0 for the reason it always did — a sheet at
  *  rest, and the whole first stretch of a flight, must be untouched. */
-const SHADE_FADE: [number, number] = [0.55, 0.95]
-
-export function GenieMaterial({ shade }: { shade: [number, number] }) {
-  const surface = useSurfaceNodes()
-  const [values] = useState(() => createGenieShade(SHADE_FADE))
-  values.edge.value.set(shade[0], shade[1])
-  // Surface creates every DOM texture premultiplied (decisions.md #5).
-  // This material only owns the matching blend rule (genieNodes.ts).
-  const material = useMemo(() => createGenieMaterial(surface, values), [surface, values])
-  useLayoutEffect(() => () => material.dispose(), [material])
-  return <primitive object={material} attach="material" />
-}
+export const SHADE_FADE: [number, number] = [0.55, 0.95]
 
 interface FilmCompositeMaterialProps {
   chromeTexture: THREE.Texture
