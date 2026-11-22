@@ -12,7 +12,7 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    // shadcn sources are vendored verbatim; they import from "@/…".
+    // `@/…` resolves to apps/lab/src.
     alias: [{ find: '@', replacement: path.resolve(import.meta.dirname, 'src') }],
   },
 })
