@@ -269,6 +269,9 @@ export interface GpuProcessBreakdown {
   mainLongestTaskMs: number
   /** The deepest events that cover at least half of that longest task. */
   mainLongestTaskInside: string[]
+  /** The threads each kind of build ran on, by trace thread name. */
+  syncThreads: string[]
+  asyncThreads: string[]
 }
 
 export function gpuProcessBreakdown(events: readonly TraceEvent[], w: TraceWindow): GpuProcessBreakdown {
@@ -277,6 +280,8 @@ export function gpuProcessBreakdown(events: readonly TraceEvent[], w: TraceWindo
   const gpu = new Set([...processes].filter(([, name]) => name === 'GPU Process').map(([pid]) => pid))
   const sync: CompileTotals = { ms: 0, maxMs: 0, count: 0 }
   const async: CompileTotals = { ms: 0, maxMs: 0, count: 0 }
+  const syncThreads = new Set<string>()
+  const asyncThreads = new Set<string>()
   for (const e of events) {
     if (!gpu.has(e.pid) || e.ph !== 'X' || e.dur === undefined) continue
     const totals = SYNC_PIPELINE.has(e.name) ? sync : e.name === ASYNC_PIPELINE ? async : null
@@ -285,6 +290,7 @@ export function gpuProcessBreakdown(events: readonly TraceEvent[], w: TraceWindo
     totals.ms += inside
     totals.maxMs = Math.max(totals.maxMs, inside)
     totals.count++
+    ;(totals === sync ? syncThreads : asyncThreads).add(threads.get(key(e.pid, e.tid)) ?? `tid ${e.tid}`)
   }
   let mainBusy = 0
   let mainLongest = 0
@@ -300,7 +306,7 @@ export function gpuProcessBreakdown(events: readonly TraceEvent[], w: TraceWindo
     }
   }
   const mainLongestTaskInside = longestTask ? coveringEvents(events, longestTask) : []
-  return { sync, async, mainBusyMs: mainBusy, mainLongestTaskMs: mainLongest, mainLongestTaskInside }
+  return { sync, async, mainBusyMs: mainBusy, mainLongestTaskMs: mainLongest, mainLongestTaskInside, syncThreads: [...syncThreads], asyncThreads: [...asyncThreads] }
 }
 
 /** Events nested in a task that each last at least half of it, outermost first. */

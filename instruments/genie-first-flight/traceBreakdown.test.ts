@@ -89,5 +89,7 @@ describe('trace breakdown', () => {
     expect(result.async).toEqual({ ms: 50, maxMs: 50, count: 1 })
     expect(result.mainLongestTaskMs).toBe(200)
     expect(result.mainLongestTaskInside[0]).toBe('DeviceBase::APICreateRenderPipeline 180ms')
+    expect(result.syncThreads).toEqual(['CrGpuMain'])
+    expect(result.asyncThreads).toEqual(['ThreadPoolForegroundWorker'])
   })
 })

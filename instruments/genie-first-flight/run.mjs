@@ -8,9 +8,10 @@
 // browsers, a Chrome trace split by owner (traceBreakdown.ts): JavaScript by
 // module, style, layout and paint on the page's main thread, and pipeline
 // builds and main-thread tasks in the GPU process. After the flights, each
-// distinct pipeline is compiled again from unique source on a Dawn worker, so
-// its own cold compile time is known, labelled by the flight that first built
-// it.
+// distinct pipeline is compiled again from unique source with
+// createRenderPipelineAsync, so its own cold compile time is known, labelled by
+// the flight that first built it. Traced browsers keep tracing through that
+// replay (compileCheck.mjs).
 //
 // The fault: Pete reported a very noticeable hitch on the first Genie
 // interaction after load and none on later ones (2026-11-21). Measured here
@@ -25,8 +26,7 @@
 // Caches: Chrome saves Dawn's compiled pipelines on disk per profile, and macOS
 // keeps Metal compiles per user in DARWIN_USER_CACHE_DIR/com.google.Chrome.helper,
 // shared by every Google Chrome profile. Other Chromium browsers, such as Dia,
-// keep their own. A fresh profile is
-// therefore not a cold compile. SHADERS=cached measures what this machine's
+// keep their own. A fresh profile is therefore not a cold compile. SHADERS=cached measures what this machine's
 // caches already hold; SHADERS=fresh adds an unused local to every entry point,
 // unique per load, which is a first visit, or the first load after a shader
 // changed.
@@ -39,8 +39,10 @@
 // tracing overhead can be read off the frame gaps.
 //
 // Environment: ENGINES (html-in-canvas,snapdom), SHADERS (cached,fresh),
-// BROWSERS (2), LOADS (2), KEEP_TRACES=1 to save each flight's trace, and
-// FIRST_FLIGHT_OUTPUT for the summary and traces.
+// BROWSERS (2), LOADS (2), KEEP_TRACES=1 to save each flight's trace,
+// COMPILE_CHECK=1 for one more load per browser with no flights that runs
+// compileCheck.mjs's compileAsync check, and FIRST_FLIGHT_OUTPUT for the
+// summary and traces.
 //
 // Limits: headless Chrome with a 60 Hz frame clock, a 1280x860 viewport at
 // DPR 2, the Vite dev server (React development build), and a lamp press
@@ -53,7 +55,7 @@
 //
 // Ownership: run.mjs drives the page and maps page time onto trace time;
 // traceBreakdown.ts does the trace arithmetic. The scene is read through one
-// observation point added at serve time, the renderer handed to onCreated.
+// observation point added at serve time, the r3f state handed to onCreated.
 
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
@@ -64,6 +66,7 @@ import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
 import { replaceSource } from '../light/replaceSource.mjs'
 import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
+import { compileCheck, tracedReplay } from './compileCheck.mjs'
 import { round, summarize, TAIL_MS, traceSummary } from './flightSummary.mjs'
 import { INSTALL } from './pageInstall.mjs'
 
@@ -73,6 +76,8 @@ const ENGINES = (process.env.ENGINES ?? 'html-in-canvas,snapdom').split(',')
 const BROWSERS = Number(process.env.BROWSERS ?? 2)
 const LOADS = Number(process.env.LOADS ?? 2)
 const KEEP_TRACES = process.env.KEEP_TRACES === '1'
+// One extra load per browser with no flights, for compileCheck.mjs.
+const COMPILE_CHECK = process.env.COMPILE_CHECK === '1'
 // cached: shader sources as this machine's GPU caches already hold them.
 // fresh: each load's sources are unique, which is a first visit, or the first
 // load after a shader changed.
@@ -107,7 +112,7 @@ const observeRenderer = {
   enforce: 'pre',
   transform(code, id) {
     if (!id.endsWith('/scenes/genie/Genie.tsx')) return
-    return replaceSource(code, RENDERER_HANDOFF, 'onCreated={(state) => { state.gl.setClearAlpha(0); window.__genieRenderer = state.gl }}')
+    return replaceSource(code, RENDERER_HANDOFF, 'onCreated={(state) => { state.gl.setClearAlpha(0); window.__genieRenderer = state.gl; window.__genieState = state }}')
   },
 }
 
@@ -177,8 +182,33 @@ async function fly(page, { kind, win, mark, traced }) {
   return { kind, win, mark, pressAt, landedAt, trace, paintsBefore, paintsAfter, log }
 }
 
+// One load of the Genie page, settled: fonts loaded, the backend chosen and
+// all four windows painted once, then 1.5 s more.
+async function openGenie(browser, { engine, shaders, base }) {
+  const page = await browser.newPage()
+  const errors = []
+  page.on('pageerror', (e) => errors.push(String(e)))
+  await page.setViewport(VIEWPORT)
+  await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }])
+  if (shaders === 'fresh') await page.evaluateOnNewDocument((n) => { window.__ffShaderNonce = n }, 1 + Math.floor(Math.random() * 2 ** 31))
+  await page.evaluateOnNewDocument(INSTALL)
+  await page.goto(base + (engine === 'snapdom' ? '&capture=snapdom' : ''), { waitUntil: 'load' })
+  await page.waitForFunction(
+    () =>
+      document.fonts.status === 'loaded' &&
+      window.__ff.backend !== null &&
+      window.__munari?.stats().filter((s) => s.label.startsWith('genie-') && s.paints > 0).length === 4,
+    { timeout: 30_000 },
+  )
+  await sleep(1500)
+  const env = await page.evaluate(() => ({ shadersAtLoad: window.__ff.shaders.map((s) => s.hash), engine: window.__munari.engine(), backend: window.__ff.backend, adapter: window.__ff.adapter, webgl: window.__ff.webgl ?? null, dpr: devicePixelRatio, ua: navigator.userAgent }))
+  assert.equal(env.engine, engine, 'the page installed a different capture engine')
+  return { page, errors, env }
+}
+
 let server
 const results = []
+const checks = []
 const deadline = setTimeout(() => {
   console.error('genie-first-flight: hard 15 min deadline hit')
   process.exit(1)
@@ -206,24 +236,7 @@ try {
       })
       try {
         for (let load = 0; load < LOADS; load++) {
-          const page = await browser.newPage()
-          const errors = []
-          page.on('pageerror', (e) => errors.push(String(e)))
-          await page.setViewport(VIEWPORT)
-          await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }])
-          if (shaders === 'fresh') await page.evaluateOnNewDocument((n) => { window.__ffShaderNonce = n }, 1 + Math.floor(Math.random() * 2 ** 31))
-          await page.evaluateOnNewDocument(INSTALL)
-          await page.goto(base + (engine === 'snapdom' ? '&capture=snapdom' : ''), { waitUntil: 'load' })
-          await page.waitForFunction(
-            () =>
-              document.fonts.status === 'loaded' &&
-              window.__ff.backend !== null &&
-              window.__munari?.stats().filter((s) => s.label.startsWith('genie-') && s.paints > 0).length === 4,
-            { timeout: 30_000 },
-          )
-          await sleep(1500)
-          const env = await page.evaluate(() => ({ shadersAtLoad: window.__ff.shaders.map((s) => s.hash), engine: window.__munari.engine(), backend: window.__ff.backend, adapter: window.__ff.adapter, webgl: window.__ff.webgl ?? null, dpr: devicePixelRatio, ua: navigator.userAgent }))
-          assert.equal(env.engine, engine, 'the page installed a different capture engine')
+          const { page, errors, env } = await openGenie(browser, { engine, shaders, base })
           const order = ['cerchio', 'quadrato', 'scheda']
           // A: the first candidate whose lamp is pressable now; B: the next.
           let a = null
@@ -248,14 +261,23 @@ try {
             await sleep(600)
           }
           // Each pipeline's own cold compile, labelled by the flight that first built it.
-          const replay = (await page.evaluate(() => window.__ffReplay?.() ?? [])).map((p) => ({
+          const replayRun = await tracedReplay(page, { traced, categories: TRACE_CATEGORIES, leadMs: TRACE_LEAD_MS })
+          const replay = replayRun.rows.map((p) => ({
             ...p,
             firstBuiltBy: flightMarks.findLast((f) => f.pressAt <= p.firstAt)?.flight ?? 'page load',
             coldCompileMs: round(p.coldCompileMs),
           }))
-          console.log(JSON.stringify({ engine, shaders, browser: b, load, replay }))
+          console.log(JSON.stringify({ engine, shaders, browser: b, load, replay, replayTrace: replayRun.summary }))
           assert.deepEqual(errors, [], 'page errors during the flights')
-          results.push({ engine, shaders, browser: b, load, traced, env, flights, replay })
+          results.push({ engine, shaders, browser: b, load, traced, env, flights, replay, replayTrace: replayRun.summary })
+          await page.close()
+        }
+        if (COMPILE_CHECK) {
+          const { page, errors, env } = await openGenie(browser, { engine, shaders, base })
+          const check = await compileCheck(page, { traced, categories: TRACE_CATEGORIES, leadMs: TRACE_LEAD_MS })
+          console.log(JSON.stringify({ engine, shaders, browser: b, compileCheck: check }))
+          assert.deepEqual(errors, [], 'page errors during the compile check')
+          checks.push({ engine, shaders, browser: b, traced, env, ...check })
           await page.close()
         }
       } finally {
@@ -265,6 +287,7 @@ try {
     }
   }
   await writeFile(path.join(OUTPUT, 'summary.json'), JSON.stringify(results, null, 2))
+  if (checks.length) await writeFile(path.join(OUTPUT, 'compile-checks.json'), JSON.stringify(checks, null, 2))
   console.log(`genie-first-flight: ${results.length} loads; summary at ${path.join(OUTPUT, 'summary.json')}`)
 } catch (error) {
   console.error('genie-first-flight FAILED:', error)
