@@ -487,7 +487,7 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
 
   // Law 6. The band exists so a moving Surface keeps its pixels across every
   // resize; rest is where the store is cut exact. Motion is approximate,
-  // rest is exact (`storeForBox`, decisions.md #44).
+  // rest is exact (`storeForBox`, decisions.md #15).
   it('holds the store through a resize the band absorbs, and cuts it exact on resettle', async () => {
     const source = await born('<div></div>', 200, 100)
     expect([source.canvas.width, source.canvas.height]).toEqual([200, 100])

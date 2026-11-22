@@ -438,7 +438,7 @@ checks remain intact.
 Rename the global checks to describe capture capability. Publish the renderer
 snapshot from the existing host through the page-side SurfaceCanvas. Add
 `onRendererStatusChange` using that snapshot and derive `SurfaceStatus.renderer`
-through the existing Root subscription. [Decision #69](decisions.md#69)
+through the existing Root subscription. [loading-spec](loading-spec.md)
 owns the shared proposed
 `SurfaceRendererStatus` shape, callback, renderer/backend observations, and
 attempt/ownership rules. This work consumes that contract rather than defining

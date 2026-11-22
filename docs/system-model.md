@@ -184,6 +184,6 @@ summary. Retain dated evidence from older revisions and browsers, but do not
 reuse it as current proof without checking its applicability. Keep raw logs
 and screenshots as scoped artifacts, not mandatory context for every task.
 
-Decisions #21, #32, and #37 also permit removal: tests alone do not justify an
+Decisions #32 and #37 also permit removal: tests alone do not justify an
 unused abstraction. Better accumulated knowledge can mean fewer modules and
 less prose to load.

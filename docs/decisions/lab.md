@@ -14,7 +14,7 @@ A custom property that a lifted Surface reads must be declared on `:root`. A lif
 
 The Light demo keeps the page's 2D look. Glyphs and raised controls cast shadows from thin surfaces at their own elevations (`lightLaw.ts`). One visibility result represents the one light, so overlapping casters never double-darken. Shadow fields are signed distance fields packed over ±256 CSS px and rebuilt only when layout changes. Rays come from a spherical bulb, sampled 64 times where coverage is partial.
 
-The postcard stays in front of the headline in the page and in the scene, and native casters never darken it. The lit receiver of a glyph sits 1.5 CSS px inside the opaque ink, so no bright fringe shows. A cheaper shadow field never justifies a blurrier content texture (#44). `probe:light` and `probe:heading-edges` check the demo.
+The postcard stays in front of the headline in the page and in the scene, and native casters never darken it. The light's idle drift, 12 by 3 CSS px, stays in the gap above the headline. The lit receiver of a glyph sits 1.5 CSS px inside the opaque ink, so no bright fringe shows. A cheaper shadow field never justifies a blurrier content texture (#44). `probe:light` and `probe:heading-edges` check the demo.
 
 <a id="51"></a>
 

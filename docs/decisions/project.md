@@ -72,7 +72,7 @@ A pure law that has one consumer and names that consumer's modes, gestures or tu
 
 ## #37 — A kernel law needs a caller, and a declared part needs a presenter
 
-A kernel law with no caller is removed together with its conformance contract (#21). Wiring up a caller is the remedy only when the law's absence would leave a gap in enforcement. Restoring a removed law needs its caller and its contract in one commit.
+A kernel law with no caller is removed together with its conformance contract. Wiring up a caller is the remedy only when the law's absence would leave a gap in enforcement. Restoring a removed law needs its caller and its contract in one commit.
 
 The part ledger is such a gap. A Surface with a declared part and no registered presenter must not pass the readiness gate. `SurfacePartSet` in core, and `expectPart` and `registerPartPresenter` on the store, enforce this.
 

@@ -1,4 +1,4 @@
-// @vitest-environment happy-dom — happy-dom is a root devDependency (decisions.md #2, README.md)
+// @vitest-environment happy-dom — happy-dom is a root devDependency (package.json)
 //
 // Route parity: two ways in, one story out.
 //
