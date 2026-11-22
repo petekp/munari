@@ -16,9 +16,9 @@
 // The part identities stay stable while the displayed items change.
 //
 // The fault it presses on: a gallery is the case where "just crossfade two
-// screenshots" is most tempting and most wrong. The arriving item here has
-// a live layout the whole way across — its clock is running, its CTA is a
-// real anchor, and the moment the crossing lands you can click it. A
+// screenshots" is most tempting and most wrong. On HTML-in-canvas the
+// arriving item has a live layout the whole way across — its clock is
+// running, its CTA is a real anchor, and the moment the crossing lands you can click it. A
 // framebuffer copy could not produce this picture even in principle,
 // because the arriving item is drawn nowhere to copy from.
 //
@@ -131,7 +131,7 @@ const ITEMS: readonly Item[] = [
 // One epoch for every copy of every item, so the two readouts print the
 // SAME string at the same instant. Two independent counters would drift by
 // a tick, and a stalled capture would be indistinguishable from ordinary
-// drift — the whole liveness claim rests on them agreeing.
+// drift — on HTML-in-canvas the whole liveness claim rests on them agreeing.
 const EPOCH = performance.now()
 
 function useTenthSecond(): string {
