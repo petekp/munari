@@ -161,6 +161,36 @@ describe('beginSurfacePass', () => {
     expect(drawnAfterShadow.finish(renderer).drawable).toBe(true)
   })
 
+  it('refreshes the primitive baseline across non-Scene nested renderer.render passes such as VSM blur quads', () => {
+    const scene = new THREE.Scene()
+    const ortho = new THREE.OrthographicCamera()
+    const blurQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial())
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial())
+    const info = { render: { calls: 1, triangles: 0, lines: 0, points: 0 } }
+    const renderer = {
+      getRenderTarget: () => null,
+      info,
+      render(subRoot: THREE.Object3D, _cam: THREE.Camera) {
+        if (subRoot === blurQuad) {
+          info.render.calls++
+          info.render.triangles += 2
+        }
+      },
+    }
+    const priorRender = renderer.render
+
+    const skippedAfterBlur = beginSurfacePass(renderer, scene, mesh, mesh.geometry, mesh.material)
+    renderer.render(blurQuad, ortho)
+    expect(skippedAfterBlur.finish(renderer).drawable).toBe(false)
+    expect(renderer.render).toBe(priorRender)
+
+    const drawnAfterBlur = beginSurfacePass(renderer, scene, mesh, mesh.geometry, mesh.material)
+    renderer.render(blurQuad, ortho)
+    info.render.triangles += 2
+    expect(drawnAfterBlur.finish(renderer).drawable).toBe(true)
+    expect(renderer.render).toBe(priorRender)
+  })
+
   it('rejects zero-count InstancedMesh even when geometry is non-empty', () => {
     const scene = new THREE.Scene()
     const material = new THREE.MeshBasicMaterial()

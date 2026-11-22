@@ -1023,15 +1023,11 @@ function SurfacePresenter({
       const rasterReady=!!paint&&Math.abs(paint.storeSize[0]-Math.round(paint.paintedSize[0]*density[0]))<=1&&Math.abs(paint.storeSize[1]-Math.round(paint.paintedSize[1]*density[1]))<=1
       rasterReadyRef.current=rasterReady
       const writing = store.canvasPresents() && (store.canvasHearsPointer() || rasterReady)
-      // The write-free warm-up. Color, depth, and stencil are all disabled
-      // together: color alone still lets invisible geometry write depth, and
-      // a depth-writing invisible quad punches a hole through every visible
-      // object behind it — which reads as a rectangular window into the
-      // clear color, in the exact shape of a Surface nobody can see. The
-      // authored values are borrowed, not overwritten — the post-draw
-      // callback below puts them back.
+      // Borrow color, depth, and stencil together so a warm-up never writes
+      // invisible depth holes; handleAfterRender restores authored flags.
       applyPassWrites(authoredRef.current, renderedMaterial, writing)
-      // After the borrow: the evidence is the flags this draw will use, not the caller's.
+      // Read after borrowing flags so the evidence matches this draw.
+      passRef.current?.finish(renderer)
       passRef.current = beginSurfacePass(renderer, scene, this, renderedGeometry, renderedMaterial)
     },
     [store,runtime],

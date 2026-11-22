@@ -67,6 +67,7 @@ export function readPassEvidence(
 
 export interface SurfaceOutputRenderer {
   getRenderTarget(): THREE.RenderTarget | null
+  render?(scene: THREE.Object3D, camera: THREE.Camera): void
   readonly info: { readonly render: { readonly calls: number; readonly triangles: number; readonly lines: number; readonly points: number } }
 }
 
@@ -90,9 +91,9 @@ const primitiveCount = (renderer: SurfaceOutputRenderer) => {
  *
  * `WebGPURenderer.compile()` / `compileAsync()` and unready async pipelines
  * invoke both object callbacks with `getRenderTarget() === null` while issuing
- * zero GPU draw commands. A nested shadow pass inside `ShadowNode.updateBefore`
- * can advance primitives before the mesh draws; refreshing the baseline on
- * nested `scene.onAfterRender` isolates the mesh's own primitive advancement.
+ * zero GPU draw commands. Nested shadow or VSM blur passes inside the mesh's
+ * draw can advance primitives before the mesh draws; refreshing the baseline on
+ * nested `renderer.render` and `scene.onAfterRender` isolates the mesh's draw.
  */
 export function beginSurfacePass(
   renderer: SurfaceOutputRenderer,
@@ -105,6 +106,18 @@ export function beginSurfacePass(
   const staticDrawable =
     evidence.drawable && (!(mesh instanceof THREE.InstancedMesh) || mesh.count > 0)
   let primitives = primitiveCount(renderer)
+  const priorRender = staticDrawable ? renderer.render : undefined
+  const ownedRender = priorRender !== undefined && Object.prototype.hasOwnProperty.call(renderer, 'render')
+  const observeRender: SurfaceOutputRenderer['render'] = priorRender
+    ? function (this: SurfaceOutputRenderer, subScene, subCamera) {
+        try {
+          return priorRender.call(this, subScene, subCamera)
+        } finally {
+          primitives = primitiveCount(renderer)
+        }
+      }
+    : undefined
+  if (observeRender) renderer.render = observeRender
   const trackScene = staticDrawable && scene.isScene === true
   const before = scene.onAfterRender
   const ownedBefore = trackScene && Object.prototype.hasOwnProperty.call(scene, 'onAfterRender')
@@ -116,9 +129,15 @@ export function beginSurfacePass(
   let finished = false
   return {
     finish(afterRenderer) {
-      if (!finished && trackScene && scene.onAfterRender === observeScene) {
-        if (ownedBefore) scene.onAfterRender = before
-        else Reflect.deleteProperty(scene, 'onAfterRender')
+      if (!finished) {
+        if (observeRender && renderer.render === observeRender) {
+          if (ownedRender) renderer.render = priorRender
+          else Reflect.deleteProperty(renderer, 'render')
+        }
+        if (trackScene && scene.onAfterRender === observeScene) {
+          if (ownedBefore) scene.onAfterRender = before
+          else Reflect.deleteProperty(scene, 'onAfterRender')
+        }
       }
       finished = true
       const drew = staticDrawable && primitiveCount(afterRenderer) > primitives

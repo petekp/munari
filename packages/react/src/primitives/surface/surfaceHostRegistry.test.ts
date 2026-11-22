@@ -309,16 +309,18 @@ describe('mount bookkeeping', () => {
     expect(resolveSurfaceHost()).toBe(host)
   })
 
-  it('evicts an idle named host after unmount, while preserving one with pending registrations', () => {
+  it('evicts an idle named host after unmount, while preserving one with pending registrations', async () => {
     const transient = surfaceHost('card-42')
     const firstMount = mountSurfaceHost(transient)
     firstMount.release()
+    await Promise.resolve()
 
     const remounted = createSurfaceHost('card-42')
     const secondMount = mountSurfaceHost(remounted)
     expect(secondMount.host).toBe(remounted)
     expect(secondMount.host).not.toBe(transient)
     secondMount.release()
+    await Promise.resolve()
 
     // While a page-side Surface still holds a registration, the pending host
     // stays resident so a remounting Canvas adopts it; once both release, it retires.
@@ -327,16 +329,46 @@ describe('mount bookkeeping', () => {
     const heldMount = mountSurfaceHost(createSurfaceHost('card-99'))
     expect(heldMount.host).toBe(held)
     heldMount.release()
+    await Promise.resolve()
 
     const adoptedAgain = mountSurfaceHost(createSurfaceHost('card-99'))
     expect(adoptedAgain.host).toBe(held)
     adoptedAgain.release()
     leavePresenter()
+    await Promise.resolve()
 
     const freshAfterDrain = createSurfaceHost('card-99')
     const finalMount = mountSurfaceHost(freshAfterDrain)
     expect(finalMount.host).toBe(freshAfterDrain)
     finalMount.release()
+  })
+
+  it('keeps a memoized named page host connected across Strict Mode replay and Activity wake-up', async () => {
+    const pageHost = resolveSurfaceHost('card-77')
+    expect(pageHost).not.toBeNull()
+    if (!pageHost) return
+
+    // Strict Mode replays layout effects (cleanup -> re-subscribe) before
+    // passive Canvas mount effects run.
+    const stopFirst = pageHost.subscribeRuntime(() => {})
+    stopFirst()
+    const stopReplayed = pageHost.subscribeRuntime(() => {})
+    const firstCanvas = mountSurfaceHost(createSurfaceHost('card-77'))
+    expect(firstCanvas.host).toBe(pageHost)
+
+    // Activity mode="hidden" tears down all layout and passive effects and drains microtasks.
+    stopReplayed()
+    firstCanvas.release()
+    await Promise.resolve()
+
+    // Activity mode="visible" re-runs layout effects on the memoized `pageHost`
+    // before the passive Canvas mount effect runs with a fresh candidate.
+    const stopWoken = pageHost.subscribeRuntime(() => {})
+    const wokenCanvas = mountSurfaceHost(createSurfaceHost('card-77'))
+    expect(wokenCanvas.host).toBe(pageHost)
+
+    stopWoken()
+    wokenCanvas.release()
   })
 })
 

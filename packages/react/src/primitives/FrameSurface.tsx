@@ -515,6 +515,7 @@ export function FrameSurface({
       const current = runtimeRef.current
       if (!current || current !== runtime || current.source !== frameRef.current) return
       if (drawnByOverride(scene, renderedMaterial)) return
+      passRef.current?.finish(renderer)
       passRef.current = beginSurfacePass(renderer, scene, this, geometry, renderedMaterial)
     },
     [runtime, frameRef],
@@ -525,11 +526,11 @@ export function FrameSurface({
     const observed = passRef.current
     passRef.current = null
     if (!observed) return
+    const evidence = observed.finish(renderer)
     const current = runtimeRef.current
-    // A source prop can change one commit before its effect disposes the old
-    // runtime. Never let that old mesh report into the new source's callback.
+    // Stale meshes never report into a replaced source's callback.
     if (!current || current !== runtime || current.source !== frameRef.current) return
-    const route = presentationRoute(observed.finish(renderer), host !== null)
+    const route = presentationRoute(evidence, host !== null)
     current.beginPresentationPass(presentationRef.current, route, reportRejectedPresentation)
     if (route === 'empty') return
     const receipt = current.takeDrawReceipt()

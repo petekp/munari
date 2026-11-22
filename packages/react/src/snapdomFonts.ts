@@ -72,17 +72,21 @@ const CARRIED_DESCRIPTORS = [
 ] as const
 
 /**
- * Faces per stylesheet, keyed by sheet identity and rule count.
- *
- * Keyed per sheet rather than per document because scenes link guest fonts on
- * mount after engine install (logo scene, 2026-09-12); rule count catches
- * readable sheets mutated via `insertRule`.
+ * Faces per stylesheet, keyed by sheet identity and rule count (logo scene,
+ * 2026-09-12); rule count catches readable sheets mutated via `insertRule`.
  */
-const facesBySheet = new WeakMap<CSSStyleSheet, { rules: number; faces: Promise<DeclaredFace[]> }>()
+interface CachedSheetFaces {
+  rules: number
+  faces: Promise<DeclaredFace[]>
+  retryAt?: number
+}
+
+const facesBySheet = new WeakMap<CSSStyleSheet, CachedSheetFaces>()
+const sheetFailures = new WeakMap<CSSStyleSheet, number>()
 
 /** Every `@font-face` the document declares across its current stylesheets. */
 async function declaredFaces(doc: Document, onUnreadable?: (href: string) => void): Promise<DeclaredFace[]> {
-  // Include `adoptedStyleSheets` explicitly for engines where `doc.styleSheets` omits them.
+  // Include `adoptedStyleSheets` for engines where `doc.styleSheets` omits them.
   const adopted = 'adoptedStyleSheets' in doc ? doc.adoptedStyleSheets : []
   const sheets = new Set<CSSStyleSheet>([
     ...Array.from(doc.styleSheets).filter((s): s is CSSStyleSheet => s instanceof CSSStyleSheet),
@@ -106,31 +110,42 @@ function sheetFaces(
   try {
     rules = sheet.cssRules
   } catch {
-    // Cross-origin sheet linked without CORS.
+    // Cross-origin sheet without CORS.
   }
   const count = rules ? rules.length : -1
   const cached = facesBySheet.get(sheet)
-  if (cached?.rules === count) return cached.faces
-  const faces = rules
-    ? readRules(rules, sheet.href ?? doc.baseURI, doc, onUnreadable)
-    : fetchSheetFaces(sheet.href, doc, onUnreadable, () => {
-        if (facesBySheet.get(sheet)?.faces === faces) facesBySheet.delete(sheet)
-      })
-  facesBySheet.set(sheet, { rules: count, faces })
-  return faces
+  if (cached?.rules === count && (cached.retryAt === undefined || performance.now() < cached.retryAt)) {
+    return cached.faces
+  }
+  const entry: CachedSheetFaces = {
+    rules: count,
+    faces: rules
+      ? readRules(rules, sheet.href ?? doc.baseURI, doc, onUnreadable)
+      : fetchSheetFaces(sheet.href, doc, onUnreadable).then((fetched) => {
+          if (fetched) {
+            sheetFailures.delete(sheet)
+            return fetched
+          }
+          const fails = (sheetFailures.get(sheet) ?? 0) + 1
+          sheetFailures.set(sheet, fails)
+          if (fails <= 3) {
+            if (facesBySheet.get(sheet) === entry) facesBySheet.delete(sheet)
+          } else {
+            entry.retryAt = performance.now() + 5_000
+          }
+          return []
+        }),
+  }
+  facesBySheet.set(sheet, entry)
+  return entry.faces
 }
 
-/**
- * Fallback CORS fetch for cross-origin `<link>` sheets (such as Google Fonts
- * without `crossorigin`) whose `cssRules` throw `SecurityError`. Failed fetches
- * evict their cache entry so transient network errors can recover.
- */
+/** Fallback CORS fetch for cross-origin `<link>` sheets whose `cssRules` throw. */
 async function fetchSheetFaces(
   href: string | null,
   doc: Document,
   onUnreadable: ((href: string) => void) | undefined,
-  onFailed: () => void,
-): Promise<DeclaredFace[]> {
+): Promise<DeclaredFace[] | null> {
   if (!href) return []
   try {
     const response = await fetch(href)
@@ -140,9 +155,8 @@ async function fetchSheetFaces(
     parsed.replaceSync(await response.text())
     return await readRules(parsed.cssRules, href, doc, onUnreadable)
   } catch {
-    onFailed()
     onUnreadable?.(href)
-    return []
+    return null
   }
 }
 
@@ -306,17 +320,10 @@ function usedCodepoints(root: Element): Set<number> {
 }
 
 /**
- * Families resolved by the live subtree or the requested clip.
- *
- * Read from the live tree through `getComputedStyle`, not from the clone:
- * snapDOM dedups its inlined styles into generated classes, so a clone's
- * `style.fontFamily` is empty and a selector built from it matches no face at
- * all — which reads as a large speedup and ships fallback glyphs (caught
- * 2026-09-11 by checking the serialized payload: 41 KB with zero `@font-face`
- * rules against snapDOM's own 311 KB).
- *
- * The full path reads one style per node. A clip also reads active pseudos
- * and its intersecting ancestors so inherited fonts remain available.
+ * Families resolved by the live subtree or clip (`getComputedStyle` on the
+ * live tree, never the clone's deduped classes: reading `clone.style.fontFamily`
+ * matched zero faces — 41 KB vs snapDOM's 311 KB, 2026-09-11). Clips also read
+ * active pseudos and intersecting ancestors.
  */
 type FontClip = { x: number; y: number; width: number; height: number }
 
@@ -465,9 +472,7 @@ async function fontCssFor(
 ): Promise<string> {
   const all = await declaredFaces(doc, onUnreadable)
   if (all.length === 0) return ''
-  // Families off the LIVE tree (the clone carries classes, not inline styles);
-  // codepoints off the CLONE, because a plugin earlier in the chain may have
-  // put text there that the live tree never had.
+  // Families from live styles; codepoints from the clone (earlier plugins may inject text).
   const families = usedFamilies(live, clip)
   const points = usedCodepoints(clone)
   if (points.size === 0) return ''

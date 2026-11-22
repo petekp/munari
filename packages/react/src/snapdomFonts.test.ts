@@ -223,6 +223,34 @@ describe('fontEmbedPlugin', () => {
     expect(await carried(sheetNode)).toContain("font-family:'FlakySheet'")
   })
 
+  it('survives synchronous fetch throws and throttles repeated cross-origin sheet retries', async () => {
+    const blockedSheet = 'https://blocked.test/fonts.css'
+    const sheet = Object.create(CSSStyleSheet.prototype, {
+      href: { value: blockedSheet },
+      cssRules: {
+        get: () => {
+          throw new DOMException('Cannot access rules', 'SecurityError')
+        },
+      },
+    })
+    Object.defineProperty(document, 'styleSheets', {
+      configurable: true,
+      value: [sheet],
+    })
+
+    let calls = 0
+    vi.stubGlobal('fetch', () => {
+      calls += 1
+      throw new TypeError('Synchronous network throw')
+    })
+
+    const node = letter('Blocked')
+    for (let i = 0; i < 6; i++) {
+      expect(await carried(node)).toBe('')
+    }
+    expect(calls).toBe(4)
+  })
+
   it.each([
     ['ttf extension', 'https://lab.test/body.ttf', undefined, 'data:font/ttf;base64,', "format('truetype')"],
     ['otf extension', 'https://lab.test/display.otf?v=2', undefined, 'data:font/otf;base64,', "format('opentype')"],

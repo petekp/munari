@@ -123,10 +123,8 @@ export interface SurfaceHost {
   discardFrameTail(): void
 }
 
-// The empty tuples are shared so a host with nothing registered hands back
-// the same array identity every time. `useSyncExternalStore` compares
-// snapshots by reference, and a fresh `[]` per read is an infinite render
-// loop, not a slow one.
+// The empty tuples are shared so an empty host returns a stable array identity
+// (`useSyncExternalStore` compares snapshots by reference).
 const NO_SOURCES: readonly SurfaceSourceEntry[] = Object.freeze([])
 const NO_PRESENTERS: readonly SurfacePresenterEntry[] = Object.freeze([])
 const NO_OBJECTS: readonly Object3D[] = Object.freeze([])
@@ -158,13 +156,22 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
   let deferred: { target: RenderTarget; close: () => void }[] = []
 
   const key = id ?? ''
+  let retireQueued = false
+  const reclaim = () => {
+    if (key !== '' && !hosts.has(key)) hosts.set(key, host)
+  }
   const retireIfIdle = () => {
-    if (
-      key === '' || hosts.get(key) !== host || mounts.has(host) || claims > 0 || deferred.length > 0 ||
-      sourceMap.size + presenterMap.size + sourceListeners.size + presenterListeners.size +
-      runtimeListeners.size + tickSet.size + beforeDraw.size + rasterListeners.size + objectSet.size > 0
-    ) return
-    hosts.delete(key)
+    if (key === '' || retireQueued) return
+    retireQueued = true
+    queueMicrotask(() => {
+      retireQueued = false
+      if (
+        hosts.get(key) !== host || mounts.has(host) || claims > 0 || deferred.length > 0 ||
+        sourceMap.size + presenterMap.size + sourceListeners.size + presenterListeners.size +
+        runtimeListeners.size + tickSet.size + beforeDraw.size + rasterListeners.size + objectSet.size > 0
+      ) return
+      hosts.delete(key)
+    })
   }
 
   const host: SurfaceHost = {
@@ -176,6 +183,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
       for (const listener of runtimeListeners) listener()
     },
     subscribeRuntime(listener) {
+      reclaim()
       runtimeListeners.add(listener)
       return () => {
         runtimeListeners.delete(listener)
@@ -191,13 +199,12 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
     },
     notifyLifecycle() { for (const listener of runtimeListeners) listener() },
     registerSource(entry) {
+      reclaim()
       sourceMap.set(entry.key, entry)
       sourceSnapshot = Array.from(sourceMap.values())
       for (const listener of sourceListeners) listener()
       return () => {
-        // Identity-checked: a re-registration under the same key (a source
-        // whose content changed) replaces the entry, and the OLD entry's
-        // release must not then delete the new one.
+        // Identity-checked so an old entry's release never deletes its replacement.
         if (sourceMap.get(entry.key) !== entry) return
         sourceMap.delete(entry.key)
         sourceSnapshot = sourceMap.size === 0 ? NO_SOURCES : Array.from(sourceMap.values())
@@ -207,6 +214,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
     },
     sources: () => sourceSnapshot,
     subscribeSources(listener) {
+      reclaim()
       sourceListeners.add(listener)
       return () => {
         sourceListeners.delete(listener)
@@ -214,6 +222,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
       }
     },
     registerPresenter(entry) {
+      reclaim()
       presenterMap.set(entry.key, entry)
       presenterSnapshot = Array.from(presenterMap.values())
       for (const listener of presenterListeners) listener()
@@ -228,6 +237,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
     },
     presenters: () => presenterSnapshot,
     subscribePresenters(listener) {
+      reclaim()
       presenterListeners.add(listener)
       return () => {
         presenterListeners.delete(listener)
@@ -235,6 +245,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
       }
     },
     registerTick(tick) {
+      reclaim()
       tickSet.add(tick)
       tickSnapshot = Array.from(tickSet)
       return () => {
@@ -245,6 +256,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
     },
     ticks: () => tickSnapshot,
     registerBeforeDraw(listener) {
+      reclaim()
       beforeDraw.add(listener)
       return () => {
         beforeDraw.delete(listener)
@@ -252,6 +264,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
       }
     },
     registerRaster(listener) {
+      reclaim()
       rasterListeners.add(listener)
       rasterSnapshot = Array.from(rasterListeners)
       return () => {
@@ -270,6 +283,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
     hasBeforeDraw: () => beforeDraw.size > 0,
     beforeDraw(scene, camera, target = null) { for (const listener of [...beforeDraw]) listener(scene, camera, target) },
     registerObject(object) {
+      reclaim()
       objectSet.add(object)
       objectSnapshot = Array.from(objectSet)
       return () => {
@@ -280,6 +294,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
     },
     objects: () => objectSnapshot,
     claimWork() {
+      reclaim()
       claims += 1
       if (claims === 1) host.runtime?.setBusy(true)
       host.runtime?.invalidate()
@@ -290,10 +305,7 @@ function createHost(id: SurfaceCanvasId | undefined): SurfaceHost {
         claims -= 1
         if (claims === 0) {
           host.runtime?.setBusy(false)
-          // One last frame after the final release. Scene removal is not
-          // presentation removal until the renderer draws without the
-          // object, and a demand Canvas that stops here retains the last
-          // pixels of whatever just released.
+          // One final frame so a demand Canvas clears the released object's last pixels.
           host.runtime?.invalidate()
           retireIfIdle()
         }

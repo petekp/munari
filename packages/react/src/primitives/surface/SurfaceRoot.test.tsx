@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // A scene-side declaration cannot silently name a different renderer.
-import { Fragment, StrictMode, createElement, use } from 'react'
+import { Activity, Fragment, StrictMode, createElement, use } from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -197,5 +197,59 @@ it('settles state, releases work claims, and ticks sibling Surfaces when a callb
     cleanSecond()
     flushSync(() => root.unmount())
     mounted.release()
+  }
+})
+
+it('preserves named host wiring across Strict Mode and Activity hide/show cycles', async () => {
+  class WithTrial { drawElementImage() {} }
+  vi.stubGlobal('CanvasRenderingContext2D', WithTrial)
+  const store = createSurfaceStore('card-panel')
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  let resolved: SurfaceHost | null = null
+  function Read() {
+    resolved = use(SurfaceRootContext)?.host ?? null
+    return null
+  }
+  const render = (mode: 'visible' | 'hidden') =>
+    flushSync(() =>
+      root.render(
+        <StrictMode>
+          <Activity mode={mode}>
+            <Surface.Root surface={store.handle} canvasId="card-77" inScene={false}>
+              <Read />
+            </Surface.Root>
+          </Activity>
+        </StrictMode>,
+      ),
+    )
+
+  let firstCanvas: ReturnType<typeof mountSurfaceHost> | null = null
+  let wokenCanvas: ReturnType<typeof mountSurfaceHost> | null = null
+  try {
+    render('visible')
+    expect(resolved).not.toBeNull()
+    firstCanvas = mountSurfaceHost(createSurfaceHost('card-77'))
+    firstCanvas.host.setRuntime({ invalidate() {}, setBusy() {} })
+    expect(firstCanvas.host).toBe(resolved)
+    expect(store.canPrepareCanvas()).toBe(true)
+    expect(firstCanvas.host.ticks()).toHaveLength(1)
+
+    render('hidden')
+    firstCanvas.release()
+    firstCanvas = null
+    await Promise.resolve()
+
+    render('visible')
+    wokenCanvas = mountSurfaceHost(createSurfaceHost('card-77'))
+    wokenCanvas.host.setRuntime({ invalidate() {}, setBusy() {} })
+    expect(wokenCanvas.host).toBe(resolved)
+    expect(store.canPrepareCanvas()).toBe(true)
+    expect(wokenCanvas.host.ticks()).toHaveLength(1)
+  } finally {
+    flushSync(() => root.unmount())
+    firstCanvas?.release()
+    wokenCanvas?.release()
   }
 })
