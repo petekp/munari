@@ -8,7 +8,9 @@ import { SurfacePart } from './surface/SurfacePart'
 import { SurfaceScene as SurfaceSceneBoundary } from './surface/SurfaceScene'
 import { SurfaceAnchor } from './surface/SurfaceAnchor'
 import { SurfaceLitMaterial } from './surface/surfaceMaterials'
-import { SurfaceRootContext, SurfacePartContext, SurfaceTunnelContext, SurfaceHandleContext, DEFAULT_PART } from './surface/surfaceContext'
+import { SurfacePrewarm } from './surface/SurfacePrewarm'
+import { SceneContribution } from './surface/SurfaceSceneContribution'
+import { SurfaceRootContext, SurfacePartContext, DEFAULT_PART } from './surface/surfaceContext'
 import { surfaceStoreOf, useSurfaceHandle, type SurfaceHandle } from './surface/surfaceHandle'
 import { surfaceViewPresentation, type SurfaceViewPresentation, type SurfaceViewDestination } from './surface/surfaceStatus'
 import { type SurfaceSize, type SurfaceSourceRuntime, type SurfaceResolution, type SurfacePartPublication } from './surface/surfaceSourceRuntime'
@@ -25,21 +27,6 @@ import { insertRetained, moveRetained } from './retainedMove'
 import { applyCopyScrolls } from './elementCapture'
 import { placeholderCopy, snapshotPageContent as snapshot, sourceNeedsLiveNode, unsupportedSnapshot } from './surface/surfacePageSnapshot'
 import { readSurfaceDevicePixelRatio } from './surface/surfaceDevicePixelRatio'
-
-function SceneContribution({ scene }: { scene: ReactNode }) {
-  const root = use(SurfaceRootContext)!
-  const part = use(SurfacePartContext)
-  const mounted = useSyncExternalStore(root.store.subscribePresence, root.store.canvasMounted, () => false)
-  const [key] = useState(() => `surface-content-${Math.random()}`)
-  useLayoutEffect(() => root.store.declarePresentation('canvas'), [root.store])
-  const identity = useMemo(() => ({ handle: root.handle, store: root.store }), [root.handle, root.store])
-  const element = <SurfaceHandleContext value={identity}><SurfaceRootContext value={root}><SurfacePartContext value={part}><SurfaceTunnelContext value>{scene}</SurfaceTunnelContext></SurfacePartContext></SurfaceRootContext></SurfaceHandleContext>
-  useEffect(() => {
-    if (!root.host || !mounted) return
-    return root.host.registerPresenter({ key, element })
-  })
-  return null
-}
 
 function PageBinding({page,marker,layout,inScene,pageContent}:{page:HTMLElement;marker:HTMLElement;pageContent:()=>HTMLElement|null;layout:'preserve'|'reflow';inScene:boolean}) {
   const root=use(SurfaceRootContext)!
@@ -451,6 +438,7 @@ export const Surface = Object.assign(BasicSurface, {
   Mesh: SurfaceMesh,
   Anchor: SurfaceAnchor,
   LitMaterial: SurfaceLitMaterial,
+  Prewarm: SurfacePrewarm,
 })
 
 function useViewCallbacks(controls: SurfaceControls) {
@@ -493,4 +481,5 @@ export const SceneSurface = Object.assign(BasicSceneSurface, {
   Scene: SurfaceScene,
   Anchor: SurfaceAnchor,
   LitMaterial: SurfaceLitMaterial,
+  Prewarm: SurfacePrewarm,
 })

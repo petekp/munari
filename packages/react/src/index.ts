@@ -28,6 +28,7 @@ export { SurfaceCanvas, type SurfaceCanvasProps } from './primitives/surface/Sur
 export type { SurfaceCanvasId } from './primitives/surface/surfaceHostRegistry'
 export type { SurfaceIdentityProps } from './primitives/surface/SurfaceRoot'
 export type { SurfacePointerEvents, SurfaceRadius, SurfaceMeshProps } from './primitives/surface/SurfaceMesh'
+export type { SurfacePrewarmProps } from './primitives/surface/SurfacePrewarm'
 export type { SurfaceResolution, SurfaceSize } from './primitives/surface/surfaceSourceRuntime'
 
 // ── Identity and frame reads ─────────────────────────────────────────────

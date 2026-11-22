@@ -35,3 +35,11 @@ A custom material returns color through `premultipliedOutput` (premultiplied lin
 A `WebGPURenderer` that loses its GPU never draws again, on WebGPU or the WebGL 2 fallback. After a loss, `SurfaceCanvas` returns every Surface to the page, hides the dead canvas, shows `fallback`, calls `onRendererLost`, and remounts its Canvas with a new renderer. The page HTML is untouched. A replacement lost within 10 s (`REPEATED_LOSS_MS`) is not replaced, so a GPU that fails every frame stops after one retry. `onRendererLost` is the scene's signal, because `SurfaceCanvas` owns `onDeviceLost`.
 
 A lab scene that runs its own `WebGPURenderer` outside `SurfaceCanvas` shows its fallback and restarts through `useRendererReplacement` (`apps/lab/src/lib/rendererReplacement.ts`). Renderers that one scene restarts together share one counter. `probe:api-lifecycle` and `gate:genie-film` check recovery.
+
+<a id="76"></a>
+
+## #76 — A presenter first draws with pipelines already built
+
+A `Surface.Mesh` or `FrameSurface` in a `SurfaceCanvas` stays hidden until `compileAsync` has built every pipeline its material draws with: its own write flags, the same with color on, and all writes off, with each pass of a transparent double-sided material as its own side. The page holds meanwhile. three 0.186.1 builds a missing pipeline at the draw with the blocking `createRenderPipeline`, which Chrome's Dawn runs on the GPU process's main thread. With shaders no cache held, Genie's first flight froze every frame for 183-250 ms (`instruments/genie-first-flight`, 2026-11-22).
+
+A build starts inside the draw of the scene that holds the mesh, so it gets that draw's target and `DirectRenderPipeline`'s output node (#72). three creates the pipeline after its first await and keys it by the renderer's output settings at that moment, so while a build is pending the renderer rests with no tone mapping in the working color space, as the draw sees it, and has its own settings back around each canvas draw. A build that fails is logged in development and the presenter draws anyway. `Surface.Prewarm` builds the same pipelines before any presenter mounts, and `SurfaceCanvas` builds the mipmap pass for both upload formats while the renderer starts. Outside a `SurfaceCanvas` nothing is built ahead, and a presenter draws at once.

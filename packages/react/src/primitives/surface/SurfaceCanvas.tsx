@@ -36,7 +36,7 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Canvas, useFrame, useThree, type CanvasProps, type RootState } from '@react-three/fiber'
-import { Color, Material, NoToneMapping, PCFShadowMap, RenderTarget, Scene, type Camera, type Object3D } from 'three'
+import { Color, NoToneMapping, PCFShadowMap, RenderTarget, Scene, type Camera, type Object3D } from 'three'
 import { DirectRenderPipeline, WebGPURenderer, type WebGPURendererParameters } from 'three/webgpu'
 import {
   createSurfaceHost,
@@ -50,8 +50,10 @@ import { surfaceCanvasPixelRatio, surfaceCanvasDisplayScale, counterSurfaceCanva
 import { useLatest } from '../useLatest'
 import { SurfaceHostContext } from './surfaceHostContext'
 import { CanvasPointerGate } from '../CanvasPointerGate'
-import { reportedGlslMaterials, usesGlsl } from './glslMaterial'
+import { GLSL_SCAN_INTERVAL_MS, reportGlslInScene } from './glslMaterial'
 import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
+import { createSurfaceCompiler, installSurfaceCompiler } from './surfaceCompile'
+import { prebuildMipmapPasses } from './surfaceMipmapPrebuild'
 
 /**
  * Canvas style, minus the fields the host reserves.
@@ -202,6 +204,9 @@ async function startSurfaceRenderer(
     // context surfaces there as a null dereference.
     throw new RendererStartError('[munari] SurfaceCanvas could not start WebGPU or its WebGL 2 fallback', { cause })
   }
+  // A renderer without the prebuild still draws; its first mipmapped upload
+  // builds the pass with the blocking call instead.
+  await prebuildMipmapPasses(renderer).catch(reportError)
   const limit = grantedTextureLimit(renderer)
   if (limit !== null) textureLimits.set(renderer, limit)
   return renderer
@@ -214,29 +219,6 @@ function grantedTextureLimit(renderer: WebGPURenderer): number | null {
   if (context instanceof WebGL2RenderingContext) return context.getParameter(context.MAX_TEXTURE_SIZE)
   const { backend } = renderer
   return 'device' in backend && backend.device instanceof GPUDevice ? backend.device.limits.maxTextureDimension2D : null
-}
-
-// Development only. A traversal per frame would cost a large scene every
-// frame; a material added later is still named within a second.
-const GLSL_SCAN_INTERVAL_MS = 1000
-
-// A GLSL material anywhere on the canvas, including drei's Text and
-// MeshDistortMaterial, draws black or unpatched, and Three's log names only
-// the material type.
-function reportGlslInScene(scene: Object3D): void {
-  scene.traverse((object) => {
-    if (!('material' in object)) return
-    const materials: unknown[] = Array.isArray(object.material) ? object.material : [object.material]
-    for (const material of materials) {
-      if (!(material instanceof Material) || reportedGlslMaterials.has(material) || !usesGlsl(material)) continue
-      reportedGlslMaterials.add(material)
-      const label = object.name ? `"${object.name}"` : `a ${object.type}`
-      console.error(
-        `[munari] ${label} on a <SurfaceCanvas> uses a GLSL material (${material.type}), which ` +
-          'WebGPURenderer cannot run, so it draws black or unpatched. Rebuild it as a TSL node material.',
-      )
-    }
-  })
 }
 
 // A replacement renderer lost sooner than this after it was created is not
@@ -399,13 +381,20 @@ function SurfaceHostBridge({
     }
     gl.clear = clear
     const pipeline = new DirectRenderPipeline(gl)
+    // Presenters' pipeline builds start in the draw of the scene that holds
+    // them, under that draw's target and output state (surfaceCompile.ts).
+    const compiler = createSurfaceCompiler(gl, invalidate)
+    const uninstallCompiler = installSurfaceCompiler(gl, compiler)
     // The pipeline's own render() calls gl.render; that inner call draws.
     let piping = false
     let notifying = false
     let warnedToneMapping = false
     let lastGlslScan = -Infinity
     gl.render = (scene, camera) => {
-      if (piping) return renderWithObservedClear(host, gl, original, scene, camera)
+      if (piping) {
+        compiler.start(scene, camera)
+        return renderWithObservedClear(host, gl, original, scene, camera)
+      }
       if (isDevelopmentRuntime() && performance.now() - lastGlslScan > GLSL_SCAN_INTERVAL_MS) {
         lastGlslScan = performance.now()
         reportGlslInScene(scene)
@@ -436,8 +425,11 @@ function SurfaceHostBridge({
         const target = gl.getRenderTarget()
         if (target === null) {
           piping = true
-          try { pipeline.render(scene, camera) } finally { piping = false }
-        } else renderWithObservedClear(host, gl, original, scene, camera)
+          try { compiler.draw(() => pipeline.render(scene, camera)) } finally { piping = false }
+        } else {
+          compiler.start(scene, camera)
+          renderWithObservedClear(host, gl, original, scene, camera)
+        }
       } finally {
         if(ownsPreparation){if(replacedSceneUpdate)scene.matrixWorldAutoUpdate=automatic;releaseRaster?.();notifying=false}
       }
@@ -446,12 +438,13 @@ function SurfaceHostBridge({
     return () => {
       gl.render = original
       if (gl.clear === clear) gl.clear = originalClear
+      uninstallCompiler()
       pipeline.dispose()
       // A renderer going away ends the frame with nothing on screen, so
       // whatever deferred to this tail is discarded rather than proven.
       host.discardFrameTail()
     }
-  }, [gl, host])
+  }, [gl, host, invalidate])
 
   // Three reports a lost WebGPU device and a lost WebGL 2 context through
   // `onDeviceLost`, and that renderer draws nothing again: it has no restore

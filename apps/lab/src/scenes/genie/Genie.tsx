@@ -28,7 +28,6 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -53,7 +52,6 @@ import {
   useSurfacePaintedSize,
   useSurfaceSourceRoot,
   useSurfaceTexture,
-  useSurfaceNodes,
   useSurfaceSupport,
 } from '@petepetrash/munari'
 import {
@@ -66,7 +64,6 @@ import {
   type FrameSource,
   type PresentationRequirement,
   type SurfaceManualPresenter,
-  useFrameTexture,
 } from '@petepetrash/munari/advanced'
 import {
   GENIE_DEFAULTS,
@@ -94,12 +91,7 @@ import { genieTuning } from './genieTuning'
 import { GenieTweakPanel } from './GenieTweaks'
 import { FOV, PixelPerfect } from './GenieCamera'
 import { showChrome } from '../../bareMode'
-import {
-  createGenieFilmMaterial,
-  createGenieFilmPlacement,
-  createGenieMaterial,
-  createGenieShade,
-} from './genieNodes'
+import { FilmCompositeMaterial, GenieMaterial } from './GenieMaterials'
 import {
   GENIE_FILM_HEIGHT,
   GENIE_FILM_WIDTH,
@@ -524,93 +516,11 @@ function WindowBody({
 
 // ── the sheet's material ────────────────────────────────────────────────
 
-/** How hard the funnel has to be squeezing a row before its shadow goes.
- *
- *  Measured, and the measurement overturned the first answer. Reasoning
- *  from the drop's width said a 5px band stops reading as a shadow at
- *  about two rendered pixels, so the band was set to leave between row
- *  scales 0.45 and 0.20 — and shadow-travels then read the identical
- *  profile with the fade on and with it disabled. The reason is that a
- *  minified band does not stay crisp and merely narrow: the GPU averages
- *  it against the transparent margin outside it, so it loses ALPHA at
- *  the same time it loses width. Ink measured down the held funnel, one
- *  frame (2026-08-09, `--drop: 5px`):
- *
- *      row scale   1.00   0.80   0.77   0.69   0.63   0.52   ≤0.35
- *      shade ink    190     89     63     41     27     15       0
- *
- *  Half the shadow is gone by 0.80 and four fifths by 0.69, with none of
- *  that asked for — which is exactly the complaint, a shadow that
- *  dissolves into a grey haze down one flank instead of leaving. A fade
- *  under 0.45 had nothing left to fade. So the band is placed where the
- *  ink still exists: whole above 0.95, gone by 0.55, which LEADS the
- *  dissolution rather than trailing it and takes the smear with it. The
- *  ceiling stays clear of 1.0 for the reason it always did — a sheet at
- *  rest, and the whole first stretch of a flight, must be untouched. */
-const SHADE_FADE: [number, number] = [0.55, 0.95]
-
-function GenieMaterial({ shade }: { shade: [number, number] }) {
-  const surface = useSurfaceNodes()
-  const [values] = useState(() => createGenieShade(SHADE_FADE))
-  values.edge.value.set(shade[0], shade[1])
-  // Surface creates every DOM texture premultiplied (decisions.md #5).
-  // This material only owns the matching blend rule (genieNodes.ts).
-  const material = useMemo(() => createGenieMaterial(surface, values), [surface, values])
-  useLayoutEffect(() => () => material.dispose(), [material])
-  return <primitive object={material} attach="material" />
-}
-
 /** The film's own box inside the window capture, named on the canvas that
  *  holds it. One key, but the transaction rule is the point: the composite
  *  is withheld until a whole set describes the generation on this
  *  geometry, so the shader can never cut a hole where the film used to be. */
 const FILM_ANCHORS = ['film'] as const
-
-interface FilmCompositeMaterialProps {
-  chromeTexture: THREE.Texture
-  film: NonNullable<GenieFlight['film']>
-  /** The film's box in the outer capture, once the anchor set is whole. */
-  uv: SourceUvRect | null
-  shade: [number, number]
-  width: number
-  height: number
-  ref: React.RefObject<MeshBasicNodeMaterial | null>
-}
-
-function FilmCompositeMaterial({
-  chromeTexture,
-  film,
-  uv,
-  shade,
-  width,
-  height,
-  ref,
-}: FilmCompositeMaterialProps) {
-  const filmTexture = useFrameTexture()
-  const [values] = useState(() => ({ shade: createGenieShade(SHADE_FADE), placement: createGenieFilmPlacement() }))
-  values.placement.size.value.set(width, height)
-  values.shade.edge.value.set(shade[0], shade[1])
-  if (uv) {
-    values.placement.rect.value.set(uv.uMin, 1 - uv.vMax, uv.uMax - uv.uMin, uv.vMax - uv.vMin)
-  }
-  values.placement.radius.value = film.radius
-  // The first child render has no FrameSurface texture, and a node material
-  // cannot be built around a missing sampler. FrameSurface suppresses the
-  // mesh until the texture exists; the material is built then.
-  const material = useMemo(
-    () => (filmTexture ? createGenieFilmMaterial(chromeTexture, filmTexture, values.placement, values.shade) : null),
-    [chromeTexture, filmTexture, values],
-  )
-  useLayoutEffect(() => {
-    ref.current = material
-    return () => {
-      ref.current = null
-      material?.dispose()
-    }
-  }, [ref, material])
-  if (!material) return null
-  return <primitive object={material} attach="material" />
-}
 
 interface FilmCompositeProps {
   f: GenieFlight
@@ -701,13 +611,62 @@ function FilmComposite({
       <FilmCompositeMaterial
         ref={material}
         chromeTexture={chromeTexture}
-        film={film}
+        filmRadius={film.radius}
         uv={uv}
         shade={f.shade}
         width={width}
         height={height}
       />
     </FrameSurface>
+  )
+}
+
+// ── pipelines built at load ─────────────────────────────────────────────
+//
+// A flight's presenters wait for their pipelines before they draw, and
+// with shaders no cache holds that wait is the length of a shader compile.
+// These meshes wear every material a flight draws with, on a sheet with
+// the flight's attributes, so the pipelines are built while the desk is
+// still: the sheet, the film placeholder, and the film composite.
+// `?prewarm=off` leaves the wait at the flight, for the first-flight probe.
+
+const PREWARM_OFF = new URLSearchParams(window.location.search).get('prewarm') === 'off'
+
+function FilmPrewarmMaterial() {
+  const chromeTexture = useSurfaceTexture()
+  const material = useRef<MeshBasicNodeMaterial | null>(null)
+  return (
+    <FilmCompositeMaterial
+      ref={material}
+      chromeTexture={chromeTexture}
+      filmRadius={0}
+      uv={null}
+      shade={[1, 1]}
+      width={1}
+      height={1}
+    />
+  )
+}
+
+function GeniePrewarm({ onReady }: { onReady: () => void }) {
+  const [sheet] = useState(() => {
+    const geometry = new THREE.PlaneGeometry(1, 1, GRID_X, GRID_Y)
+    geometry.setAttribute('squeeze', new THREE.BufferAttribute(new Float32Array(geometry.attributes.position.count), 1))
+    return geometry
+  })
+  useEffect(() => () => sheet.dispose(), [sheet])
+  return (
+    <Surface.Prewarm alpha="source" onReady={onReady}>
+      <mesh geometry={sheet}>
+        <GenieMaterial shade={[1, 1]} />
+      </mesh>
+      <mesh geometry={sheet}>
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <mesh geometry={sheet}>
+        <FilmPrewarmMaterial />
+      </mesh>
+    </Surface.Prewarm>
   )
 }
 
@@ -2276,10 +2235,13 @@ export function GenieApp() {
   }
   const apiRef = useRef<GestureApi>(api)
   apiRef.current = api
+  const [prewarmed, setPrewarmed] = useState(false)
+  const markPrewarmed = useCallback(() => setPrewarmed(true), [])
 
   return (
     <div
       className="gen-page"
+      data-genie-prewarm={PREWARM_OFF ? 'off' : prewarmed ? 'ready' : 'building'}
       data-degraded={supported ? undefined : 'true'}
       data-genie-film-direction={air[FILM_WIN]?.direction}
       data-genie-film-framed={framed[FILM_WIN] ? 'true' : 'false'}
@@ -2422,6 +2384,7 @@ export function GenieApp() {
         onRendererLost={revokeRendererHold}
       >
         <PixelPerfect />
+        {!PREWARM_OFF && <GeniePrewarm onReady={markPrewarmed} />}
         <GestureRig api={apiRef} />
         <Bays
           slotOf={slotOf}

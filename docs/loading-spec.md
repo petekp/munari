@@ -466,7 +466,7 @@ below checks whether this clamp is right.
 | Error inside an app renderer | Invisible to the library. The app sets its wait to the Error |
 | Several canvases | Each is its own entry. Each Surface reads its own host's renderer status |
 | Callback timing | `onLoaded` and `onLate` run from a page animation frame. Store notifications never run app code inside `gl.render` |
-| `compileAsync` adopted later | Three fires `onAfterRender` while it skips a draw whose pipeline is not ready. `noteShown` would then need a pipeline-ready check. three 0.186.1 compiles synchronously today |
+| Pipelines built asynchronously | A presenter waits on the page until its pipelines exist ([#76](decisions.md#76)). If one fails, three may skip a draw yet fire `onAfterRender`; `surfacePass.ts` refuses it |
 
 ## Ownership
 

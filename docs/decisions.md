@@ -2,7 +2,7 @@
 
 Numbered rules that govern Munari today, grouped by area. Each rule states the current constraint. A measured rule keeps the number that justifies it. Git history keeps earlier versions and the evidence behind them. Terms follow the glossary in [CONTEXT.md](../CONTEXT.md).
 
-Code cites a rule as `decisions.md #N`, and this index maps the number to its file. Numbers are permanent. A retired number is never reused. A new decision takes the next free number, #76, in the file for its area, and gets a row here.
+Code cites a rule as `decisions.md #N`, and this index maps the number to its file. Numbers are permanent. A retired number is never reused. A new decision takes the next free number, #77, in the file for its area, and gets a row here.
 
 Changing a rule needs evidence and matching changes to its owning tests (#2). Browser facts and how they were measured live in [platform.md](platform.md).
 
@@ -93,3 +93,4 @@ Changing a rule needs evidence and matching changes to its owning tests (#2). Br
 | <a id="73"></a>[#73](decisions/renderer.md#73) | `SurfaceCanvas` replaces a lost renderer |
 | <a id="74"></a>[#74](decisions/capture.md#74) | Capture canvases use CPU storage on a software GPU |
 | <a id="75"></a>[#75](decisions/lab.md#75) | The overview leads with a running demo, and one catalog lists the demos |
+| <a id="76"></a>[#76](decisions/renderer.md#76) | A presenter first draws with pipelines already built |

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- A `Surface.Mesh` or `FrameSurface` no longer freezes the canvas on its
+  first draw. three built each missing render pipeline at the draw with a
+  blocking call. With shaders that no browser cache held, every frame froze
+  for 150-270 ms, as on Genie's first flight. A presenter now builds its
+  pipelines asynchronously and first draws once they are ready. Until then its
+  content stays on the page.
+- `Surface.Prewarm` builds pipelines for presenters that mount later, so
+  their first draw waits for nothing. It takes meshes that wear those
+  presenters' materials, the `alpha` they use, and an `onReady` callback.
+  `SurfacePrewarmProps` is exported.
+- `SurfaceCanvas` builds three's mipmap pass for both texture formats while
+  the renderer starts. It used to be built at a Surface's first mipmapped
+  upload, which froze the canvas for 85-114 ms.
+
 - On snapDOM, a Surface ignores `live`. Its content holds still while the
   scene has it, as content without `live` does, and `useFreezeSurface()`
   turns true. HTML-in-canvas still follows a live Surface every frame.

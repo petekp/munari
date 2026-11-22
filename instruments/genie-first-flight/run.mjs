@@ -38,8 +38,15 @@
 // loads each. Even-numbered browsers are traced and odd ones are not, so
 // tracing overhead can be read off the frame gaps.
 //
+// PREWARM=on loads the scene as it ships, building the flight's pipelines at
+// load with Surface.Prewarm, and waits for that to finish before the first
+// press; off adds `prewarm=off`, so each presenter builds its own at the
+// flight. Either way a presenter draws only once its pipelines are built, so
+// the cost of a cold compile shows as pressToHandoffMs, the wait before the
+// window moves, rather than as frozen frames.
+//
 // Environment: ENGINES (html-in-canvas,snapdom), SHADERS (cached,fresh),
-// BROWSERS (2), LOADS (2), KEEP_TRACES=1 to save each flight's trace,
+// PREWARM (on,off), BROWSERS (2), LOADS (2), KEEP_TRACES=1 to save each flight's trace,
 // COMPILE_CHECK=1 for one more load per browser with no flights that runs
 // compileCheck.mjs's compileAsync check, and FIRST_FLIGHT_OUTPUT for the
 // summary and traces.
@@ -82,6 +89,8 @@ const COMPILE_CHECK = process.env.COMPILE_CHECK === '1'
 // fresh: each load's sources are unique, which is a first visit, or the first
 // load after a shader changed.
 const SHADER_MODES = (process.env.SHADERS ?? 'cached,fresh').split(',')
+const PREWARM_MODES = (process.env.PREWARM ?? 'on,off').split(',')
+assert.ok(PREWARM_MODES.every((m) => m === 'on' || m === 'off'), 'PREWARM: on and/or off')
 assert.ok(SHADER_MODES.every((m) => m === 'cached' || m === 'fresh'), 'SHADERS: cached and/or fresh')
 assert.ok(ENGINES.every((e) => e === 'html-in-canvas' || e === 'snapdom'), 'ENGINES: html-in-canvas and/or snapdom')
 assert.ok(Number.isInteger(BROWSERS) && BROWSERS > 0 && Number.isInteger(LOADS) && LOADS > 0)
@@ -183,8 +192,9 @@ async function fly(page, { kind, win, mark, traced }) {
 }
 
 // One load of the Genie page, settled: fonts loaded, the backend chosen and
-// all four windows painted once, then 1.5 s more.
-async function openGenie(browser, { engine, shaders, base }) {
+// all four windows painted once, the prewarm finished or switched off, then
+// 1.5 s more.
+async function openGenie(browser, { engine, shaders, prewarm, base }) {
   const page = await browser.newPage()
   const errors = []
   page.on('pageerror', (e) => errors.push(String(e)))
@@ -192,17 +202,20 @@ async function openGenie(browser, { engine, shaders, base }) {
   await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }])
   if (shaders === 'fresh') await page.evaluateOnNewDocument((n) => { window.__ffShaderNonce = n }, 1 + Math.floor(Math.random() * 2 ** 31))
   await page.evaluateOnNewDocument(INSTALL)
-  await page.goto(base + (engine === 'snapdom' ? '&capture=snapdom' : ''), { waitUntil: 'load' })
+  await page.goto(base + (engine === 'snapdom' ? '&capture=snapdom' : '') + (prewarm === 'off' ? '&prewarm=off' : ''), { waitUntil: 'load' })
   await page.waitForFunction(
     () =>
       document.fonts.status === 'loaded' &&
       window.__ff.backend !== null &&
-      window.__munari?.stats().filter((s) => s.label.startsWith('genie-') && s.paints > 0).length === 4,
+      window.__munari?.stats().filter((s) => s.label.startsWith('genie-') && s.paints > 0).length === 4 &&
+      document.querySelector('.gen-page')?.getAttribute('data-genie-prewarm') !== 'building',
     { timeout: 30_000 },
   )
   await sleep(1500)
   const env = await page.evaluate(() => ({ shadersAtLoad: window.__ff.shaders.map((s) => s.hash), engine: window.__munari.engine(), backend: window.__ff.backend, adapter: window.__ff.adapter, webgl: window.__ff.webgl ?? null, dpr: devicePixelRatio, ua: navigator.userAgent }))
   assert.equal(env.engine, engine, 'the page installed a different capture engine')
+  const prewarmState = await page.$eval('.gen-page', (el) => el.getAttribute('data-genie-prewarm'))
+  assert.equal(prewarmState, prewarm === 'on' ? 'ready' : 'off', 'the page prewarm state differs from PREWARM')
   return { page, errors, env }
 }
 
@@ -224,7 +237,7 @@ try {
   })
   await server.listen()
   const base = `http://127.0.0.1:${server.httpServer.address().port}/?scene=genie&framed`
-  for (const engine of ENGINES) for (const shaders of SHADER_MODES) {
+  for (const engine of ENGINES) for (const shaders of SHADER_MODES) for (const prewarm of PREWARM_MODES) {
     for (let b = 0; b < BROWSERS; b++) {
       const traced = b % 2 === 0
       const profile = await mkdtemp(path.join(OUTPUT, 'profile-'))
@@ -236,7 +249,7 @@ try {
       })
       try {
         for (let load = 0; load < LOADS; load++) {
-          const { page, errors, env } = await openGenie(browser, { engine, shaders, base })
+          const { page, errors, env } = await openGenie(browser, { engine, shaders, prewarm, base })
           const order = ['cerchio', 'quadrato', 'scheda']
           // A: the first candidate whose lamp is pressable now; B: the next.
           let a = null
@@ -252,8 +265,8 @@ try {
           const flights = []
           const flightMarks = []
           for (const [i, step] of plan.entries()) {
-            const flight = await fly(page, { ...step, mark: `ff-${engine}-${shaders}-${b}-${load}-${i}`, traced })
-            const row = { engine, shaders, browser: b, load, order: i + 1, traced, ...summarize(flight), trace: traced ? traceSummary(flight) : null }
+            const flight = await fly(page, { ...step, mark: `ff-${engine}-${shaders}-prewarm-${prewarm}-${b}-${load}-${i}`, traced })
+            const row = { engine, shaders, prewarm, browser: b, load, order: i + 1, traced, ...summarize(flight), trace: traced ? traceSummary(flight) : null }
             if (traced && KEEP_TRACES) await writeFile(path.join(OUTPUT, `${flight.mark}.json`), Buffer.from(flight.trace))
             flights.push(row)
             flightMarks.push({ pressAt: flight.pressAt, flight: row.flight })
@@ -267,17 +280,17 @@ try {
             firstBuiltBy: flightMarks.findLast((f) => f.pressAt <= p.firstAt)?.flight ?? 'page load',
             coldCompileMs: round(p.coldCompileMs),
           }))
-          console.log(JSON.stringify({ engine, shaders, browser: b, load, replay, replayTrace: replayRun.summary }))
+          console.log(JSON.stringify({ engine, shaders, prewarm, browser: b, load, replay, replayTrace: replayRun.summary }))
           assert.deepEqual(errors, [], 'page errors during the flights')
-          results.push({ engine, shaders, browser: b, load, traced, env, flights, replay, replayTrace: replayRun.summary })
+          results.push({ engine, shaders, prewarm, browser: b, load, traced, env, flights, replay, replayTrace: replayRun.summary })
           await page.close()
         }
         if (COMPILE_CHECK) {
-          const { page, errors, env } = await openGenie(browser, { engine, shaders, base })
+          const { page, errors, env } = await openGenie(browser, { engine, shaders, prewarm, base })
           const check = await compileCheck(page, { traced, categories: TRACE_CATEGORIES, leadMs: TRACE_LEAD_MS })
-          console.log(JSON.stringify({ engine, shaders, browser: b, compileCheck: check }))
+          console.log(JSON.stringify({ engine, shaders, prewarm, browser: b, compileCheck: check }))
           assert.deepEqual(errors, [], 'page errors during the compile check')
-          checks.push({ engine, shaders, browser: b, traced, env, ...check })
+          checks.push({ engine, shaders, prewarm, browser: b, traced, env, ...check })
           await page.close()
         }
       } finally {
