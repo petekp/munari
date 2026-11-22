@@ -348,7 +348,7 @@ function OrbDrift({
 // ---- DOM content --------------------------------------------------------
 
 const LABEL_CLASS =
-  'flex items-center gap-2 text-[13px] leading-none font-semibold tracking-wider text-white/90 uppercase select-none'
+  'flex items-center gap-2 text-[13px] font-semibold tracking-wider text-white/90 uppercase select-none'
 
 // A DARK fill, not a light one. white/10 over a bright refracted background
 // is barely a field at all — it reads as a slightly paler patch of whatever is
