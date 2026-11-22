@@ -6,6 +6,7 @@ output. Preserve both distinctions when resolving a conflict.
 
 | Need | Canonical home | Status |
 |---|---|---|
+| Evaluate Munari against raw HTML-in-canvas | [Why Munari](why-munari.md) | Current overview with JSX examples and lab links |
 | Set up and use the package | [Root README](../README.md), public entry types | Current usage |
 | Find the owner, control and relevant check | [Agent operating guide](agent-workflow.md) | Current workflow |
 | Understand how the abstractions fit | [System model](system-model.md), [glossary](../CONTEXT.md) | Current model and constraints |
