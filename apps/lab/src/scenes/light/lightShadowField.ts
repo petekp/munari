@@ -39,7 +39,7 @@ function transformLine(values: Float64Array, sites: Int32Array, cuts: Float64Arr
 
 // On the first axis every finite seed is in [0, 0.5²]. Distinct integer-pixel
 // distances differ by at least one, so only the nearest seed on each side can
-// win. The backward pass recognizes original seeds by that same bound (#58).
+// win. The backward pass recognizes original seeds by that same bound.
 function transformSeedColumns(grid: Float64Array, width: number, height: number) {
   for (let x = 0; x < width; x++) {
     let site = -1, cost = 0

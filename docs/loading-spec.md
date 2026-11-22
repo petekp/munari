@@ -390,7 +390,7 @@ While it is loading, the boundary runs one check per page animation frame and
 adds that frame to its frame time. The per-frame loop stops at the later of
 `late.afterMs` and 10 s of frame time. That matches the existing 10 s
 development-warning delay (`surfaceValidation.ts:9`), which is wall-clock
-(decision #40). After that, it checks only on the frame after an
+(decision #42). After that, it checks only on the frame after an
 entry joins, leaves, or changes, plus the recheck frame that follows a passing
 check, and its frame time stops growing. A stalled boundary therefore does no
 recurring work once its notices have fired.
@@ -492,7 +492,7 @@ loading finishes.
 
 ## Lab adoption
 
-This is a separate lab decision. It narrows #57, #58, and #75 to app policy
+This is a separate lab decision. It narrows #57 and #75 to app policy
 over the new signal.
 
 The page shell keeps its bar visible and covers only the demo area with the

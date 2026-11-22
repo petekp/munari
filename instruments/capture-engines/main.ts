@@ -41,8 +41,7 @@ if (requested === 'snapdom') setCaptureEngine(snapdomCaptureEngine)
  * That refusal is the fault this covers. Read once and same-origin only, the
  * faces a capture needs never reached the clone: snapDOM drew every glyph in
  * a fallback face while HTML-in-canvas, which draws the live DOM and needs
- * no faces of its own, drew them right (decisions.md #62, 2026-09-12
- * amendment). Both engines passed this gate throughout, because nothing in
+ * no faces of its own, drew them right (decisions.md #62). Both engines passed this gate throughout, because nothing in
  * the fixture had a face to rebuild.
  */
 const GUEST_FAMILY = 'Gate Guest'

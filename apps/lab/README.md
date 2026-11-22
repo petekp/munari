@@ -84,7 +84,7 @@ so the page scrolls while the lamp stays in place.
 Each page sets `.light-page[data-page-ready]` once its shadows, any headline
 treatment and the lamp backdrop have drawn. If graphics are not ready within
 four seconds, the page shows native content instead and sets the mark then.
-[Decision #57](../../docs/decisions.md#57) sets that limit. Inside a frame the
+[Decision #57](../../docs/decisions/lab.md#57) sets that limit. Inside a frame the
 page is visible while it prepares, like every other scene.
 
 ## Code and evidence

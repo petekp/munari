@@ -21,7 +21,7 @@ The extra background has an RGBA pixel-capacity limit of 8 MiB per source.
 Controls uses 6,566,400 bytes at 1520×1080, about 6.3 MiB. Replacement can briefly
 retain two backgrounds, up to 16 MiB. These bounds exclude SVG strings, decoded
 images and browser overhead. Disposal clears retained and pending buffers.
-[Decision #62](decisions.md#62--a-capture-is-paid-for-once-and-a-live-one-is-paced-by-a-period-2026-09-12)
+[Decision #62](decisions/capture.md#62)
 defines the eligibility and lifecycle rules.
 
 ## Production results

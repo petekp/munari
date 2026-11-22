@@ -74,7 +74,7 @@ belong with work package 4; neither is required for this independent correction.
 Owners: [README](../README.md), [Surface props](../packages/react/src/primitives/Surface.tsx),
 [support documentation](../packages/react/src/primitives/surface/surfaceSupport.ts),
 [authoring guide](authoring.md), and [Munari skill](../.agents/skills/munari/SKILL.md).
-Check the staged copies after the next package build. Amend decisions only when
+Check the staged copies after the next package build. Edit decisions only when
 the supported behavior changes.
 
 Acceptance: the current guide, public prop documentation, skill, and implemented

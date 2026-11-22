@@ -1,7 +1,7 @@
 # Agent operating guide
 
 **Status: current workflow, 2026-09-07.** The retained-HTML API is implemented;
-[decision #43](decisions.md#43) records its adoption. Public types and the
+[decision #43](decisions/surface.md#43) states the current Surface API. Public types and the
 README describe this checkout's API.
 The [agent-system plan](agent-system-plan.md) contains unbuilt work. Read only
 the route that fits the task; the [system model](system-model.md) explains the

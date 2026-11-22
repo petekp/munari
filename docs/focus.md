@@ -73,8 +73,7 @@ Alt/Ctrl/Meta combinations remain platform input.
 The spatial law separates overlapping candidates from candidates beyond the
 origin, applies its directional cone and alignment rules, and uses stable/depth
 ties. Its actual constants and counterexamples live in
-[spatialNav](../packages/react/src/lib/spatialNav.ts), its adjacent tests, and
-[decisions #14–15](decisions.md). The browser-field replay test preserves the
+[spatialNav](../packages/react/src/lib/spatialNav.ts) and its adjacent tests. The browser-field replay test preserves the
 measured projected arrangements that exposed the original scoring failures.
 
 Opposite arrows retrace the directional history. Perpendicular navigation, Tab,

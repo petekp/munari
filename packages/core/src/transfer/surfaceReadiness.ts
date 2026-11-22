@@ -3,7 +3,7 @@
 // The law: readiness is a KEYED set over one lifetime, never a count.
 // A presenter proves stage-one readiness by completing its first eligible
 // draw (`warm-up` while lifting on a shared canvas, or a color-writing pass
-// that reached the screen; see `transfer/presentation`, decisions.md #45).
+// that reached the screen; see `transfer/presentation`, decisions.md #25).
 // Stage-two visible presentation requires a color-writing draw. A Surface is
 // ready when every presenter registered for the current lifetime has proven
 // itself, and a source replacement starts a new lifetime with nothing proven.

@@ -30,7 +30,7 @@
  * after it (a passive effect, a batched continuous update). 150 ms covers
  * both with room, and equals the rasterized source's capture gap, so a
  * mutation the pacer would have coalesced into the input's own capture is
- * never the one refused (decisions.md #60, 2026-09-12 amendment).
+ * never the one refused (decisions.md #60).
  */
 export const INPUT_WINDOW_MS = 150
 

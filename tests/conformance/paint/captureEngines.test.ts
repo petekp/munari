@@ -404,8 +404,8 @@ describe.each(HARNESSES)('every capture engine — %s', (_name, make) => {
   // Law 4. A copy gets its original's scroll offsets once it is attached,
   // and the browser reports that as a scroll. It is neither the user acting
   // nor a new picture, so a source that is not live follows neither it nor
-  // a change landing just after it (decisions.md #64, 2026-10-10
-  // amendment). Any other scroll is still a reason.
+  // a change landing just after it (decisions.md #64).
+  // Any other scroll is still a reason.
   it('takes a restored scroll as neither input nor a reason to capture', async () => {
     const source = await born()
     const quiet = source.paintCount()

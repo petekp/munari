@@ -54,6 +54,9 @@ function canonicalDocs(): string[] {
     'tools/oxlint/anti-slop/README.md',
     'tools/oxlint/no-tautological-absence/README.md',
     ...docsDir,
+    ...readdirSync(join(ROOT, 'docs/decisions'))
+      .filter((name) => name.endsWith('.md'))
+      .map((name) => `docs/decisions/${name}`),
     ...subdirReadmes('instruments'),
     ...subdirReadmes('registry'),
   ]

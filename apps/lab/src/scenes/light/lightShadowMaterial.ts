@@ -65,7 +65,7 @@ type Vec3 = Node<'vec3'>
 type Vec4 = Node<'vec4'>
 
 // Keep the lit receiver inside opaque ink. The native text edge and the
-// CSS-resolution lighting filter otherwise expose a bright cutout fringe (#55).
+// CSS-resolution lighting filter otherwise expose a bright cutout fringe (#50).
 const GLYPH_RECEIVER_INSET = 1.5
 
 const GLYPH_HEIGHT = GLYPH_STANDOFF
@@ -316,7 +316,7 @@ function lightMultiplier(v: LightShadowValues, paper: PaperVaryings | null): Vec
       const n = vec3(0, 0, 1).toVar()
       const paperHit = bool(false).toVar()
       // The curved receiver is drawn separately with geometry coverage at native
-      // density. This analytic plane remains the no-float-target fallback (#53).
+      // density. This analytic plane remains the no-float-target fallback (#51).
       If(v.paperReady.lessThan(.5).and(v.flyerReady.greaterThan(.5)), () => {
         const card = flyerSurface(v, p).toVar()
         If(card.x.greaterThanEqual(0).and(card.y.greaterThanEqual(0)).and(card.x.lessThanEqual(1)).and(card.y.lessThanEqual(1)), () => {

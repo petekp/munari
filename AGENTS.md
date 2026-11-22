@@ -14,7 +14,7 @@ canonical example, and smallest decisive check. Read the
 [CONTEXT.md](CONTEXT.md) is the shared glossary.
 
 Current APIs come from the published entries and their types. The README is
-the usage guide; numbered decisions explain constraints and dated changes.
+the usage guide; numbered decisions state the current constraints.
 Superseded proposals and completed plans are available in Git history.
 [The agent-system plan](docs/agent-system-plan.md) is unbuilt work except
 where a status and acceptance evidence say otherwise. Do not infer runtime
@@ -126,8 +126,8 @@ by no test runner, wired invisibly through the root tsconfig include.
 ## Current contracts (docs/decisions.md)
 
 Revising a contract requires evidence and matching changes to its owning tests
-and decision entry. The ledger records the current constraints and how they
-changed; it does not replace the public types.
+and decision entry. The ledger states the current constraints, and Git history
+keeps how they changed. It does not replace the public types.
 
 - **Premultiplied alpha, library-wide** (decisions.md #5): every
   DOM-sourced texture uploads premultiplied and every material
@@ -182,8 +182,6 @@ the build) while a stray publish at the root can't ship raw source.
   `npm run build -w @petepetrash/munari` builds `packages/react`.
 - `registry/` is not a workspace — it typechecks through its own
   tsconfig (a deliberately different dialect; its comment says why).
-- `docs/spikes/` are dated measurements, never plans. Amendments in
-  `decisions.md` cite files that have since been deleted — that is
-  history, not instruction.
+- `docs/spikes/` are dated measurements, never plans.
 - `.claude/` is gitignored: nothing placed there reaches another
   clone. Tracked agent guidance is this file and the per-area READMEs.

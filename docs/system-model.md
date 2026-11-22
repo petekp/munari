@@ -1,7 +1,7 @@
 # System model
 
 **Status: current model, 2026-09-07.** The retained-HTML API is implemented;
-[decision #43](decisions.md#43) records its adoption and superseded interfaces.
+[decision #43](decisions/surface.md#43) states the current Surface API.
 Use the [operating guide](agent-workflow.md) for a task and the
 [delivery plan](agent-system-plan.md) for proposed tools.
 
@@ -175,7 +175,7 @@ condition. Put the result in the existing owner:
 | React/Three lifecycle behavior | Test beside the binding module |
 | HTML limitation | [Authoring rule](authoring.md), linked to the measurement |
 | Scene policy or artistic tuning | Scene or registry, with its local tests and visible checks |
-| Trade-off or rejected approach | A dated decision or amendment in [the ledger](decisions.md) |
+| Constraint that governs current code | A numbered rule in [the ledger](decisions.md) |
 | Work that does not exist yet | [Delivery plan](agent-system-plan.md), with an acceptance condition |
 
 A reusable lesson must help a later agent find the owner, reproduce the claim,

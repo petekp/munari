@@ -120,8 +120,8 @@ export type {
 // The camera rig that follows a FocusScene is NOT here. It is one scene's
 // answer to how a camera should move, tuned against one layout, and a
 // published component would make that answer the library's — so it ships as
-// a copyable recipe under `registry/focus-orbit` instead (decisions.md #6,
-// amended 2026-08-17), with its arc layout and camera poses beside it.
+// a copyable recipe under `registry/focus-orbit` instead (decisions.md #6),
+// with its arc layout and camera poses beside it.
 
 // ── Physical controls ────────────────────────────────────────────────────
 export { Dial, type DialProps } from './primitives/controls/Dial'

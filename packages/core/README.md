@@ -191,7 +191,7 @@ gesture instead of following a fixed duration.
 
 DOM textures use premultiplied alpha. Each color channel is multiplied by the
 pixel's alpha before upload, and materials use the matching blend mode. See
-[`docs/decisions.md` #5](../../docs/decisions.md).
+[`docs/decisions.md` #5](../../docs/decisions/capture.md#5).
 
 An idle Surface produces zero paints per second. CI checks this on each push
 with `npm run gate:idle-zero`.

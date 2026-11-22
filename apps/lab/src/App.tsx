@@ -57,7 +57,7 @@ const DEMO_PAGES = {
   logo: lazy(() => import('./scenes/logo/Logo').then(m => ({ default: m.LogoApp }))),
 } satisfies Record<DemoId, LazyExoticComponent<ComponentType>>
 
-// The promoted scene roster is decisions.md #3. URL-only studies stay beside
+// The promoted scene roster is decisions.md #75. URL-only studies stay beside
 // it without claiming promotion: the candidates bench, refraction, gallery,
 // crystal, and the controls / plume / marble-hand trio. Everything they render
 // reaches the library through its published entries — this app is the proof
