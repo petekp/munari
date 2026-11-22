@@ -10,7 +10,7 @@ Munari's own code is small: `@munari/core` is **`39.2 kB` min / `14.6 kB` gzip**
 
 ## 1. Measured payload baseline
 
-All full-app measurements run Vite 8 / Rolldown in production mode against staged artifacts in [packages/react/dist](../packages/react/dist) (`"sideEffects": ["*.css"]` in [stage-manifest.mjs](../packages/react/scripts/stage-manifest.mjs)). "Net gzip" subtracts the `57.3 kB` gzip React 19 + `react-dom/client` baseline.
+All full-app measurements run Vite 8 / Rolldown in production mode against staged artifacts in `packages/react/dist` (`"sideEffects": ["*.css"]` in [stage-manifest.mjs](../packages/react/scripts/stage-manifest.mjs)). "Net gzip" subtracts the `57.3 kB` gzip React 19 + `react-dom/client` baseline.
 
 ### 1.1 End-to-end consumer bundles today
 
@@ -64,7 +64,7 @@ The whole saving comes from R3F's own `three` import: an alias applied only to i
 ### 2.3 R3F `<Canvas>` wildcard `extend(THREE)` (`+84.7 kB` gzip) + `react-reconciler` (`+51.2 kB` gzip)
 `@react-three/fiber`'s `<Canvas>` executes `import * as THREE from 'three'; extend(THREE)`, preventing bundlers from tree-shaking any class in `three` (`SkinnedMesh`, `AudioListener`, `AnimationMixer`, `ExtrudeGeometry`, helpers, loaders).
 
-Replacing `<Canvas>` with R3F's `createRoot` + `FiberProvider` + targeted `extend({ Group, Mesh, PlaneGeometry })` (with `three -> three/webgpu`) drops the bundle further to **`357.3 kB` gz (`1,259.8 kB` min) — `-162.3 kB` gz (`-614.7 kB` min) vs today**. The remaining `51.2 kB` gz over imperative `three/webgpu` (`306.1 kB` gz) is R3F's `react-reconciler`.
+R3F's `createRoot` with a targeted `extend({ Group, Mesh, PlaneGeometry })` measured **`357.3 kB` gz**, but only with R3F's `three` resolved to `three/webgpu`, which is unsafe (§2.2). Without the alias, the [opt-in proposal](opt-in-dx-proposal.md)'s host builds measured `405.1 kB` gz against `458.2 kB` for `<Canvas>`. The targeted catalogue also breaks drei, whose components create lowercase elements.
 
 ### 2.4 Empirical trap check: what does *not* save bytes in `three/webgpu`
 1. **Splitting `Surface.LitMaterial` (`MeshStandardNodeMaterial`) or `ShadowNode` saves `0.0 kB` of Three.js on standard `three/webgpu`:** `WebGPURenderer` + `MeshBasicNodeMaterial` measures **`1,054.5 kB` min / `291.5 kB` gz**; adding `MeshStandardNodeMaterial` + `ShadowNode` measures **`1,054.5 kB` min / `291.5 kB` gz (`+0.0 kB`)**, because `WebGPURenderer` instantiates `new StandardNodeLibrary()`, registering all 13 node materials (`Physical`, `Standard`, `Toon`, `Phong`, `Shadow`, etc.).
@@ -102,9 +102,9 @@ All four phases preserve [decisions.md #1](decisions.md#1) (one published packag
 3. **Bundler alias (`three -> three/webgpu`): not safe to ship.**
    - A global alias removes `three.module.js`'s duplicate `WebGLRenderer` + GLSL `ShaderLib` (**`-331.0 kB` min / `-77.6 kB` gz**) but breaks drei and three-stdlib builds, and an R3F-only alias breaks a plain `<Canvas>` at runtime (§2.2).
 
-### Phase 2 — Tree-shaken R3F host (`-162.3 kB` gzip)
+### Phase 2 — Tree-shaken R3F host (not recommended)
 - Build `SurfaceCanvas` (or `<SurfaceCanvasLite>`) in [SurfaceCanvas.tsx](../packages/react/src/primitives/surface/SurfaceCanvas.tsx) on R3F's `createRoot` + `FiberProvider` + `extend({ Group, Mesh, PlaneGeometry })` instead of `<Canvas>` (`extend(THREE)`).
-- **Measured result:** Full React + R3F + `three/webgpu` + Munari drops from **`519.6 kB` gz (`1,874.5 kB` min)** to **`357.3 kB` gz (`1,259.8 kB` min)**.
+- **Measured result:** `519.6 kB` to `357.3 kB` gz with the unsafe alias. Without it the host saves about `53 kB` (§2.3).
 
 ### Phase 3 — Opt-in subpaths & registration seams
 1. **`@petepetrash/munari/capture` (`@react-three/fiber` optional peer):**
@@ -129,8 +129,8 @@ Five `apps/lab` scenes (`Light`, `Lamp`, `Rain`, the `Marble hand` background, t
 | **Tier 1A: Kernel + raw quad** | Single-quad DOM transitions & lenses (`DistortionWave`, `Veil`, `Rain`) | `/advanced` + `registry/` WebGL2/WebGPU quad | `~75 kB` (`~235 kB`), estimated | `+18 kB` | **`-86%` total / `-96%` net** |
 | **Tier 1B: Classic WebGL Three** | Unlit GLSL quads/planes (`Light` backdrop, flat tilted cards) | `/advanced` `createDomTextureSource` + `three` `WebGLRenderer` | `197.8 kB` (`736 kB`) | `+140.5 kB` | **`-62%` (`-321.8 kB` gz)** |
 | **Tier 2: `/stage` (no R3F)** | TSL overlays, `useElementCapture`, single `<Surface>` without JSX scene | `/stage` + `/capture` (`three/webgpu`, R3F optional) | `306.1 kB` (`1,094 kB`) | `+248.8 kB` | **`-41%` (`-213.5 kB` gz)** |
-| **Tier 3: `<SurfaceCanvasLite>`** | Multi-surface 3D scenes (`Flight`, `Genie`, `Postcard`, `Fisheye`, `Glass`) | `.` with R3F `createRoot` + `three -> three/webgpu` | `357.3 kB` (`1,260 kB`) | `+300.0 kB` | **`-31%` (`-162.3 kB` gz)** |
-| **Tier 4: Full R3F + Safari** | Full `THREE.*` JSX + `FocusScene` + `Dial` + dynamic `/snapdom` | `.` + `/focus` + dynamic `import('.../snapdom')` | `366 kB` Chrome / `454 kB` Safari | `+309` / `+397 kB` | **`-30%` Chrome / `-27%` Safari** |
+| **Tier 3: `<SurfaceCanvasLite>`** | Multi-surface 3D scenes (`Flight`, `Genie`, `Postcard`, `Fisheye`, `Glass`) | `.` with R3F `createRoot` + `three -> three/webgpu` | `357.3 kB`, with the alias | `+300.0 kB` | `-31%` with the alias; about `-10%` without it (§2.3) |
+| **Tier 4: Full R3F + Safari** | Full `THREE.*` JSX + `FocusScene` + `Dial` + dynamic `/snapdom` | `.` + `/focus` + dynamic `import('.../snapdom')` | `366 kB` Chrome / `454 kB` Safari, with the alias | `+309` / `+397 kB` | Unverified |
 
 ---
 
