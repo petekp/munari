@@ -11,7 +11,7 @@ import { cameraDistance } from '@petepetrash/munari/advanced'
 
 export const FRONTIER_FOV = 42
 
-export type FrontierVariantId = 'cmdk' | 'letterpress' | 'peel' | 'patchbay'
+export type FrontierVariantId = 'cmdk' | 'letterpress' | 'peel' | 'patchbay' | 'bounce'
 
 export interface StageBox {
   readonly x: number

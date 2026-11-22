@@ -1,5 +1,5 @@
-// Frontier rendering prototypes — four gallery-framed DOM + WebGPU rendering
-// directions on `?scene=frontier-prototype&variant=cmdk|letterpress|peel|patchbay`.
+// Frontier rendering prototypes — five gallery-framed DOM + WebGPU rendering
+// directions on `?scene=frontier-prototype&variant=cmdk|letterpress|peel|patchbay|bounce`.
 //
 // Uses a single Munari `<Bar>` shell so each stage claims ~78% of the viewport,
 // mounting one demand-driven SurfaceCanvas at a time (`0 fps` at rest).
@@ -8,6 +8,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { CaptureEngineStatus } from '../../components/CaptureEngineStatus'
 import { Bar, Status } from '../../components/system'
 import { sceneUrl } from '../../captureMode'
+import './frontierPrototype.css'
+import { FrontierBounce } from './FrontierBounce'
 import { FrontierCmdk } from './FrontierCmdk'
 import { FrontierLetterpress } from './FrontierLetterpress'
 import { FrontierPatchbay } from './FrontierPatchbay'
@@ -18,7 +20,6 @@ import {
   subscribeFrontierHud,
   type FrontierVariantId,
 } from './frontierStage'
-import './frontierPrototype.css'
 
 interface VariantEntry {
   readonly id: FrontierVariantId
@@ -57,6 +58,13 @@ const VARIANTS: readonly VariantEntry[] = [
     title: '3D anchor patchbay',
     instruction: 'Cross-patch Out to In jacks, pluck the braided cords, or reflow prose to see frame-locked anchors.',
   },
+  {
+    id: 'bounce',
+    num: '05',
+    shortLabel: 'Bounce',
+    title: 'Lateral light bounce',
+    instruction: 'Drag the specimen toward any glass pane, or click folders and finishes.',
+  },
 ]
 
 function StaticMunariMark() {
@@ -77,6 +85,7 @@ function readVariant(): FrontierVariantId {
   if (raw === 'letterpress' || raw === 'B') return 'letterpress'
   if (raw === 'peel' || raw === 'C') return 'peel'
   if (raw === 'patchbay' || raw === 'D') return 'patchbay'
+  if (raw === 'bounce' || raw === 'E') return 'bounce'
   return 'cmdk'
 }
 
@@ -227,6 +236,7 @@ export function FrontierPrototypeApp({ onReady }: { readonly onReady?: () => voi
         {variant === 'letterpress' && <FrontierLetterpress key="letterpress" />}
         {variant === 'peel' && <FrontierPeel key="peel" />}
         {variant === 'patchbay' && <FrontierPatchbay key="patchbay" />}
+        {variant === 'bounce' && <FrontierBounce key="bounce" />}
       </main>
 
       <DesktopSwitcherStrip current={variant} onSelect={selectVariant} />
