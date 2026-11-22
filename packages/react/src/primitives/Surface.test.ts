@@ -8,7 +8,14 @@ import { Surface } from './Surface'
 import { createSurfaceHost, mountSurfaceHost, resetSurfaceHosts } from './surface/surfaceHostRegistry'
 import { createSurface, surfaceStoreOf } from './surface/surfaceHandle'
 
-afterEach(()=>{vi.unstubAllGlobals();resetSurfaceHosts();document.body.innerHTML=''})
+afterEach(() => {
+  for (const key of ['layoutSubtree', 'onpaint', 'requestPaint']) {
+    Reflect.deleteProperty(HTMLCanvasElement.prototype, key)
+  }
+  vi.unstubAllGlobals()
+  resetSurfaceHosts()
+  document.body.innerHTML = ''
+})
 
 it('renders native HTML on the server and hydrates one stateful instance',async()=>{
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true)

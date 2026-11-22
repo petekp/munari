@@ -15,6 +15,9 @@ describe('captureMemoryChosen and post-dispose paint guards', () => {
   const realGetContext = HTMLCanvasElement.prototype.getContext
 
   afterEach(() => {
+    for (const key of ['layoutSubtree', 'onpaint', 'requestPaint']) {
+      Reflect.deleteProperty(HTMLCanvasElement.prototype, key)
+    }
     HTMLCanvasElement.prototype.getContext = realGetContext
     vi.useRealTimers()
     vi.unstubAllGlobals()

@@ -21,6 +21,9 @@ describe('subscribePaint callback isolation', () => {
   const realGetContext = HTMLCanvasElement.prototype.getContext
 
   afterEach(() => {
+    for (const key of ['layoutSubtree', 'onpaint', 'requestPaint']) {
+      Reflect.deleteProperty(HTMLCanvasElement.prototype, key)
+    }
     HTMLCanvasElement.prototype.getContext = realGetContext
     vi.unstubAllGlobals()
     document.body.innerHTML = ''

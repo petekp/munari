@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { cwd as processCwd } from 'node:process'
+import { parseSync } from 'vite'
 
 const skipDirectoryNames = new Set([
 	'.agents',
@@ -168,7 +169,7 @@ function readEscape(source, index) {
 	}
 }
 
-function stripCodeComments(source) {
+function stripCodeCommentsFallback(source) {
 	let out = ''
 	let index = 0
 	while (index < source.length) {
@@ -219,6 +220,29 @@ function stripCodeComments(source) {
 	return out
 }
 
+function stripCodeComments(source, filename = 'file.tsx') {
+	try {
+		const parsed = parseSync(filename, source)
+		if (parsed.errors.length === 0) {
+			if (parsed.comments.length === 0) return source
+			let out = ''
+			let cursor = 0
+			for (const comment of parsed.comments) {
+				out += source.slice(cursor, comment.start)
+				for (let i = comment.start; i < comment.end; i += 1) {
+					out += source[i] === '\n' ? '\n' : ' '
+				}
+				cursor = comment.end
+			}
+			out += source.slice(cursor)
+			return out
+		}
+	} catch {
+		// Fall back to character scanner if parser fails.
+	}
+	return stripCodeCommentsFallback(source)
+}
+
 function lineNumberAt(source, index) {
 	return source.slice(0, index).split('\n').length
 }
@@ -263,6 +287,7 @@ function mentionsNeedle(content, needle) {
 }
 
 function otherFileMentionsNeedle(content, needle) {
+	if (!mentionsNeedle(content, needle)) return false
 	const stripped = stripCodeComments(content)
 	if (!mentionsNeedle(stripped, needle)) return false
 	return mentionsNeedle(

@@ -86,7 +86,7 @@ Shown resets when the source lifetime ends or the controller unmounts.
 |---|---|---|
 | Readiness: `sceneReady`, `onReady` | Presenters exist and made first eligible draws (`CONTEXT.md:107-109`). A write-free warm-up satisfies it (`SurfaceMesh.tsx:1078-1082`) | Shown needs color-writing draws that reached the canvas |
 | `presentation`, `onPresentationChange` | Which presentation holds the content now | Shown is the first complete frame. `presentation` stays `'scene'` across a source replacement, because `present()` returns early once `canvasHeld` is set (`surfaceHandle.ts:763`, `:807-813`) |
-| `PresentationReceipt` | A draw met one transfer's requirement (`packages/core/src/transfer/presentation.ts:16-33`) | Shown needs no transfer. It uses the same route law, `presentationRoute` and `hostTailPresents` |
+| `PresentationReceipt` | A draw met one transfer's requirement (`packages/core/src/transfer/presentation.ts:16-33`) | Shown needs no transfer. It uses the same route law, `presentationRoute` and `closeFrameTail` |
 | `CaptureStatus` `'ready'` | A paint, plus an upload armed but not yet run (`capture.tsx:100-115`) | A capture has no presentation of its own, so it is never shown. This spec renames the status to `'captured'` |
 
 The evidence is recorded in JavaScript, in `onAfterRender` or at the end of a

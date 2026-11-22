@@ -10,8 +10,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CanvasPointerGate } from './CanvasPointerGate'
 
 const mounted: Array<{ root: Root; container: HTMLElement; canvas: HTMLCanvasElement }> = []
+const realElementFromPoint = document.elementFromPoint
 
 afterEach(() => {
+  document.elementFromPoint = realElementFromPoint
   vi.unstubAllGlobals()
   for (const item of mounted.splice(0)) {
     flushSync(() => item.root.unmount())

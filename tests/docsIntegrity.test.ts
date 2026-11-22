@@ -28,6 +28,12 @@ function stripFencedCode(markdown: string): string {
   return markdown.replace(/```[\s\S]*?```/g, '')
 }
 
+function subdirReadmes(dir: string): string[] {
+  return readdirSync(join(ROOT, dir), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && existsSync(join(ROOT, dir, entry.name, 'README.md')))
+    .map((entry) => `${dir}/${entry.name}/README.md`)
+}
+
 function canonicalDocs(): string[] {
   const docsDir = readdirSync(join(ROOT, 'docs'))
     .filter((name) => name.endsWith('.md'))
@@ -36,16 +42,20 @@ function canonicalDocs(): string[] {
     'AGENTS.md',
     'CLAUDE.md',
     'CONTEXT.md',
+    'CHANGELOG.md',
     'README.md',
     'ALL-DEMO-API.md',
     'llms.txt',
     '.agents/skills/munari/SKILL.md',
     'apps/lab/README.md',
+    'instruments/README.md',
     'registry/README.md',
     'tests/conformance/README.md',
     'tools/oxlint/anti-slop/README.md',
     'tools/oxlint/no-tautological-absence/README.md',
     ...docsDir,
+    ...subdirReadmes('instruments'),
+    ...subdirReadmes('registry'),
   ]
 }
 
@@ -99,8 +109,9 @@ describe('canonical documentation integrity', () => {
 
   it('keeps llms.txt version prose aligned with packages/react version', () => {
     const llms = readFileSync(join(ROOT, 'llms.txt'), 'utf8')
-    expect(llms).not.toContain('v0.4.0')
-    expect(llms).toContain(`v${reactPkg.version}`)
+    const versions = [...llms.matchAll(/\bv\d+\.\d+\.\d+\b/g)].map((m) => m[0])
+    expect(versions.length).toBeGreaterThan(0)
+    expect(new Set(versions)).toEqual(new Set([`v${reactPkg.version}`]))
   })
 
   it('references only defined npm scripts across canonical guides', () => {

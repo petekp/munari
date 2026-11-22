@@ -145,8 +145,8 @@ describe('no-tautological-absence (confirmed contracts)', () => {
         `expect(output).not.toContain('Commented legacy warning text.')`,
       ].join('\n'),
       otherContents: [
-        `// Old UI string: 'Commented legacy warning text.'`,
-        `/* Multi-line retired: 'Commented legacy warning text.' */`,
+        `const view = <p>doesn't</p>\n// Old UI string: 'Commented legacy warning text.'`,
+        `const quoteRx = /'/g\n/* Multi-line retired: 'Commented legacy warning text.' */`,
       ],
     })
     expect(commentedOnly.map((m) => m.needle)).toEqual(['Commented legacy warning text.'])
