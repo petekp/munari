@@ -45,6 +45,7 @@ const FrontierPrototypeApp = lazy(() => import('./scenes/frontier-prototype/Fron
 const BeyondPrototypeApp = lazy(() => import('./scenes/beyond-prototype/BeyondPrototype').then(m => ({ default: m.BeyondPrototypeApp })))
 const SignaturePrototypeApp = lazy(() => import('./scenes/signature-prototype/SignaturePrototype').then(m => ({ default: m.SignaturePrototypeApp })))
 const ReviewNotesApp = lazy(() => import('./scenes/review-notes/ReviewNotes').then(m => ({ default: m.ReviewNotesApp })))
+const TearPlannerApp = lazy(() => import('./scenes/tear-planner/TearPlanner').then(m => ({ default: m.TearPlannerApp })))
 const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
 
 // Each advertised demo's page, keyed by its catalog id. The `satisfies`
@@ -92,6 +93,7 @@ const LAB_SCENES = [
   'beyond-prototype',
   'signature-prototype',
   'review-notes',
+  'tear-planner',
 ] as const
 
 type SceneId = 'home' | DemoId | (typeof LAB_SCENES)[number]
@@ -154,6 +156,7 @@ const PAGE_SCENES = {
   'beyond-prototype': BeyondPrototypeApp,
   'signature-prototype': SignaturePrototypeApp,
   'review-notes': ReviewNotesApp,
+  'tear-planner': TearPlannerApp,
   candidates: CandidatesApp,
   gravity: GravityApp,
   lamp: LampApp,
