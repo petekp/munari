@@ -12,27 +12,13 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
   type KeyboardEvent,
   type PointerEvent,
 } from 'react'
-import { useFrame, useThree } from '@react-three/fiber'
-import * as THREE from 'three'
-import { texture } from 'three/tsl'
-import {
-  Surface,
-  SurfaceCanvas,
-  useCaptureFrame,
-  useElementCapture,
-  useSurfaceNodes,
-  useSurfaceRefresh,
-  useSurfaceStatus,
-  useSurfaceSupport,
-  type CaptureHandle,
-  type ElementCapture,
-} from '@petepetrash/munari'
+import { useThree } from '@react-three/fiber'
+import { Surface, SurfaceCanvas, useElementCapture, useSurfaceSupport } from '@petepetrash/munari'
 import {
   BounceEmitterSpecimen,
   BounceFilmstrip,
@@ -52,30 +38,12 @@ import {
   type BouncePosePreset,
   type BounceSeamGaps,
 } from './frontierBounceLaw'
-import {
-  applyBounceFinish,
-  createBounceMaterial,
-  createBounceUniforms,
-  type BounceFinishId,
-  type BounceUniforms,
-} from './frontierBounceNodes'
-import {
-  FrontierCanvasTelemetry,
-  FrontierPixelCamera,
-  retainActiveSurface,
-  useReducedMotion,
-} from './frontierStage'
+import { createBounceLookUniforms } from './frontierBounceNodes'
+import { BounceContainerPresenter } from './FrontierBouncePresenter'
+import { FrontierBounceTweaks } from './FrontierBounceTweaks'
+import { applyBounceTuning, bounceTuningFor, type BounceFinishId } from './frontierBounceTuning'
+import { FrontierCanvasTelemetry, FrontierPixelCamera, useReducedMotion } from './frontierStage'
 import './frontierBounce.css'
-
-function createDarkPlaceholderTexture(): THREE.DataTexture {
-  const data = new Uint8Array([18, 20, 24, 255])
-  const tex = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat)
-  tex.colorSpace = THREE.SRGBColorSpace
-  tex.generateMipmaps = true
-  tex.minFilter = THREE.LinearMipmapLinearFilter
-  tex.needsUpdate = true
-  return tex
-}
 
 function useSlotSize(
   ref: { readonly current: HTMLElement | null },
@@ -100,117 +68,6 @@ function useSlotSize(
   }, [ref])
 
   return size
-}
-
-function BounceMaterialSlot({
-  emitterCapture,
-  uniforms,
-}: {
-  readonly emitterCapture: CaptureHandle
-  readonly uniforms: BounceUniforms
-}) {
-  const surface = useSurfaceNodes()
-  const emitterFrames = useCaptureFrame(emitterCapture)
-  const [placeholder] = useState(createDarkPlaceholderTexture)
-  const [emitterMap] = useState(() => texture(placeholder))
-
-  const material = useMemo(
-    () => createBounceMaterial(surface, emitterMap, uniforms),
-    [surface, emitterMap, uniforms],
-  )
-
-  useEffect(
-    () => () => {
-      material.dispose()
-      placeholder.dispose()
-    },
-    [material, placeholder],
-  )
-
-  useFrame(() => {
-    const latest = emitterFrames.get()
-    if (latest) {
-      emitterMap.value = latest.texture
-      uniforms.emitterReady.value = 1
-    }
-  })
-
-  return <primitive object={material} attach="material" />
-}
-
-function BounceContainerPresenter({
-  stageElRef,
-  slotElRef,
-  emitterCapture,
-  cornerRadius,
-  finish,
-  boosted,
-  syncKey,
-}: {
-  readonly stageElRef: { readonly current: HTMLDivElement | null }
-  readonly slotElRef: { readonly current: HTMLDivElement | null }
-  readonly emitterCapture: ElementCapture
-  readonly cornerRadius: number
-  readonly finish: BounceFinishId
-  readonly boosted: boolean
-  readonly syncKey: string
-}) {
-  const status = useSurfaceStatus()
-  const refreshSurface = useSurfaceRefresh()
-  const invalidate = useThree((s) => s.invalidate)
-  const uniforms = useMemo(() => createBounceUniforms(cornerRadius), [cornerRadius])
-  const prevSyncRef = useRef(syncKey)
-
-  useEffect(() => {
-    if (prevSyncRef.current !== syncKey) {
-      prevSyncRef.current = syncKey
-      refreshSurface()
-    }
-  }, [syncKey, refreshSurface])
-
-  useEffect(() => {
-    applyBounceFinish(uniforms, finish, boosted ? 1.45 : 1.0)
-    invalidate()
-  }, [uniforms, finish, boosted, invalidate])
-
-  useEffect(() => {
-    if (status.presentation === 'scene') return retainActiveSurface()
-    return undefined
-  }, [status.presentation])
-
-  useFrame(() => {
-    const stage = stageElRef.current
-    const slot = slotElRef.current
-    const emitBounds = emitterCapture.getBounds()
-    if (!stage || !slot) return
-    const stageRect = stage.getBoundingClientRect()
-    const slotRect = slot.getBoundingClientRect()
-    if (stageRect.width <= 0 || slotRect.width <= 0) return
-
-    uniforms.panelRectCss.value.set(
-      slotRect.left - stageRect.left,
-      slotRect.top - stageRect.top,
-      Math.max(slotRect.width, 1),
-      Math.max(slotRect.height, 1),
-    )
-
-    if (emitBounds && emitBounds.width > 0 && emitBounds.height > 0) {
-      uniforms.emitterRectCss.value.set(
-        emitBounds.left - stageRect.left,
-        emitBounds.top - stageRect.top,
-        Math.max(emitBounds.width, 8),
-        Math.max(emitBounds.height, 8),
-      )
-    }
-  })
-
-  return (
-    <Surface.Mesh
-      placement="match-dom"
-      renderOrder={2}
-      material={<BounceMaterialSlot emitterCapture={emitterCapture} uniforms={uniforms} />}
-    />
-  )
 }
 
 function BounceCanvasWakeBridge({
@@ -253,6 +110,13 @@ export function FrontierBounce() {
   const dragStartRef = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null)
   const glideRafRef = useRef<number>(0)
   const wakeCanvasRef = useRef<(() => void) | null>(null)
+  const [look] = useState(() => createBounceLookUniforms(bounceTuningFor('satin', false)))
+  const wakeCanvas = useCallback(() => wakeCanvasRef.current?.(), [])
+
+  useEffect(() => {
+    applyBounceTuning(look.tuning, bounceTuningFor(finish, boosted))
+    wakeCanvas()
+  }, [look, finish, boosted, wakeCanvas])
 
   const navSize = useSlotSize(navSlotRef, 216, 560)
   const topSize = useSlotSize(topSlotRef, 800, 46)
@@ -455,8 +319,7 @@ export function FrontierBounce() {
                   slotElRef={navSlotRef}
                   emitterCapture={emitterCapture}
                   cornerRadius={18}
-                  finish={finish}
-                  boosted={boosted}
+                  look={look}
                   syncKey={`${activeFolder}:${navSize[0]}x${navSize[1]}`}
                 />
               </Surface.Scene>
@@ -483,8 +346,7 @@ export function FrontierBounce() {
                   slotElRef={topSlotRef}
                   emitterCapture={emitterCapture}
                   cornerRadius={14}
-                  finish={finish}
-                  boosted={boosted}
+                  look={look}
                   syncKey={`${activeFolder}:${finish}:${boosted ? 1 : 0}:${topSize[0]}x${topSize[1]}`}
                 />
               </Surface.Scene>
@@ -540,8 +402,7 @@ export function FrontierBounce() {
                   slotElRef={inspSlotRef}
                   emitterCapture={emitterCapture}
                   cornerRadius={18}
-                  finish={finish}
-                  boosted={boosted}
+                  look={look}
                   syncKey={`${specimen.id}:${finish}:${gaps.leftPx}:${gaps.topPx}:${gaps.rightPx}:${emitterDims[0]}x${emitterDims[1]}:${inspSize[0]}x${inspSize[1]}`}
                 />
               </Surface.Scene>
@@ -564,6 +425,13 @@ export function FrontierBounce() {
           </SurfaceCanvas>
         )}
       </div>
+      {supported && (
+        <FrontierBounceTweaks
+          key={`${finish}:${boosted ? 1 : 0}`}
+          uniforms={look.tuning}
+          onChange={wakeCanvas}
+        />
+      )}
     </div>
   )
 }

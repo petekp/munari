@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSurfaceRefresh } from '@petepetrash/munari'
 import type { BouncePosePreset, BounceSeamGaps } from './frontierBounceLaw'
-import { BOUNCE_FINISHES, type BounceFinishId } from './frontierBounceNodes'
+import { BOUNCE_FINISHES, type BounceFinishId } from './frontierBounceTuning'
 import { BOUNCE_SPECIMENS, type BounceSpecimenId, type SpecimenMeta } from './frontierBounceSpecimens'
 
 export type SynthHueId = 'cyan' | 'magenta' | 'lime' | 'amber'

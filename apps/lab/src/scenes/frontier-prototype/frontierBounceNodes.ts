@@ -30,76 +30,12 @@ import {
   vec4,
 } from 'three/tsl'
 import { premultipliedOutput, type SurfaceNodes } from '@petepetrash/munari'
-
-export type BounceFinishId = 'satin' | 'obsidian' | 'frost'
-
-export interface BounceFinishTuning {
-  readonly label: string
-  readonly shortPill: string
-  readonly scatterGain: number
-  readonly ambientGain: number
-  readonly blurNormalPx: number
-  readonly blurParallelPx: number
-  readonly parallelRatio: number
-  readonly roughnessScale: number
-  readonly baseMip: number
-  readonly falloffPx: number
-  readonly spanSigmaPx: number
-  readonly rimGain: number
-  readonly chromaBoost: number
-  readonly brushStrength: number
-}
-
-export const BOUNCE_FINISHES = {
-  satin: {
-    label: 'Liquid satin',
-    shortPill: 'Satin',
-    scatterGain: 1.04,
-    ambientGain: 0.28,
-    blurNormalPx: 44,
-    blurParallelPx: 44,
-    parallelRatio: 1.0,
-    roughnessScale: 0.30,
-    baseMip: 2.1,
-    falloffPx: 146,
-    spanSigmaPx: 44,
-    rimGain: 0.94,
-    chromaBoost: 1.38,
-    brushStrength: 0,
-  },
-  obsidian: {
-    label: 'Brushed anodized',
-    shortPill: 'Anodized',
-    scatterGain: 1.22,
-    ambientGain: 0.16,
-    blurNormalPx: 68,
-    blurParallelPx: 12,
-    parallelRatio: 0.20,
-    roughnessScale: 0.22,
-    baseMip: 1.35,
-    falloffPx: 170,
-    spanSigmaPx: 32,
-    rimGain: 1.38,
-    chromaBoost: 1.32,
-    brushStrength: 0.06,
-  },
-  frost: {
-    label: 'Deep acrylic',
-    shortPill: 'Frost',
-    scatterGain: 1.24,
-    ambientGain: 0.44,
-    blurNormalPx: 64,
-    blurParallelPx: 64,
-    parallelRatio: 1.0,
-    roughnessScale: 0.44,
-    baseMip: 2.65,
-    falloffPx: 220,
-    spanSigmaPx: 62,
-    rimGain: 0.76,
-    chromaBoost: 1.44,
-    brushStrength: 0,
-  },
-} as const satisfies Record<BounceFinishId, BounceFinishTuning>
+import {
+  createBounceTuningUniforms,
+  type BounceTuning,
+  type BounceTuningUniforms,
+  type FloatUniform,
+} from './frontierBounceTuning'
 
 // Precomputed 12-tap Golden-Angle (`2.399963 rad`) Vogel disk offsets in `[-1, 1]^2`
 const VOGEL_TAPS: readonly (readonly [number, number])[] = Array.from({ length: 12 }, (_, i) => {
@@ -110,54 +46,45 @@ const VOGEL_TAPS: readonly (readonly [number, number])[] = Array.from({ length: 
 
 const QUADRANT_TAPS = [0.25, 0.75] as const
 
-export function createBounceUniforms(cornerRadius = 18) {
-  const d = BOUNCE_FINISHES.satin
+export interface BounceLookUniforms {
+  readonly tuning: BounceTuningUniforms
+  readonly emitterRectCss: ReturnType<typeof vec4Uniform>
+  readonly emitterReady: FloatUniform
+  readonly baseColor: ReturnType<typeof colorUniform>
+}
+
+export interface BouncePaneUniforms {
+  readonly panelRectCss: ReturnType<typeof vec4Uniform>
+  readonly cornerRadius: FloatUniform
+}
+
+const vec4Uniform = (value: THREE.Vector4) => uniform(value)
+const colorUniform = (value: THREE.Color) => uniform(value)
+
+/** What all three panes share: the tuning, the emitter, and the glass color. */
+export function createBounceLookUniforms(tuning: BounceTuning): BounceLookUniforms {
   return {
-    panelRectCss: uniform(new THREE.Vector4(8, 8, 216, 560)),
-    emitterRectCss: uniform(new THREE.Vector4(290, 110, 512, 356)),
+    tuning: createBounceTuningUniforms(tuning),
+    emitterRectCss: vec4Uniform(new THREE.Vector4(290, 110, 512, 356)),
     emitterReady: uniform(0),
-    emitBoost: uniform(1),
-    cornerRadius: uniform(cornerRadius),
-    scatterGain: uniform(d.scatterGain),
-    ambientGain: uniform(d.ambientGain),
-    blurNormalPx: uniform(d.blurNormalPx),
-    blurParallelPx: uniform(d.blurParallelPx),
-    parallelRatio: uniform(d.parallelRatio),
-    roughnessScale: uniform(d.roughnessScale),
-    baseMip: uniform(d.baseMip),
-    falloffPx: uniform(d.falloffPx),
-    spanSigmaPx: uniform(d.spanSigmaPx),
-    rimGain: uniform(d.rimGain),
-    chromaBoost: uniform(d.chromaBoost),
-    brushStrength: uniform(d.brushStrength),
-    baseColor: uniform(new THREE.Color('#191b20')),
+    baseColor: colorUniform(new THREE.Color('#191b20')),
   }
 }
 
-export type BounceUniforms = ReturnType<typeof createBounceUniforms>
-
-export function applyBounceFinish(u: BounceUniforms, finish: BounceFinishId, boost: number): void {
-  const t = BOUNCE_FINISHES[finish]
-  u.scatterGain.value = t.scatterGain
-  u.ambientGain.value = t.ambientGain
-  u.blurNormalPx.value = t.blurNormalPx
-  u.blurParallelPx.value = t.blurParallelPx
-  u.parallelRatio.value = t.parallelRatio
-  u.roughnessScale.value = t.roughnessScale
-  u.baseMip.value = t.baseMip
-  u.falloffPx.value = t.falloffPx
-  u.spanSigmaPx.value = t.spanSigmaPx
-  u.rimGain.value = t.rimGain
-  u.chromaBoost.value = t.chromaBoost
-  u.brushStrength.value = t.brushStrength
-  u.emitBoost.value = boost
+export function createBouncePaneUniforms(cornerRadius: number): BouncePaneUniforms {
+  return {
+    panelRectCss: vec4Uniform(new THREE.Vector4(8, 8, 216, 560)),
+    cornerRadius: uniform(cornerRadius),
+  }
 }
 
 export function createBounceMaterial(
   surface: SurfaceNodes,
   emitterMap: TextureNode,
-  u: BounceUniforms,
+  look: BounceLookUniforms,
+  pane: BouncePaneUniforms,
 ): MeshBasicNodeMaterial {
+  const t = look.tuning
   const mat = new MeshBasicNodeMaterial({
     transparent: true,
     depthWrite: false,
@@ -166,15 +93,15 @@ export function createBounceMaterial(
 
   mat.outputNode = Fn(() => {
     const st = uv()
-    const size = max(vec2(u.panelRectCss.z, u.panelRectCss.w), vec2(1, 1))
+    const size = max(vec2(pane.panelRectCss.z, pane.panelRectCss.w), vec2(1, 1))
     const halfSize = size.mul(0.5)
     // CSS pixel space inside the container (+x right, +y down)
     const localCss = vec2(st.x.mul(size.x), float(1).sub(st.y).mul(size.y))
     const pCss = localCss.sub(halfSize)
-    const worldCss = vec2(u.panelRectCss.x, u.panelRectCss.y).add(localCss)
+    const worldCss = vec2(pane.panelRectCss.x, pane.panelRectCss.y).add(localCss)
 
     // Rounded-box SDF used strictly for silhouette anti-aliasing & 1.25 px outer rim
-    const r = min(u.cornerRadius, min(halfSize.x, halfSize.y).sub(1))
+    const r = min(pane.cornerRadius, min(halfSize.x, halfSize.y).sub(1))
     const b = halfSize.sub(r)
     const q = abs(pCss).sub(b)
     const outside = max(q, vec2(0, 0))
@@ -193,8 +120,8 @@ export function createBounceMaterial(
     )
     const grad2 = outLen.greaterThan(0.001).select(safeOutGrad, inGrad).mul(signP)
 
-    const emitMin = vec2(u.emitterRectCss.x, u.emitterRectCss.y)
-    const emitSize = max(vec2(u.emitterRectCss.z, u.emitterRectCss.w), vec2(8, 8))
+    const emitMin = vec2(look.emitterRectCss.x, look.emitterRectCss.y)
+    const emitSize = max(vec2(look.emitterRectCss.z, look.emitterRectCss.w), vec2(8, 8))
     const emitMax = emitMin.add(emitSize)
 
     const closestCss = clamp(worldCss, emitMin, emitMax)
@@ -208,7 +135,7 @@ export function createBounceMaterial(
     // the reflection along the 45° diagonal from each emitter corner (Pete, 2026-11-22):
     // sidebar points above the emitter's top took the small horizontal distance, so
     // light ran up the seam edge and left a dark wedge beside it.
-    const panelMin = vec2(u.panelRectCss.x, u.panelRectCss.y)
+    const panelMin = vec2(pane.panelRectCss.x, pane.panelRectCss.y)
     const panelMax = panelMin.add(size)
     const seamGapX = max(emitMin.x.sub(panelMax.x), panelMin.x.sub(emitMax.x))
     const seamGapY = max(emitMin.y.sub(panelMax.y), panelMin.y.sub(emitMax.y))
@@ -216,21 +143,21 @@ export function createBounceMaterial(
     const dxOut = max(emitMin.x.sub(worldCss.x), max(worldCss.x.sub(emitMax.x), float(0)))
     const dyOut = max(emitMin.y.sub(worldCss.y), max(worldCss.y.sub(emitMax.y), float(0)))
     const offAxis = paneBesideEmitter.select(dyOut, dxOut)
-    const spanRatio = offAxis.div(max(u.spanSigmaPx, float(16)))
+    const spanRatio = offAxis.div(max(t.spanSigmaPx, float(16)))
     const spanFade = exp(spanRatio.mul(spanRatio).negate())
 
     // Chroma-weight emitter radiance so white borders/discs don't wash out rich hues
     const chromaVibrant = (texelRgb: Node<'vec3'>): Node<'vec3'> => {
-      const raw = max(texelRgb.sub(vec3(0.013)), vec3(0))
+      const raw = max(texelRgb.sub(t.blackFloor), vec3(0))
       const maxC = max(raw.r, max(raw.g, raw.b))
       const minC = min(raw.r, min(raw.g, raw.b))
       const chroma = maxC.sub(minC)
-      const cWeight = mix(float(0.11), float(1.0), smoothstep(float(0.03), float(0.24), chroma))
+      const cWeight = mix(t.chromaFloor, float(1.0), smoothstep(t.chromaLow, t.chromaHigh, chroma))
       const luma = dot(raw, vec3(0.2126, 0.7152, 0.0722))
-      return max(mix(vec3(luma), raw, u.chromaBoost), vec3(0)).mul(cWeight)
+      return max(mix(vec3(luma), raw, t.chromaBoost), vec3(0)).mul(cWeight)
     }
 
-    const mipLod = clamp(u.baseMip.add(distToEmit.mul(0.011)), float(1.0), float(4.2))
+    const mipLod = clamp(t.baseMip.add(distToEmit.mul(t.mipPerPx)), t.mipMin, t.mipMax)
 
     const sampleCssVibrant = (sampleCss: Node<'vec2'>): Node<'vec3'> => {
       const eu = clamp(sampleCss.x.sub(emitMin.x).div(emitSize.x), float(0.015), float(0.985))
@@ -240,7 +167,7 @@ export function createBounceMaterial(
 
     // Lobe 1: Seam-normal 12-tap trilinear-mip Vogel diffusion (velvet glow, 1:1 band alignment)
     const minHalf = min(emitSize.x, emitSize.y).mul(0.46)
-    const penetratePx = clamp(float(30).add(distToEmit.mul(0.38)), float(24), minHalf)
+    const penetratePx = clamp(t.penetrateBasePx.add(distToEmit.mul(t.penetratePerPx)), float(24), minHalf)
     const inset = min(vec2(24, 24), emitSize.mul(0.25))
     const scatterCenter = clamp(
       closestCss.add(dirToEmit.mul(penetratePx)),
@@ -248,9 +175,9 @@ export function createBounceMaterial(
       emitMax.sub(inset),
     )
 
-    const radNormal = u.blurNormalPx.add(distToEmit.mul(u.roughnessScale))
-    const radParallel = u.blurParallelPx.add(
-      distToEmit.mul(u.roughnessScale.mul(u.parallelRatio)),
+    const radNormal = t.blurNormalPx.add(distToEmit.mul(t.roughnessScale))
+    const radParallel = t.blurParallelPx.add(
+      distToEmit.mul(t.roughnessScale.mul(t.parallelRatio)),
     )
 
     let vogelAcc: Node<'vec3'> = vec3(0, 0, 0)
@@ -262,14 +189,14 @@ export function createBounceMaterial(
     }
     const vogelAvg = vogelAcc.mul(float(1 / 12))
 
-    const falloff = max(u.falloffPx, float(40))
+    const falloff = max(t.falloffPx, float(40))
     const distDecay = exp(distToEmit.negate().div(falloff)).div(
-      float(1).add(distToEmit.div(float(180))),
+      float(1).add(distToEmit.div(t.distanceKneePx)),
     )
     // Optional subtle micro-brushed modulation for Anodized finish (`brushStrength > 0`)
     const brushCoord = dot(worldCss, perpDir)
-    const brushMod = float(1).add(sin(brushCoord.mul(1.25)).mul(u.brushStrength))
-    const scatterRgb = vogelAvg.mul(distDecay).mul(spanFade).mul(brushMod).mul(u.scatterGain).mul(0.56)
+    const brushMod = float(1).add(sin(brushCoord.mul(t.brushFrequency)).mul(t.brushStrength))
+    const scatterRgb = vogelAvg.mul(distDecay).mul(spanFade).mul(brushMod).mul(t.scatterGain).mul(0.56)
 
     // Lobe 2: 4-tap wide quadrant ambient fill using pre-filtered mip level & span locality
     let ambientAcc: Node<'vec3'> = vec3(0, 0, 0)
@@ -277,32 +204,33 @@ export function createBounceMaterial(
       for (const sx of QUADRANT_TAPS) {
         const patchCss = emitMin.add(vec2(emitSize.x.mul(sx), emitSize.y.mul(sy)))
         const d = length(worldCss.sub(patchCss))
-        const w = exp(d.negate().div(falloff.mul(1.25))).div(float(1).add(d.mul(d).div(float(22000))))
-        const c = chromaVibrant(emitterMap.sample(vec2(float(sx), float(1 - sy))).level(float(2.8)).rgb)
+        const dr = d.div(t.ambientReachPx)
+        const w = exp(d.negate().div(falloff.mul(1.25))).div(float(1).add(dr.mul(dr)))
+        const c = chromaVibrant(emitterMap.sample(vec2(float(sx), float(1 - sy))).level(t.ambientMip).rgb)
         ambientAcc = ambientAcc.add(c.mul(w))
       }
     }
-    const ambientRgb = ambientAcc.mul(spanFade).mul(u.ambientGain).mul(0.24)
+    const ambientRgb = ambientAcc.mul(spanFade).mul(t.ambientGain).mul(0.24)
 
     // Lobe 3: Crisp 1.25 px Tahoe bevel hairline catchlight on emitter-facing edge
     const bevelBand = smoothstep(float(-1.6), float(-0.15), sdf)
     const subtleEdge = smoothstep(float(-4.5), float(0), sdf).mul(0.06)
     const ambientRim = float(0.022).add(grad2.y.negate().mul(0.012)).mul(bevelBand)
-    const facing = pow(max(dot(grad2, dirToEmit), float(0.0001)), float(1.75))
-    const rimProx = exp(distToEmit.negate().div(float(120))).mul(spanFade)
+    const facing = pow(max(dot(grad2, dirToEmit), float(0.0001)), t.rimFacingPower)
+    const rimProx = exp(distToEmit.negate().div(t.rimReachPx)).mul(spanFade)
     const rimRgb = vogelAvg
       .add(vec3(0.06))
       .mul(bevelBand.mul(0.95).add(subtleEdge))
       .mul(facing)
       .mul(rimProx)
-      .mul(u.rimGain)
+      .mul(t.rimGain)
 
     // Soft perceptual Reinhard shoulder preserves WCAG contrast under white sidebar text
-    const rawBounce = scatterRgb.add(ambientRgb).add(rimRgb).mul(u.emitBoost).mul(u.emitterReady)
-    const compressedBounce = rawBounce.div(vec3(1).add(rawBounce.mul(1.45)))
+    const rawBounce = scatterRgb.add(ambientRgb).add(rimRgb).mul(t.emitBoost).mul(look.emitterReady)
+    const compressedBounce = rawBounce.div(vec3(1).add(rawBounce.mul(t.toneShoulder)))
 
-    const verticalLift = float(1.04).sub(float(1).sub(st.y).mul(0.07))
-    const glassRgb = u.baseColor
+    const verticalLift = float(1.04).sub(float(1).sub(st.y).mul(t.verticalLift))
+    const glassRgb = look.baseColor
       .mul(verticalLift)
       .add(vec3(0.86, 0.90, 0.98).mul(ambientRim))
       .add(compressedBounce)
