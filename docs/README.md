@@ -8,7 +8,7 @@ output. Preserve both distinctions when resolving a conflict.
 |---|---|---|
 | Evaluate Munari against raw HTML-in-canvas | [Why Munari](why-munari.md) | Current overview with JSX examples and lab links |
 | Make payload opt-in by effect class | [Payload optimization research](payload-optimization-research.md) | Measured bundle breakdown and proposed opt-in tiers; unbuilt |
-| Design opt-in developer experience | [Opt-in DX proposal](opt-in-dx-proposal.md) | Proposed three-posture interface, subpath map, and rollout; unbuilt |
+| Design opt-in payload | [Opt-in payload proposal](opt-in-dx-proposal.md) | Per-module build and budget check (built); R3F 10 migration, lazy canvas recipe, and rollout (unbuilt) |
 | Set up and use the package | [Root README](../README.md), public entry types | Current usage |
 | Capture a page element that stays native | [Element capture](element-capture.md) | Current usage |
 | Find the owner, control and relevant check | [Agent operating guide](agent-workflow.md) | Current workflow |

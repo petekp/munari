@@ -24,6 +24,18 @@
   the `useSurfaceRefresh()` function when a change must reach the scene on
   snapDOM. The new `CaptureEngine.honorsSurfaceLive` field says which engines
   follow a live Surface, and a custom engine must set it.
+- `@zumer/snapdom` is now `^3.8.2` (was `^3.3.3`), both as the optional peer
+  dependency and in the lockfile. The `snapdomDefault` entry grows from 96.2
+  to 124.2 kB gzip, all of it snapDOM's own bundle (89.1 to 118.2 kB). Clipped
+  input-region captures read the wrapper's `zoom: initial` that 3.8.2 writes
+  on pages that do not lay out on the device grid.
+- The package now ships one module per source module, so an app that imports
+  only some exports bundles only the modules they reach. An app importing
+  only `encodedOutput` shrinks from 224.7 to 129.8 kB gzip. The minimal
+  `<Surface>` app is unchanged at about 532 kB.
+- `@petepetrash/munari/snapdom` loads the input-region rasterizer the first
+  time `isolatedTextInputs` content is captured, rather than with the entry.
+  `enableSnapdomCapture` is still synchronous.
 - A scrolled container inside captured content now keeps its scroll
   position. `useElementCapture` and the copy a Surface captures while its
   content is on the page both showed the container scrolled to the top.

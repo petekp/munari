@@ -32,7 +32,8 @@
 // Ownership: this module owns the snapDOM call and the fallback rule.
 // `@munari/core` owns the source, the ledger and the parking.
 
-import { createInputRegionRasterizer, UnsupportedRegionCaptureError, type CaptureRegionOptions } from './snapdomInputRegions'
+import type { createInputRegionRasterizer } from './snapdomInputRegions'
+import { UnsupportedRegionCaptureError, type CaptureRegionOptions } from './snapdomRegionContract'
 import { snapdom, type CaptureMeta, type SnapdomPlugin } from '@zumer/snapdom'
 import { retainNormalizedSvg } from './snapdomInputSvg'
 import { fieldPseudoElementPlugin } from './snapdomFieldPseudoElements'
@@ -167,7 +168,10 @@ const normalizeRegionLayout = (
   const clip = meta?.clip
   if (!svg || !elements || !clip) throw new UnsupportedRegionCaptureError('munari: clipped SVG structure is unsupported')
   const { foreign, wrapper } = elements
-  const zoom = wrapper.style.zoom ? Number(wrapper.style.zoom) : 1
+  // snapDOM resets the wrapper with `zoom: initial` when the page does not
+  // lay out on the device grid, and writes a number when it does.
+  const hasLayoutZoom = wrapper.style.zoom !== '' && wrapper.style.zoom !== 'initial'
+  const zoom = hasLayoutZoom ? Number(wrapper.style.zoom) : 1
   const width = Number.parseFloat(wrapper.style.width)
   const height = Number.parseFloat(wrapper.style.height)
   const sizes = [layout.width, layout.height, clip.width, clip.height, zoom, width, height]
@@ -350,6 +354,7 @@ export function enableSnapdomCapture(options: SnapdomCaptureOptions = {}): void 
             const invalidate = refreshPending
             refreshPending = false
             if (!regions && element.querySelector(selector)) {
+              const { createInputRegionRasterizer } = await import('./snapdomInputRegions')
               regions = createInputRegionRasterizer(element, selector, rasterize)
             }
             if (invalidate) regions?.invalidate()
