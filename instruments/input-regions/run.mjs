@@ -5,6 +5,7 @@ import path from 'node:path'
 import {createServer} from 'vite'
 import puppeteer from 'puppeteer-core'
 import {replaceSource} from '../light/replaceSource.mjs'
+import {installSourceReader} from './sourceReader.mjs'
 const root=path.resolve(import.meta.dirname,'../..')
 const output=path.resolve(process.env.REGION_OUTPUT??'/tmp/munari-input-regions')
 assert.ok(!process.env.REGION_STORAGE||['cpu','gpu'].includes(process.env.REGION_STORAGE),'REGION_STORAGE: cpu|gpu')
@@ -162,6 +163,7 @@ try{
  await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/?scene=controls&framed&capture=snapdom`,{waitUntil:'load'})
  await page.waitForFunction(()=>window.regionProofFull&&document.querySelector('.controls-board'))
  if(process.env.REGION_NO_SCHEDULER==='1')assert.equal(await page.evaluate(()=>globalThis.scheduler===undefined),true,'The timer-fallback fixture must remove scheduler before the app loads')
+ await page.evaluate(installSourceReader)
  await page.evaluate(async(root)=>{
   await document.fonts.ready
   const {createDomTextureSource}=await import(root+'/packages/react/src/advanced.ts')
@@ -247,7 +249,7 @@ try{
    const image=await window.regionProofFull(form,canvas.width/form.offsetWidth,canvas.height/form.offsetHeight)
    const storage=canvas.getContext('2d').getContextAttributes().willReadFrequently
    const ref=document.createElement('canvas');ref.width=canvas.width;ref.height=canvas.height;ref.getContext('2d',{willReadFrequently:storage}).drawImage(image,0,0,image.width,image.height)
-   const a=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data,b=ref.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data
+   const a=window.regionProofSourcePixels(canvas),b=ref.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data
    let changed=0,max=0;for(let i=0;i<a.length;i+=4){let difference=false;for(let c=0;c<4;c++){const d=Math.abs(a[i+c]-b[i+c]);max=Math.max(max,d);difference||=d>0}changed+=Number(difference)}
    const intermediateFrames=(window.regionProofFlowFrames??[]).map(frame=>{
     let changed=0
@@ -266,7 +268,7 @@ try{
    const styleCacheHits=window.regionProofStyleCacheHits??0,styleSerializations=window.regionProofStyleSerializations??0,frozenStyles=window.regionProofFrozenStyles??0,styleIntegrityChecks=window.regionProofStyleIntegrityChecks??0,styleMismatches=window.regionProofStyleMismatches??[];window.regionProofStyleCacheHits=0;window.regionProofStyleSerializations=0;window.regionProofFrozenStyles=0;window.regionProofStyleIntegrityChecks=0;window.regionProofStyleMismatches=[]
    const styleVisibility=window.regionProofStyleVisibility??null;window.regionProofStyleVisibility=null
    const backgroundCounts=window.regionProofTakeBackgroundCounts()
-   return {backgroundFrames,...backgroundCounts,styleVisibility,styleCacheHits,styleSerializations,frozenStyles,styleIntegrityChecks,styleMismatches,textHits,textAttempts,textPreparations,svgHits,svgAttempts,intermediateFrames,changed,max,storage,cacheStorage:window.regionProofCacheMemory??null,width:canvas.width,height:canvas.height,value:input.value,focused:document.activeElement===input,calls:window.regionProofCalls.splice(0),errors:window.regionProofErrors.splice(0),png:canvas.toDataURL(),reference:ref.toDataURL()}
+   return {backgroundFrames,...backgroundCounts,styleVisibility,styleCacheHits,styleSerializations,frozenStyles,styleIntegrityChecks,styleMismatches,textHits,textAttempts,textPreparations,svgHits,svgAttempts,intermediateFrames,changed,max,storage,cacheStorage:window.regionProofCacheMemory??null,width:canvas.width,height:canvas.height,value:input.value,focused:document.activeElement===input,calls:window.regionProofCalls.splice(0),errors:window.regionProofErrors.splice(0),png:window.regionProofSourceCopy(canvas).toDataURL(),reference:ref.toDataURL()}
   },proofKey)
   for(const key of ['png','reference']){await writeFile(path.join(output,`${name}-${key}.png`),Buffer.from(result[key].split(',')[1],'base64'));delete result[key]}
   results.push({name,...result});await writeFile(path.join(output,'results.json'),JSON.stringify(results,null,2))
@@ -331,13 +333,13 @@ try{
  const scrollingBackground=await compare('background-scroll-overflow');assert.equal(scrollingBackground.backgroundHits,0);assert.equal(scrollingBackground.backgroundPreparations,0);if(backgroundSupported)assert.ok(scrollingBackground.backgroundFallbacks>0,'Scrollable root paint must use the original full SVG')
  await page.evaluate(()=>{window.regionProofNegativeZ.remove();window.regionProof.form.style.overflow=window.regionProofBeforeRootOverflow;window.regionProof.source.repaint({immediate:true})});await compare('background-negative-z-restored')
  if(backgroundSupported){
-  const beforeBackgroundFailure=await page.evaluate(()=>{const {source}=window.regionProof;return {paintCount:source.paintCount(),pixels:source.canvas.toDataURL()}})
+  const beforeBackgroundFailure=await page.evaluate(()=>{const {source}=window.regionProof;return {paintCount:source.paintCount(),pixels:window.regionProofSourceCopy(source.canvas).toDataURL()}})
   await page.evaluate(()=>{window.regionProofBackgroundDrawFail=true;window.regionProof.source.repaint({immediate:true})})
   await page.waitForFunction(()=>window.regionProofErrors.some(error=>error.includes('deliberate background draw failure')))
-  assert.deepEqual(await page.evaluate(()=>({paintCount:window.regionProof.source.paintCount(),pixels:window.regionProof.source.canvas.toDataURL()})),beforeBackgroundFailure,'Failed background composition must not alter the published source')
+  assert.deepEqual(await page.evaluate(()=>({paintCount:window.regionProof.source.paintCount(),pixels:window.regionProofSourceCopy(window.regionProof.source.canvas).toDataURL()})),beforeBackgroundFailure,'Failed background composition must not alter the published source')
   await page.evaluate(()=>window.regionProof.source.repaint({immediate:true}));const backgroundRecovered=await compare('background-draw-recovery');assert.deepEqual(backgroundRecovered.errors,['Error: deliberate background draw failure']);assert.ok(backgroundRecovered.backgroundHits>0)
   await holdBackground('linear-gradient(135deg,rgb(225,240,215),rgb(180,220,175))')
-  await page.evaluate(async()=>{const {source}=window.regionProof;window.regionProofBackgroundBeforePixels=await window.regionProofReadStylePixels();window.regionProofBackgroundFrames=[];window.regionProofBackgroundUnsubscribe=source.subscribePaint(receipt=>{const canvas=source.canvas;window.regionProofBackgroundFrames.push({read:receipt.read,width:canvas.width,height:canvas.height,pixels:canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data})})})
+  await page.evaluate(async()=>{const {source}=window.regionProof;window.regionProofBackgroundBeforePixels=await window.regionProofReadStylePixels();window.regionProofBackgroundFrames=[];window.regionProofBackgroundUnsubscribe=source.subscribePaint(receipt=>{const canvas=source.canvas;window.regionProofBackgroundFrames.push({read:receipt.read,width:canvas.width,height:canvas.height,pixels:window.regionProofSourcePixels(canvas)})})})
   await page.keyboard.type('a');await page.evaluate(()=>window.regionProof.source.repaint({immediate:true}))
   assert.equal(await page.evaluate(()=>window.regionProof.source.paintCount()),await page.evaluate(()=>window.regionProofBackgroundPaintsBeforeHold),'Held background preparation must not publish partial pixels')
   await page.evaluate(()=>{const release=window.regionProofBackgroundRelease;window.regionProofBackgroundRelease=null;release()})
@@ -481,9 +483,9 @@ try{
  await inputSession.detach()
  if(directTextSupported){
  await seedShort();await page.keyboard.type('a');const failureReady=await compare('text-failure-ready',true);assert.ok(failureReady.textHits>0)
- const beforeTextFailure=await page.evaluate(()=>{const {source}=window.regionProof;window.regionProofTextBeforeFailure={paintCount:source.paintCount(),pixels:source.canvas.getContext('2d').getImageData(0,0,source.canvas.width,source.canvas.height).data};window.regionProofTextDrawFail=true;return source.paintCount()})
+ const beforeTextFailure=await page.evaluate(()=>{const {source}=window.regionProof;window.regionProofTextBeforeFailure={paintCount:source.paintCount(),pixels:window.regionProofSourcePixels(source.canvas)};window.regionProofTextDrawFail=true;return source.paintCount()})
  await page.keyboard.type('a');await page.waitForFunction(()=>window.regionProofErrors.some(error=>error.includes('deliberate text draw failure')))
- const failedText=await page.evaluate(()=>{const {source}=window.regionProof,before=window.regionProofTextBeforeFailure,observed=source.canvas.getContext('2d').getImageData(0,0,source.canvas.width,source.canvas.height).data;return {paintCount:source.paintCount(),unchanged:before.pixels.length===observed.length&&before.pixels.every((channel,index)=>channel===observed[index]),pendingFault:window.regionProofTextDrawFail}})
+ const failedText=await page.evaluate(()=>{const {source}=window.regionProof,before=window.regionProofTextBeforeFailure,observed=window.regionProofSourcePixels(source.canvas);return {paintCount:source.paintCount(),unchanged:before.pixels.length===observed.length&&before.pixels.every((channel,index)=>channel===observed[index]),pendingFault:window.regionProofTextDrawFail}})
  assert.equal(failedText.paintCount,beforeTextFailure,'A failed direct draw must not publish a frame');assert.equal(failedText.unchanged,true,'A failed direct draw must preserve displayed source pixels');assert.equal(failedText.pendingFault,false)
  await page.evaluate(()=>window.regionProof.source.repaint({immediate:true}));const textRecovered=await compare('text-draw-recovery');assert.deepEqual(textRecovered.errors,['Error: deliberate text draw failure']);assert.ok(textRecovered.textAttempts>0);assert.ok(textRecovered.calls.some(call=>!call.clip));assert.equal(textRecovered.focused,true)
  await holdTextPreparation()
@@ -544,7 +546,7 @@ try{
   await page.keyboard.type('p');await compare('positioned-ancestor-typing',true)
   await page.evaluate(()=>{const {input,source}=window.regionProof;input.parentElement.style.position='';input.parentElement.style.top='';source.repaint({immediate:true})});await compare('ancestor-position-restored')
   const flowTop=await page.evaluate(()=>{const {input,source}=window.regionProof;input.style.marginTop=-(input.getBoundingClientRect().top%1)+'px';input.setSelectionRange(0,0);input.scrollLeft=0;source.repaint({immediate:true});return input.getBoundingClientRect().top});assert.ok(Number.isInteger(flowTop));await compare('flow-integer-y')
-  await page.evaluate(()=>{const {source}=window.regionProof,read=source.nextRead();window.regionProofFlowFrames=[];window.regionProofFlowUnsubscribe=source.subscribePaint(receipt=>{if(receipt.read>=read){const canvas=source.canvas;window.regionProofFlowFrames.push({read:receipt.read,width:canvas.width,height:canvas.height,pixels:canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data})}})})
+  await page.evaluate(()=>{const {source}=window.regionProof,read=source.nextRead();window.regionProofFlowFrames=[];window.regionProofFlowUnsubscribe=source.subscribePaint(receipt=>{if(receipt.read>=read){const canvas=source.canvas;window.regionProofFlowFrames.push({read:receipt.read,width:canvas.width,height:canvas.height,pixels:window.regionProofSourcePixels(canvas)})}})})
   await page.keyboard.type('i');const flow=await compare('flow-integer-y-typing',true);assert.ok(flow.intermediateFrames.length>0)
   await page.evaluate(()=>{window.regionProofFlowUnsubscribe();window.regionProofFlowFrames=null;window.regionProof.input.style.marginTop='';window.regionProof.source.repaint({immediate:true})});await compare('flow-position-restored')
   await page.evaluate(()=>{const {input,source}=window.regionProof;input.style.boxShadow='0 2px 8px rgba(20,30,80,.4)';source.repaint({immediate:true})});await compare('outer-shadow')

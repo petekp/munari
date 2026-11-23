@@ -8,7 +8,12 @@ REGION_STORAGE=cpu node instruments/input-regions/run.mjs
 This runs the real Controls form with its lab styles in headless Chrome. It
 uses the public capture engine, keeps the original form nodes, and compares
 the source canvas against a fresh full snapDOM capture after each change.
-Every RGBA channel must match exactly. `REGION_STORAGE` forces the source's
+Every RGBA channel must match exactly. The probe never reads the source canvas
+directly. It draws the source into a fresh canvas with the same storage and
+reads that copy. Since Chrome 156, a GPU canvas that has been read with
+`getImageData` returns translucent pixels drawn into it later one level off,
+although its stored pixels are unchanged. The copy holds the stored pixels,
+which is what a texture upload receives. `REGION_STORAGE` forces the source's
 canvas storage policy and checks that the requested mode was exercised. It
 does not emulate a different GPU. The reference uses the same storage policy.
 
