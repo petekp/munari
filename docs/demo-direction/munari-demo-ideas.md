@@ -1,6 +1,6 @@
 # Munari demo concepts, first list
 
-This list proposes four demos for Munari's lab, drawn from the traits in [ui-feed-notes.md](ui-feed-notes.md). Pete picks which one to build. Nothing here is built.
+This list proposes five demos for Munari's lab, drawn from the traits in [ui-feed-notes.md](ui-feed-notes.md). Pete picks which one to build. Nothing here is built.
 
 Each concept follows three rules, taken from ui-feed and from the bar Munari's demos already hold:
 
@@ -11,9 +11,10 @@ Each concept follows three rules, taken from ui-feed and from the bar Munari's d
 ## Ranking
 
 1. Review notes that stick to a 3D model. Medium for a one-note first slice, large in full. Recommended first build.
-2. A day planner you close by tearing off the page. Medium.
-3. A spec sheet that cuts through the product. Large.
-4. A live app on a curved device screen. Medium. The review recommended dropping it, and it stays here as the weakest option.
+2. Desk booking on an exploded office building. Large.
+3. A day planner you close by tearing off the page. Medium.
+4. A spec sheet that cuts through the product. Large.
+5. A live app on a curved device screen. Medium. The review recommended dropping it, and it stays here as the weakest option.
 
 ## 1. Review notes that stick to a 3D model
 
@@ -36,10 +37,34 @@ Open questions:
 - Text stretches on strongly curved shapes. Choose a gently curved body, and build the wrapping from the surface point and normal where the note lands.
 - In Safari a handoff restarts running CSS animations.
 - snapDOM paints no caret, so typing on the model shows no caret outside HTML-in-canvas.
+- The @mention suggestions must be an ordinary positioned list inside the note, because HTML-in-canvas does not capture popovers.
 
 A one-note first slice proves the whole idea. It covers drag in, wrap, rotate, type in place and resolve back.
 
-## 2. A day planner you close by tearing off the page
+## 2. Desk booking on an exploded office building
+
+An office building model sits on the page. Pull it apart and its floors separate into an exploded stack. Each floor slab carries a real HTML floor plan, with desks as buttons, names on booked desks, a hover card per desk and a booking form. Drag the hour slider and the sun moves. Shadows of the columns and window frames sweep across the live plans, so you can see which desks get morning light before you book one. Book a desk and a small 3D chair rises from the plan where you clicked. Push the floors back together and the plans show only through the windows.
+
+The rule is that a floor plan lives on its floor, in that floor's light.
+
+Munari capabilities used:
+
+- Several Surfaces placed on the slabs with `placement="manual"`, depth-tested against walls, columns and the floors above.
+- `Surface.LitMaterial` on meshes that receive three.js shadow maps. A spike on 2026-11-23 confirmed that a scene mesh's shadow lands on a live Surface with `receiveShadow` set.
+- `Surface.Anchor` on each desk, so the chair rises exactly where the desk is drawn.
+- The default relayed input. The native route does not check what covers a Surface, so a click on the slab above would reach the plan below.
+
+A Munari user learns to lay real UI onto the parts of a 3D model, light it with the scene and pull the model apart to reach it.
+
+The nearest shortcut is CSS3DRenderer with a depth-only mesh at each slab. That can show half a plan through a window, and CSS can dim a whole plan. It cannot make a column's shadow cross the plan as the hour changes. The nearest lab scenes are Explode, which separates one div's paint layers, and Workspace, which wraps panels on a cylinder. Neither puts live UI on the parts of a model.
+
+Open questions:
+
+- Desk hover cards must be ordinary positioned elements inside the plan. HTML-in-canvas does not capture popovers (see the UI SDK section).
+- Four or five live Surfaces with shadows need a capture and render cost check.
+- It needs an original building model with walls, columns and windows.
+
+## 3. A day planner you close by tearing off the page
 
 A tear-off day planner shows today's tasks as real checkboxes and editable text. At the end of the day you grab the bottom corner and pull. The live page lifts and curls under your hand, and tomorrow's page shows underneath, already live, with unfinished tasks carried over in the same places. Let go before the perforation and today settles back. Pull past it and the sheet tears at the speed of your hand, curls and falls away.
 
@@ -62,7 +87,7 @@ Open questions:
 - Two full-page Surfaces in one canvas cost more to capture than one. Measure before tuning the curl.
 - The torn edge needs a shader or a cut in the geometry. Neither exists in the lab yet.
 
-## 3. A spec sheet that cuts through the product
+## 4. A spec sheet that cuts through the product
 
 A 3D product, such as a camera, stands on the page. Its spec sheet is a sheet of real HTML standing inside it. A clipping plane removes the outer casing on the viewer's side of the sheet. The internal parts are not clipped, so the lens elements, the sensor board and the battery cross in front of the text. Scrolling the sheet moves the sheet and the cut deeper through the body. The sensor paragraph arrives as the sheet meets the sensor board. The cut casing is capped, so the shell reads as solid.
 
@@ -85,7 +110,7 @@ Open questions:
 - Orbiting behind the sheet would show mirrored text and lose selection, so the camera must stay in front.
 - The model needs named internal parts and a license that allows publishing.
 
-## 4. A live app on a curved device screen
+## 5. A live app on a curved device screen
 
 A small portable television from no particular brand sits on the page. Its bulging glass shows a real web app inside it: a music player with a timeline and a playlist. You can use the app through the curved glass. Turn the device and the studio light moves across the screen, brighter at the bulge and darker toward the edges. Press "Take it out" and the app lifts off the glass, flattens and lands as the page itself, with its playlist scroll and focus kept.
 
@@ -130,13 +155,13 @@ UI SDK is a library of unstyled, accessible components built from reusable behav
 Its status, checked 2026-11-23:
 
 - Source: [vercel-labs/ui](https://github.com/vercel-labs/ui). It was created 2026-10-26, is Apache-2.0, has about 6,600 stars and is still being pushed to.
-- Packages: `@ui-sdk/react` and `@ui-sdk/core`, first published 2026-11-12. The `latest` tag is `0.1.0-beta.13` and the `beta` tag is `0.1.0-beta.14`. The npm maintainer is `shadcn`.
+- Packages: `@ui-sdk/core`, `@ui-sdk/react`, `@ui-sdk/web` and others, first published 2026-11-12. Both the `latest` and `beta` tags point to `0.1.0-beta.16`, published 2026-11-23. The npm maintainer is `shadcn`.
 - Site: [ui-sdk.dev](https://ui-sdk.dev). ui-feed.dev shows its components, and every ui-feed prompt recommends it.
 - A plain fetch of vercel.com/blog and vercel.com/changelog found no announcement. Those pages may load content with scripts, so this is unverified. It is a Vercel Labs project, not a documented Vercel product.
 
-UI SDK adds no Munari capability to any concept. It could supply the controls inside the Surfaces, such as the note's checkbox and @mention input in concept 1. Those controls would be accessible with no extra work. That saves building time but proves nothing about Munari.
+UI SDK adds no Munari capability to any concept. It could supply the controls inside the Surfaces, such as the note's checkbox in concept 1 and the booking form in concept 2. Those controls would be accessible with no extra work. That saves building time but proves nothing about Munari.
 
 Two cautions apply inside a Surface:
 
-- UI SDK popups stay in place in the DOM and paint in the browser's top layer. Where `showPopover` is missing, they move to a portal on `document.body`. Whether HTML-in-canvas paints top-layer content into a Surface is unmeasured.
+- UI SDK popups stay in place in the DOM and open in the browser's top layer as `popover="manual"` elements. A spike on 2026-11-23, in headless Chrome 158, found that HTML-in-canvas does not capture any top-layer content. That covers popovers, modal dialogs and select pickers, including UI SDK's menu and select. The browser paints them flat on the page above the canvas instead. snapDOM does capture them. Inside a Surface, menus and pickers must therefore be ordinary positioned elements, or be moved out of the Surface.
 - The agent bridge acts through component APIs in JavaScript, so it works the same with or without Munari. A demo where an agent operates a control would show UI SDK, not Munari.
