@@ -12,7 +12,7 @@ project is named for the Italian designer and artist Bruno Munari.
 - **Peer dependencies:** `react` and `react-dom` 19 or later, `three` ~0.186.1,
   and `@react-three/fiber` ^9.8.1.
 - **Optional peers:** `@types/three` ~0.186.0 for TypeScript, and
-  `@zumer/snapdom` ^3.3.3 for the snapDOM capture engine.
+  `@zumer/snapdom` ^3.8.2 for the snapDOM capture engine.
 - **Rendering:** `SurfaceCanvas` renders with Three's `WebGPURenderer`. Where a
   browser has no WebGPU adapter, it falls back to WebGL 2. Neither accepts GLSL,
   so `ShaderMaterial` and `onBeforeCompile` do not work. Neither do the drei

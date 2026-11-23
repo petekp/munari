@@ -35,6 +35,15 @@ additional sources sampled by a material. A manual pointer proxy cannot claim
 those draw receipts. [Knobs](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/knobs/Knobs.tsx) and
 [Logo](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/logo/Logo.tsx) show coordinated parts and anchors.
 
+## Follow a drag on `window` in the capture phase
+
+With `pointerMode="surfaces"`, a press on a Surface mesh belongs to the canvas
+until it is released. Until then, the canvas pointer gate stops the browser's
+`pointermove`, `pointerup` and `pointercancel` in the document's capture
+phase and sends R3F a copy, whose `isTrusted` is false. So a scene that follows
+the drag with `window` listeners adds them with `capture: true` to hear the
+browser's own events.
+
 ## Materials on a SurfaceCanvas
 
 `SurfaceCanvas` converts each fragment to the canvas's sRGB encoding and
