@@ -1,16 +1,17 @@
 # Capture transitions: the public call
 
-**Status: proposed, 2026-11-22. Not built.** The names below are proposals.
-The lab helpers they would replace are `apps/lab/src/lib/surfaceTransition.ts`
-and `apps/lab/src/lib/pairedCapture.tsx`.
+**Status: built, 2026-11-22.** Shape A shipped. `useCaptureTransition` and
+`CaptureTransition` are in `@petepetrash/munari`. The provisional effect hook
+`useCaptureTransitionEffect` is in `@petepetrash/munari/advanced`. Decision #77
+states the rule. Postcard and Distortion Wave use the package hooks.
 
 ## The problem
 
 An app wants to swap one view of its HTML for another, such as a postcard with one
 more stamp or a page in the light theme, with a shader effect drawn between the two
-states. Today each lab demo wires a request queue, a before-and-after capture, an
-upload check and a screen-draw check by hand, through lab-local helpers that no
-outside project can import.
+states. Before this change each lab demo wired a request queue, a before-and-after capture,
+an upload check and a screen-draw check through lab-local helpers that no outside
+project could import.
 
 A *capture transition* is one such swap. The page keeps the live content the whole
 time. The canvas draws a *cover*, which is a capture of a copy of the outgoing
@@ -74,7 +75,7 @@ mutates it, in a class component's `getSnapshotBeforeUpdate`. It would lay the c
 over the target before the browser paints, then move the cover from that page clone
 to the canvas.
 
-## Recommendation: shape A
+## The chosen shape: A
 
 `@petepetrash/munari` exports one hook and one type:
 
@@ -115,7 +116,7 @@ The reasons for each choice:
 
 `start` returning nothing has a cost. Work that needs the committed DOM, such as
 moving focus, has no hook. `startViewTransition` returns `updateCallbackDone` and
-`finished` promises for this. Phase 2 adds them only if a demo or the consumer needs one.
+`finished` promises for this. Neither demo nor the standalone consumer needs one yet.
 
 Shape B was rejected because string names lose the `Options` type and turn a typo
 or an unmounted effect into a silent immediate update. It also needs a provider
@@ -136,20 +137,21 @@ The recipes are worth adding later either way. `registry/` is outside this step.
 
 ## Failure cases
 
-Each row states what the lab helpers do today, citing the code, and any change the
-package version makes.
+Each row states what the package does. The queue is
+`packages/react/src/primitives/captureTransition.ts` and the effect hook is
+`captureTransitionEffect.ts` beside it.
 
 | Case | What happens |
 |---|---|
-| Capture fails or is unsupported | The capture status turns `error` or `unsupported`. The run is cancelled: its update applies once, unless it already has, and the effect stops (`pairedCapture.tsx`, `read` and `cancel`). An error while the cover waits for its draw is ignored until the timer fires. |
+| Capture fails or is unsupported | The capture status turns `error` or `unsupported`. The run is cancelled: its update applies once, unless it already has, and the effect stops (`read` and `cancel`). An error while the cover waits for its draw is ignored until the timer fires. |
 | No matching frame or cover draw arrives | Each capture request has a 1 s bound. The outgoing request's bound also covers the wait for the cover draw. The incoming capture gets a new bound (`request`). |
 | The engine is snapDOM | Nothing branches on the engine (#60). The second upload for `drawTrailsPaint` applies only to HTML-in-canvas. The delay between a click and the update on snapDOM is unmeasured. |
-| Requests overlap | Requests queue in order. Each effect captures one run at a time, and later requests wait until the effect accepts them. Updates apply in request order, including requests made during `finish()` and during another run's capture (`surfaceTransition.ts`). |
-| A request waits in the queue | Nothing bounds this today. Distortion Wave holds a request while three page waves run or no texture slot is free, and a page wave can last 3.6 s. Postcard holds the queue for each 320 ms wipe. If the canvas stops rendering, a waiting update never applies. Phase 2 adds a bound: when the first waiting request is older than 1 s, the package calls `finish()`. |
+| Requests overlap | Requests queue in order. Each effect captures one run at a time, and later requests wait until the effect accepts them. Updates apply in request order, including requests made during `finish()` and during another run's capture. |
+| A request waits in the queue | Distortion Wave holds a request while three page waves run or no texture slot is free, and a page wave can last 3.6 s. Postcard holds the queue for each 320 ms wipe. When the first waiting request is older than 1 s, the queue calls `finish()` (#77). This also covers a canvas that stops rendering. |
 | An update throws | The error is reported asynchronously. That run's effect stops, changes the callback already made stay, and later updates still run (8ba5c01). |
-| The effect unmounts or reconnects mid-run | The run's update applies without `flushSync`, then waiting updates apply in order (`connect` and `dispose`). A lost renderer remounts the canvas (#73), so it takes this path. Today a change in the effect's own callbacks also reconnects it. The package version connects once per mount. |
-| The target leaves the document | The run ends, and its update applies if it has not. Postcard calls `finish()`, which also flushes every waiting update. The wave effect ends only that run, and it also ends a run whose target changed size. The package checks connection for every effect. Size and position stay effect policy. |
-| Reduced motion | `start` checks `prefers-reduced-motion`. When it matches, `start` finishes running effects and applies every waiting update, then this one. Distortion Wave also polls the preference each frame and finishes. Postcard instead unmounts its effect under its own reduced-motion setting. The package polls the media query each frame. An app with its own setting calls `finish()`. |
+| The effect unmounts mid-run | The run's update applies without `flushSync`, then waiting updates apply in order. A lost renderer remounts the canvas (#73), so it takes this path. The effect connects once per mount, and a change in its callbacks does not reconnect it. |
+| The target leaves the document | A request whose target is outside the document applies at once. During a capture the run is cancelled and its update applies if it has not. After the captures, the effect decides: Postcard calls `finish()`, which also flushes every waiting update, and the wave effect ends only that run. The wave also ends a run whose target changed size. |
+| Reduced motion | `start` checks `prefers-reduced-motion`. When it matches, `start` finishes running effects and applies every waiting update, then this one. The effect hook also reads the preference each frame, and calls `finish()` when it turns on or while work is pending. Postcard also unmounts its effect under its own reduced-motion setting. An app with its own setting calls `finish()`. |
 | Two effects connect to one handle | `connect` throws. One handle has one effect. |
 | The update changes nothing | The effect still runs between two identical captures. |
 
@@ -163,52 +165,58 @@ snapshot fills its box with the nearest opaque ancestor background, and the post
 card paints an opaque paper background. A translucent target would show the live
 update through its cover.
 
-## The effect side stays provisional
+## The effect side is provisional
 
-Writing an effect is outside this step. The effect still needs a way to receive runs,
-and the standalone consumer needs one too. The proposal is one hook exported from
-`@petepetrash/munari/advanced`, documented as provisional:
+`@petepetrash/munari/advanced` exports `useCaptureTransitionEffect`, documented as
+provisional: its shape may change in any release. An effect component inside the
+canvas calls it with the handle and two callbacks.
 
 ```tsx
-const stamp = useCaptureTransitionEffect(transition, {
-  after: request => true,                // capture the incoming state for this request
-  snapshot: card => stampSnapshot(card), // null means no effect; default copies the target
-  accept: (request, runs) => runs.length === 0, // may end a finished run first
+const { cover } = useCaptureTransitionEffect(transition, {
+  accept: ({ target, options }) => {
+    if (running.current) return 'wait'   // or 'skip' to apply the update with no effect
+    return {
+      before: snapshot(target),          // { element, size }, a detached copy
+      after: () => snapshot(target),     // optional incoming capture; null ends the run
+      copy: (frame, side) => copyInto(myTarget, frame.texture, side),
+      ready: () => { startedAt.current = performance.now() },
+      abort: () => { running.current = null },
+    }
+  },
+  finish: () => { running.current = null },
 })
-useFrame(() => {
-  for (const run of stamp.runs()) {     // run.before, run.after, run.options, run.elapsed()
-    if (run.elapsed() >= STAMP_DURATION) run.done()
-  }
-})
-return <mesh ref={stamp.cover} material={wipe} />
+return <mesh {...cover} material={wipe} />
 ```
 
-The package then owns the queue, the capture phases and their 1 s bounds, frame
-matching, the upload check, the screen-draw check on the `cover` mesh, and the target
-connection check. The effect owns admission, drawing, timing and its own resources.
-An effect must draw a run in the first frame after its `before` texture exists,
-because that draw releases the update. The package keeps the canvas rendering through
-every capture phase, so a `demand` frameloop needs no extra invalidation.
-Distortion Wave draws every run from one instanced mesh, so its `cover` is that mesh.
+The hook calls `accept` in a frame for the first waiting request while no capture
+is pending. A returned run starts the outgoing capture. The hook owns the capture
+phases and their 1 s bounds, frame matching by size, the upload check, and the
+screen-draw check on the mesh that spreads `cover`. The effect owns admission,
+snapshots, texture copies, drawing, timing and its own resources. An effect must
+draw the run with the `before` copy in the first frame after `copy` returns,
+because that draw releases the update. The hook keeps a `demand` frameloop rendering
+through every capture phase. Distortion Wave draws every run from one instanced mesh,
+so it spreads `cover` on that mesh.
 
-This exports an effect hook, while this step's scope keeps effect authoring unexported.
-Without some effect hook, `start` has nothing to connect to outside the lab, and the
-standalone consumer cannot pass its checks. Marking the hook provisional in
-`/advanced` is the smallest way to meet both goals. Approving the shape settles this.
+Effects copy the borrowed frame themselves. The package does not copy each capture
+into a texture it owns. Distortion Wave binds a fixed set of render targets into its
+material and tiles the outgoing and incoming captures into one target per run.
+Postcard tiles both captures into one atlas. A package-owned texture per capture would
+add a GPU copy and a texture lifetime the package must manage, and both effects would
+still copy into their own targets. The lab's copy pass lives in
+`apps/lab/src/lib/captureCopy.ts`.
 
-These stay internal: the request queue (`peek`, `take`, `connect`), the capture phase
-machine, the frame and upload checks, and the copy pass. Inside the package the upload
-check reads the capture source and its paint receipt. `connectCapture` keeps the source
-private and `CaptureFrame` carries no receipt, so Phase 2 adds an internal path for this.
-The lab's `setCaptureEngine` wrapper is then unnecessary for transitions, though
-Gallery, Glass and Refraction still use it.
+The package has no default snapshot. Each effect builds its own, because the two
+demos need different CSS context. The wave snapshot clones the target's ancestors so
+its selectors and inherited styles still match, and fills the box with the nearest
+opaque background. The stamp snapshot wraps the card in its theme class and copies
+the computed styles of its buttons and inputs. A generic default would match neither, and the kernel grows only for
+a consumer (#7).
 
-Two questions are open for Phase 2. The first is whether the package copies each
-capture into a texture it owns, or the effect copies the borrowed frame as it does now.
-Distortion Wave binds a fixed set of render targets into its material, and it is
-unverified whether that material can take textures per run without a rebuild. The
-second is whether the default snapshot clones ancestors for CSS context, as the wave
-snapshot does, or follows the Surface rule that content reads tokens from `:root` (#23).
+These stay internal: the request queue (`peek`, `take`, `connect`), the capture
+phase machine, and the frame and upload checks. The upload check reads the capture
+source's current paint through `CaptureConnection`, an internal handle, so the lab's
+`setCaptureEngine` wrapper is not needed for transitions.
 
 ## Existing decisions
 
@@ -218,17 +226,17 @@ snapshot does, or follows the Surface rule that content reads tokens from `:root
   two demos and name neither one's modes, so they can move. Wave-only admission, such
   as its three-page-wave limit, stays in the wave effect.
 - #24 and #25: the update waits for a cover draw to the default framebuffer with color
-  writes on. Today's lab check reads only the target and color writes in
+  writes on. The lab helpers read only the target and color writes in
   `onAfterRender`, which #25 says can run for draws that never reached the screen.
-  The package version adds the draw-count check the lab's `observeSurfaceDraw` uses.
+  The package adds the draw-count check the lab's `observeSurfaceDraw` uses.
 - #27: the opacity rule above applies the same constraint to the cover.
-- #43: the export, its types, examples, docs and the tracked skill change together.
-  Phase 2 also adds README and CHANGELOG entries.
+- #43: the export, its types, examples, docs, the tracked skill, the README and the
+  CHANGELOG changed together.
 - #65 and #68: a run waits for evidence, with a bound for a source that stops
   answering. Its 1 s bound stays separate from the 500 ms lift bound.
 
-The change adds one decision, #77. A capture transition applies its update once, in
+Decision #77 records the rule. A capture transition applies its update once, in
 request order. It waits for its cover to reach the screen, and every wait has a bound:
 1 s per capture request, and 1 s for a request waiting in the queue. It changes no
-existing decision. The glossary in `CONTEXT.md` gains *capture transition* and *cover*. The name avoids "Surface" because no Surface takes part,
+other decision. The glossary in `CONTEXT.md` gains *capture transition* and *cover*. The name avoids "Surface" because no Surface takes part,
 and `SurfaceStatus.isTransitioning` keeps its meaning of a handoff in progress.

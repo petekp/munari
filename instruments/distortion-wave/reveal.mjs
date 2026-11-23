@@ -92,7 +92,18 @@ async function reveal(browser, mode, name) {
       }, sequence)
       await page.waitForFunction(() => window.waveCommits.length === 8)
       assert.deepEqual(await page.evaluate(() => window.waveCommits), sequence.slice(0,8))
+      // The clock is frozen, so no wave ends and the last two requests wait. The
+      // queue bound (decisions.md #77) then ends every wave and applies them in order.
+      await page.waitForFunction(() => window.waveCommits.length > 8, { timeout: 5000 })
       await settle(page)
+      await page.waitForFunction(() => !document.querySelector('[data-munari-parked]'))
+      const commits = await page.evaluate(() => window.waveCommits)
+      assert.deepEqual(commits.slice(0, 8), sequence.slice(0, 8))
+      assert.equal(commits.at(-1), sequence.at(-1), 'overflow: the bound must apply the waiting updates in order')
+      const finalMismatch = await difference(page, await shot(), await native(), clip)
+      assert.equal(finalMismatch.changed, 0, 'overflow: pixels after the bound must match the latest native state')
+      assert.deepEqual(errors, [])
+      return { mode, name, commits, errors, finalMismatch }
     } else if (name === 'checklist') {
       await check(0)
       intermediate = await native()
@@ -133,13 +144,6 @@ async function reveal(browser, mode, name) {
     assert(hiddenMismatch.changed > 100, `${name}: hiding the masks must expose a different state`)
     await page.waitForFunction(() => !document.querySelector('[data-munari-parked]'))
     await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 20000 })
-    if (name === 'overflow') {
-      await page.waitForFunction(() => window.waveCommits.length === 10)
-      assert.deepEqual(await page.evaluate(() => window.waveCommits), ['Lagoon','Papaya','Silver','Lagoon','Papaya','Silver','Lagoon','Papaya','Lagoon','Silver'])
-      await settle(page)
-      await page.waitForFunction(() => !document.querySelector('[data-munari-parked]'))
-      await page.evaluate(() => { window.waveClock.now = window.waveClock.base + 40000 })
-    }
     await settle(page)
     const finalMismatch = await difference(page, await shot(), await native(), clip)
     assert.equal(finalMismatch.changed, 0, `${name}: settled pixels must match the latest native state`)

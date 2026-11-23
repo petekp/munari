@@ -7,7 +7,6 @@ export interface WaveSnapshot {
   size: readonly [number, number]
   bounds: DOMRect
   background: Color
-  anchor: string
 }
 
 function flatBackground(element: HTMLElement): string {
@@ -40,10 +39,7 @@ export function waveTargetBounds(
   return new DOMRect(left, top, width, height)
 }
 
-export function createWaveSnapshot(
-  target: HTMLElement,
-  sequence: number,
-): WaveSnapshot | null {
+export function createWaveSnapshot(target: HTMLElement): WaveSnapshot | null {
   const rect = target.getBoundingClientRect()
   const page = target.closest<HTMLElement>('.wave-page')
   if (!page) throw new Error('Wave targets belong to the wave page')
@@ -89,8 +85,6 @@ export function createWaveSnapshot(
   copy.style.height = `${rect.height}px`
   copy.style.boxSizing = 'border-box'
   copy.style.transform = 'none'
-  const anchor = `wave-${sequence}`
-  copy.setAttribute('data-munari-anchor', anchor)
   let branch: HTMLElement = copy
   for (
     let parent = target.parentElement;
@@ -111,6 +105,5 @@ export function createWaveSnapshot(
     size: [width, height],
     bounds: new DOMRect(left, top, width, height),
     background: new Color(background),
-    anchor,
   }
 }

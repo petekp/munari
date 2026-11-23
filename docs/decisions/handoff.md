@@ -81,3 +81,13 @@ While a canvas holds a Surface's content, the content's CSS animations, CSS tran
 `Surface`, `Surface.Root` and `SceneSurface.Root` take no `timing`. The page lets go on the frame the scene has drawn a capture taken after the lift. Without a driver, the progress ramp is a step. There is no dwell, because #66 pauses motion on the lift's first frame and a wait would only hold still content longer. A pending capture keeps frames coming until its 500 ms bound (#65).
 
 Motion outside the captured content rides a carrier that the page and the mesh both read (#30, `logoMotion.ts`). A lift test that needs a window holds the lift with a declared part whose presenter arrives late.
+
+<a id="77"></a>
+
+## #77 — A capture transition applies each update once, behind its cover, within a bound
+
+`useCaptureTransition()` returns a handle whose `start(target, update, options)` runs each update once, in request order. While an effect is connected through `useCaptureTransitionEffect`, the update waits until the effect's cover mesh has drawn a capture of the outgoing state. The draw must reach the default framebuffer with color writes on and must draw triangles, the test of #25. The update then runs inside `flushSync`, and a capture of the incoming state may follow. The page keeps the live content throughout, so no renderer hold moves.
+
+Every wait has a bound. Each capture request waits at most 1 s for a frame whose upload carried its paint, and the outgoing request's bound also covers the wait for the cover draw. The first request waiting in the queue waits at most 1 s for its effect to accept it. When that bound expires, the queue calls `finish()`: every running effect ends and every waiting update applies in order. A queued request otherwise waits as long as its effect holds it, and a Distortion Wave page wave runs 3.6 s. Both bounds are 1 s, about three times a 320 ms Postcard wipe. They stay separate from the 500 ms lift bound of #65.
+
+With no effect connected, under reduced motion, or for a target outside the document, the update runs at once. An update that throws is reported asynchronously and ends only its own run. `captureTransition.test.ts` pins the queue, and `instruments/paired-capture` checks the cover draw and upload order on both engines.

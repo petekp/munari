@@ -85,6 +85,15 @@ scene code. It is also the way to show native HTML and a scene version together.
 Separately authored React content or a detached element owned by a capture
 identity. A capture has frames and readiness, without a Surface renderer hold.
 
+**Capture transition**:
+One app update that waits behind a capture of the content it changes. The page
+keeps the live content; the canvas draws the cover, the update runs, and the
+live page shows when the effect ends. No renderer hold moves.
+
+**Cover**:
+The canvas draw of a capture of the outgoing state, over the target element. Its
+first draw to the screen releases the transition's update.
+
 **Page target**:
 The changing layout slot for a retained HTML component. The component stays at
 one React position; the target ref names where its page content belongs.

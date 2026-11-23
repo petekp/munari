@@ -2,7 +2,7 @@
 // Source disposal clears the frame before any consumer can reuse its texture.
 import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useThree } from '@react-three/fiber'
-import { captureAvailable } from '@munari/core'
+import { captureAvailable, type DomPaintReceipt } from '@munari/core'
 import type { Texture } from 'three'
 import { createSurfaceSourceRuntime, type SurfaceSize, type SurfaceResolution, type SurfaceSourceRuntime } from './surface/surfaceSourceRuntime'
 import { validateSurfaceSize } from './surface/surfaceSize'
@@ -60,6 +60,10 @@ export interface CaptureConnection {
   setLive(live: boolean): void
   repaint(): void
   dispose(): void
+  /** The paint behind the latest frame, for a caller that must prove its upload. */
+  currentPaint(): DomPaintReceipt | null
+  /** True when the engine's draw can trail its paint receipt (decisions.md #60). */
+  drawTrailsPaint(): boolean
 }
 
 export function setCaptureUnavailable(handle: CaptureHandle, status: 'waiting' | 'unsupported' | 'error', error?: string) {
@@ -126,6 +130,8 @@ export function connectCapture(handle: CaptureHandle, element: HTMLElement, size
     setResolution(next) { source?.setResolution(next); wake() },
     setLive(next) { source?.setLive(next); wake() },
     repaint() { source?.source.repaint(); wake() },
+    currentPaint: () => source?.currentPaint() ?? null,
+    drawTrailsPaint: () => source?.source.drawTrailsPaint ?? false,
     dispose() {
       if (!alive) return
       alive = false

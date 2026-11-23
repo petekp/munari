@@ -452,10 +452,9 @@ fallback when the scene is essential to the experience.
 
 ## Capture an element that stays native
 
-`useElementCapture` draws a copy of a page element in a scene while the
-element stays in place, and `CaptureContent` captures separately authored
-React children. [Element capture](https://github.com/petekp/munari/blob/v0.4.1/docs/element-capture.md)
-shows both.
+`useElementCapture`, `CaptureContent` and `useCaptureTransition` capture HTML:
+an element in place, detached React children, and the state an update
+replaces. [Element capture](https://github.com/petekp/munari/blob/v0.4.1/docs/element-capture.md) shows each.
 
 ## Sharpness by default
 

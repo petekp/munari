@@ -46,6 +46,18 @@ export { readSurfaceFrameState, type SurfaceFrameState } from './primitives/surf
 
 export { inspectCapture } from './primitives/capture'
 
+// The canvas side of a capture transition. Provisional: its shape may change
+// in any release. The app side, useCaptureTransition, is in the root entry.
+export {
+  useCaptureTransitionEffect,
+  type CaptureTransitionControls,
+  type CaptureTransitionEffect,
+  type CaptureTransitionRun,
+  type CaptureTransitionSide,
+  type CaptureTransitionSnapshot,
+} from './primitives/captureTransitionEffect'
+export type { CaptureTransitionRequest } from './primitives/captureTransition'
+
 // A scene that runs its own fullscreen passes draws them through this, so a
 // pass's output lands where the next pass samples it (passMaterial.ts).
 export { passMaterial } from './lib/passMaterial'

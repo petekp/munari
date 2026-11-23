@@ -144,6 +144,13 @@ Web Animation. A page-preparation copy does not clone those animations.
   exclusions. Its copy follows the user's input, layout, fonts and `refresh()`;
   pass `live` to follow every mutation and running animation. `CaptureContent` supplies separate React children or a detached
   element to a capture handle. It requires explicit dimensions.
+- `useCaptureTransition()` returns a handle whose `start(target, update)` runs a
+  synchronous update behind a capture of `target`, once the canvas effect has
+  drawn that capture on screen. Without an effect, under reduced motion, or for a
+  disconnected target the update runs at once. Call `finish()` before a change
+  that must not wait. The effect calls the provisional
+  `useCaptureTransitionEffect` from `/advanced` and spreads its `cover` on the
+  mesh that draws every run.
 - `SurfaceCanvas` owns the renderer, camera, lights and surrounding R3F scene.
   Keep it mounted while needed. `pointerMode` defaults to `"scene"`, which
   takes pointer input over the whole canvas, so a full-viewport canvas blocks the

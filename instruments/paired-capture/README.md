@@ -16,7 +16,7 @@ pixels must stay visible while the incoming upload is blocked. The
 probe bypasses each guard separately and checks that its assertion
 rejects the early handoff.
 
-The lab transition hook attempts each accepted synchronous update once.
+`useCaptureTransition` attempts each accepted synchronous update once.
 If the callback throws, the hook reports the original error asynchronously.
 It abandons that action’s effect, preserves changes already made by the
 callback, and continues later updates in order. The same policy applies

@@ -98,8 +98,8 @@ async function handoff(browser, scene, engine, fault) {
     await page.setRequestInterception(true)
     page.on('request', async request => {
       const pathname = new URL(request.url()).pathname
-      const shared = pathname.endsWith('/pairedCapture.tsx')
-      const upload = staleGpu && pathname.endsWith('/surfaceFrames.ts')
+      const shared = pathname.endsWith('/captureTransitionEffect.ts')
+      const upload = staleGpu && shared
       if (!shared && !upload && !pathname.endsWith(`/${target.module}`)) {
         await request.continue()
         return
@@ -111,16 +111,17 @@ async function handoff(browser, scene, engine, fault) {
         if (upload) {
           body = replaceOnce(body, 'renderer.initTexture(texture);', 'window.holdUpload(renderer, texture); renderer.initTexture(texture);')
           if (fault) body = replaceOnce(body, 'return uploaded;', `return uploaded || window.handoff.requested === ${JSON.stringify(fault)};`)
-        } else if (shared) {
+        }
+        if (shared) {
           body = replaceOnce(body, 'pending.current = current;', 'pending.current = current; window.handoff.requested = phase;')
           body = replaceOnce(body, 'if (status.status === "error" || status.status === "unsupported") {', 'if (status.status === "error" || status.status === "unsupported") { window.handoff.failure = status;')
-          body = replaceOnce(body, 'if (!matches) return;', 'window.handoff.last = [status.status, frame && [frame.width, frame.height, Object.keys(frame.anchors)], source.anchor, source.size]; if (!matches) return;')
-          body = replaceOnce(body, 'current.job.copy(frame, incoming ? "after" : "before");',
-            'current.job.copy(frame, incoming ? "after" : "before"); window.handoff.copies.push(incoming ? "after" : "before");')
+          body = replaceOnce(body, 'if (!matches) return;', 'window.handoff.last = [status.status, frame && [frame.width, frame.height], source.size]; if (!matches) return;')
+          body = replaceOnce(body, 'current.job.run.copy(frame, incoming ? "after" : "before");',
+            'current.job.run.copy(frame, incoming ? "after" : "before"); window.handoff.copies.push(incoming ? "after" : "before");')
           body = replaceOnce(body, 'current.phase = "present-before";',
-            `current.phase = "present-before"; ${fault && !staleGpu ? 'presented(null, true);' : ''}`)
-          body = replaceOnce(body, 'const presented = (target, colorWrite) => {',
-            'const presented = (target, colorWrite) => { if (window.handoff.draw && target === null && colorWrite) window.handoff.draws++;')
+            `current.phase = "present-before"; ${fault && !staleGpu ? 'presented();' : ''}`)
+          body = replaceOnce(body, 'const presented = () => {',
+            'const presented = () => { if (window.handoff.draw) window.handoff.draws++;')
         } else {
           body = replaceOnce(body, target.visibility, target.patchedVisibility)
         }

@@ -77,3 +77,35 @@ export function Page() {
 The plane is one unit high, and `width / height` gives its aspect. The texture
 is premultiplied, so this stock material draws opaque content correctly and
 translucent pixels too dark. See [Materials on a SurfaceCanvas](../README.md#materials-on-a-surfacecanvas).
+
+## Run an update behind a capture
+
+`useCaptureTransition` runs an app update behind a shader effect. The page keeps
+the live content. The canvas draws a capture of the outgoing state over the target,
+the update runs once that capture is on screen, and the live page shows when the
+effect ends.
+
+```tsx
+const stamps = useCaptureTransition()
+
+<SurfaceCanvas>
+  <StampEffect transition={stamps} />
+</SurfaceCanvas>
+<button onClick={() => stamps.start(card, () => setCount(n => n + 1))}>Stamp</button>
+```
+
+`start(target, update)` runs each update once, in request order. With no effect
+connected, under reduced motion, or for a target outside the document, the update
+runs at once, so a browser without a capture engine needs no extra code. `finish()`
+applies every waiting update and ends running effects. Call it before a state change
+that must not wait, such as typing into the target. The update must be synchronous.
+A capture of a translucent target shows the live update through it, so give the
+target an opaque background. Every wait is bounded at 1 s (decision #77).
+
+The effect component calls `useCaptureTransitionEffect` from
+`@petepetrash/munari/advanced` inside a `SurfaceCanvas`. It is provisional and may
+change in any release. It returns the `cover` props that the effect's mesh spreads.
+[Capture transitions](transition-api.md) describes the effect side, and
+[Postcard](../apps/lab/src/scenes/postcard/PostcardStamp.tsx) and
+[Distortion Wave](../apps/lab/src/scenes/distortion-wave/distortionWaveEffect.tsx)
+are working effects.

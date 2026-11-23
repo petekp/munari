@@ -5,13 +5,13 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import {
   Surface,
+  type CaptureTransition,
   type SurfaceHandle,
   useSurfaceStatus,
 } from '@petepetrash/munari'
 import { readSurfaceFrameState } from '@petepetrash/munari/advanced'
 import { Button } from '../../components/system'
 import type { LightFlyerStore } from '../light/lightFlyer'
-import type { SurfaceTransition } from '../../lib/surfaceTransition'
 
 import { PAPER_WIDTH as HERO_W, PAPER_HEIGHT as HERO_H, type PaperInteraction } from '../light/lightPaperLaw'
 
@@ -134,7 +134,7 @@ export function PostcardForm({
   setInScene: React.Dispatch<React.SetStateAction<boolean>>
   holderRef: HolderRef
   landRef: LandRef
-  stampTransition: SurfaceTransition
+  stampTransition: CaptureTransition
   supported: boolean
   reduced: boolean
 }) {
@@ -178,7 +178,7 @@ export function PostcardForm({
           add()
           paper.impulses++
         } else if (presentation === 'page' && !lifted && !reduced) {
-          stampTransition.run(target, add)
+          stampTransition.start(target, add)
         } else add()
       }}
     />

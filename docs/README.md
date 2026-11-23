@@ -11,6 +11,7 @@ output. Preserve both distinctions when resolving a conflict.
 | Design opt-in payload | [Opt-in payload proposal](opt-in-dx-proposal.md) | Per-module build and budget check (built); R3F 10 migration, lazy canvas recipe, and rollout (unbuilt) |
 | Set up and use the package | [Root README](../README.md), public entry types | Current usage |
 | Capture a page element that stays native | [Element capture](element-capture.md) | Current usage |
+| Animate an app update behind a capture | [Element capture](element-capture.md#run-an-update-behind-a-capture), [capture transitions](transition-api.md), [decision #77](decisions/handoff.md#77) | Built; the effect hook is provisional |
 | Find the owner, control and relevant check | [Agent operating guide](agent-workflow.md) | Current workflow |
 | Understand how the abstractions fit | [System model](system-model.md), [glossary](../CONTEXT.md) | Current model and constraints |
 | Improve the public React authoring interface | [React API improvement plan](react-api-improvement-plan.md) | Partially shipped (SurfaceCanvas, SurfaceStatus, handles/callbacks in v0.4.x); remaining items proposed |

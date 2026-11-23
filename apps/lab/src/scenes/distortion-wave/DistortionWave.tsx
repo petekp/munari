@@ -2,6 +2,7 @@
 import { useLayoutEffect, useState } from 'react'
 import {
   SurfaceCanvas,
+  useCaptureTransition,
   useSurfaceSupport,
 } from '@petepetrash/munari'
 import { WaveHighlight, WaveIcon } from './distortionWaveArtwork'
@@ -10,7 +11,6 @@ import {
   DistortionWaveEffect,
   type WaveOptions,
 } from './distortionWaveEffect'
-import { useSurfaceTransition } from '../../lib/surfaceTransition'
 import { WaveExamples, type WaveAction } from './distortionWaveExamples'
 import { WAVE_PALETTES, type WavePalette } from './distortionWaveNodes'
 import './distortionWave.css'
@@ -30,7 +30,7 @@ function controlPalette(trigger: HTMLElement): WavePalette {
 export function DistortionWaveApp() {
   useLayoutEffect(announcePageReady, [])
   const supported = useSurfaceSupport()
-  const transition = useSurfaceTransition<WaveOptions>()
+  const transition = useCaptureTransition<WaveOptions>()
   const [light, setLight] = useState(false)
   const [duration, setDuration] = useState(1800)
   const [palette, setPalette] = useState<WavePalette | 'Auto'>('Auto')
@@ -50,7 +50,7 @@ export function DistortionWaveApp() {
     const targetRect = target && target !== source ? target.getBoundingClientRect() : rect
     const native = event.nativeEvent
     const pointer = native instanceof MouseEvent && native.detail > 0
-    transition.run(target ?? null, update, {
+    transition.start(target ?? null, update, {
       duration,
       palette: palette === 'Auto' ? controlPalette(trigger) : palette,
       source: new DOMRect(

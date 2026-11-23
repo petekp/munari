@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- `useCaptureTransition` runs an app update behind a capture of the content it
+  changes. `start(target, update, options)` waits until an effect has drawn the
+  outgoing capture on screen, then runs the update. Each update runs once, in
+  request order. With no effect connected, under reduced motion, or for a target
+  outside the document, it runs at once. Every wait is bounded at 1 s.
+  `CaptureTransition` is exported.
+- `@petepetrash/munari/advanced` exports `useCaptureTransitionEffect`, the canvas
+  side of a capture transition, with `CaptureTransitionEffect`,
+  `CaptureTransitionRun`, `CaptureTransitionSnapshot`, `CaptureTransitionSide`,
+  `CaptureTransitionControls` and `CaptureTransitionRequest`. It is provisional:
+  its shape may change in any release.
 - A `Surface.Mesh`, or a `FrameSurface` given a `presentation` requirement,
   no longer freezes the canvas on its first draw. three built each missing
   render pipeline at the draw with a blocking call. With shaders that no

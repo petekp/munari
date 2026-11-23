@@ -2,9 +2,8 @@
 // A section-positioned canvas shares the page's compositor scroll transform.
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useThree } from '@react-three/fiber'
-import { Surface, SurfaceCanvas, useSurfaceHandle } from '@petepetrash/munari'
+import { Surface, SurfaceCanvas, useCaptureTransition, useSurfaceHandle } from '@petepetrash/munari'
 import { PostcardForm } from './PostcardForm'
-import { useSurfaceTransition } from '../../lib/surfaceTransition'
 import { PostcardStamp } from './PostcardStamp'
 import { PostcardMesh, PixelPerfect } from './PostcardMesh'
 import { createPaperInteraction } from '../light/lightPaperLaw'
@@ -29,7 +28,7 @@ export function PostcardStage({ supported, reduced, effectsEnabled, flyer, viewp
   const [inScene, setInScene] = useState(false)
   const holderRef = useRef<HTMLDivElement>(null)
   const landRef = useRef(false)
-  const stamps = useSurfaceTransition()
+  const stamps = useCaptureTransition()
   const paper = useMemo(createPaperInteraction, [])
   return (
     <div className="postcard-section">

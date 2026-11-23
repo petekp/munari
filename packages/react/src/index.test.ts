@@ -23,7 +23,7 @@ const ROOT_ENTRY = [
   'usePageTarget',
   'useSurfaceBeforeRender', 'SceneSurface', 'useSurfaceStatus', 'useSurfaceRefresh',
   'useSurfaceMotion', 'useFreezeSurface', 'useCaptureHandle',
-  'useCaptureFrame', 'useCaptureStatus',
+  'useCaptureFrame', 'useCaptureStatus', 'useCaptureTransition',
   'Dial',
   'FocusGroup',
   'FocusScene',
@@ -65,6 +65,7 @@ const SNAPDOM_ENTRY = ['enableSnapdomCapture', 'snapdomCaptureEngine']
 // the React names the advanced entry adds.
 const ADVANCED_ADDITIONS = [
   'inspectCapture',
+  'useCaptureTransitionEffect',
   'FrameSurface',
   'readSurfaceFrameState',
   'useCarriedMotion',

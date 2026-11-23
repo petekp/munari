@@ -24,6 +24,9 @@ export { useElementCapture, CaptureContent } from './primitives/elementCapture'
 export type { ElementCapture, ElementCaptureOptions, CaptureContentProps } from './primitives/elementCapture'
 export { useCaptureHandle, useCaptureFrame, useCaptureStatus } from './primitives/capture'
 export type { CaptureHandle, CaptureFrame, CaptureStatus } from './primitives/capture'
+// An app update that waits behind a capture of the content it changes. The
+// effect that draws it is provisional and lives in /advanced.
+export { useCaptureTransition, type CaptureTransition } from './primitives/captureTransition'
 export { SurfaceCanvas, type SurfaceCanvasProps } from './primitives/surface/SurfaceCanvas'
 export type { SurfaceCanvasId } from './primitives/surface/surfaceHostRegistry'
 export type { SurfaceIdentityProps } from './primitives/surface/SurfaceRoot'

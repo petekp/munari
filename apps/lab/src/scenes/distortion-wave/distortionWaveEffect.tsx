@@ -3,11 +3,9 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
 } from 'react'
-import { flushSync } from 'react-dom'
 import { useFrame, useThree } from '@react-three/fiber'
 import {
   Color,
@@ -18,9 +16,13 @@ import {
   RenderTarget,
 } from 'three'
 import { WebGPURenderer } from 'three/webgpu'
-import { useCaptureHandle } from '@petepetrash/munari'
-import { createCaptureCopy, usePairedCapture } from '../../lib/pairedCapture'
-import type { SurfaceTransition, SurfaceTransitionRequest } from '../../lib/surfaceTransition'
+import type { CaptureTransition } from '@petepetrash/munari'
+import {
+  useCaptureTransitionEffect,
+  type CaptureTransitionRequest,
+  type CaptureTransitionRun,
+} from '@petepetrash/munari/advanced'
+import { createCaptureCopy } from '../../lib/captureCopy'
 import {
   createDistortionWaveMaterial,
   MAX_WAVES,
@@ -42,9 +44,9 @@ export interface WaveOptions extends WaveTiming {
   intensity: number
   palette: WavePalette
 }
-type WaveRequest = SurfaceTransitionRequest<WaveOptions>
+type WaveRequest = CaptureTransitionRequest<WaveOptions>
 interface WaveEffectProps {
-  transition: SurfaceTransition<WaveOptions>
+  transition: CaptureTransition<WaveOptions>
 }
 interface SurfaceBend {
   pull: number
@@ -172,8 +174,7 @@ export function DistortionWaveEffect({ transition }: WaveEffectProps) {
   const mesh = useRef<InstancedMesh>(null)
   const active = useRef<ActiveWave[]>([])
   const owner = useRef<ActiveWave | null>(null)
-  const capture = useCaptureHandle()
-  const { busy, start, cancel: cancelCapture, dispose, read, presented, source } = usePairedCapture(capture, invalidate)
+  const cancelCapture = useRef(() => {})
   const sequence = useRef(0)
   const warmed = useRef(false)
   const [resources] = useState(() => {
@@ -214,19 +215,18 @@ export function DistortionWaveEffect({ transition }: WaveEffectProps) {
   const retire = useCallback(
     (wave: ActiveWave) => {
       if (owner.current === wave) {
-        cancelCapture()
+        cancelCapture.current()
         return
       }
       active.current = active.current.filter((current) => current !== wave)
       releaseSnapshot(wave)
       invalidate()
     },
-    [cancelCapture, invalidate, releaseSnapshot],
+    [invalidate, releaseSnapshot],
   )
 
-  const prepare = useCallback(() => {
-    const request = transition.peek()
-    if (busy() || !request) return
+  const accept = (request: WaveRequest): CaptureTransitionRun | 'wait' | 'skip' => {
+    if (!warmed.current) return 'wait'
     const pages = active.current.filter(
       (wave) =>
         wave.slot !== null &&
@@ -236,30 +236,21 @@ export function DistortionWaveEffect({ transition }: WaveEffectProps) {
       request.target.hasAttribute('data-wave-page') &&
       pages.length >= MAX_PAGE_WAVES
     )
-      return
+      return 'wait'
     const slot = resources.targets.findIndex(
       (_, index) => !active.current.some((wave) => wave.slot === index),
     )
-    if (slot === -1) return
+    if (slot === -1) return 'wait'
     if (active.current.length >= MAX_WAVES) {
       const finished = active.current.find((wave) => wave.slot === null)
-      if (!finished) return
+      if (!finished) return 'wait'
       retire(finished)
     }
-    transition.take()
     const targetBounds = request.target.getBoundingClientRect()
     const bounds = waveTargetBounds(request.target, targetBounds)
-    if (!bounds) {
-      flushSync(request.update)
-      invalidate()
-      return
-    }
-    const nextSnapshot = createWaveSnapshot(request.target, ++sequence.current)
-    if (!nextSnapshot) {
-      flushSync(request.update)
-      invalidate()
-      return
-    }
+    if (!bounds) return 'skip'
+    const nextSnapshot = createWaveSnapshot(request.target)
+    if (!nextSnapshot) return 'skip'
     const motion = motionFor(request, targetBounds, bounds)
     const radius =
       Number.parseFloat(getComputedStyle(request.target).borderTopLeftRadius) ||
@@ -273,7 +264,7 @@ export function DistortionWaveEffect({ transition }: WaveEffectProps) {
       (wave) => wave.request.target === request.target,
     )?.bend ?? { pull: 0, x: motion.pullX, y: motion.pullY, latest: 0 }
     const wave: ActiveWave = {
-      order: sequence.current,
+      order: ++sequence.current,
       bend,
       phase: motion.frame(0),
       request,
@@ -293,14 +284,14 @@ export function DistortionWaveEffect({ transition }: WaveEffectProps) {
     active.current.push(wave)
     owner.current = wave
     const target = resources.targets[slot]
-    start({
+    const incomingSnapshot = () => {
+      const incoming = createWaveSnapshot(request.target)
+      return incoming?.bounds.width === bounds.width &&
+        incoming.bounds.height === bounds.height ? incoming : null
+    }
+    return {
       before: nextSnapshot,
-      update: request.update,
-      after: paired ? () => {
-        const incoming = createWaveSnapshot(request.target, ++sequence.current)
-        return incoming?.bounds.width === bounds.width &&
-          incoming.bounds.height === bounds.height ? incoming : null
-      } : undefined,
+      after: paired ? incomingSnapshot : undefined,
       copy: (frame, side) => {
         const columns = paired ? 2 : 1
         const incoming = side === 'after'
@@ -327,30 +318,21 @@ export function DistortionWaveEffect({ transition }: WaveEffectProps) {
         owner.current = null
         retire(wave)
       },
-    })
-  }, [busy, gl, invalidate, resources, retire, start, transition])
-
-  useLayoutEffect(() => {
-    const disconnect = transition.connect({
-      wake: () => {
-        prepare()
-        invalidate()
-      },
-      finish: () => {
-        for (const wave of [...active.current]) retire(wave)
-      },
-      dispose: () => {
-        dispose()
-        owner.current = null
-        active.current = []
-      },
-    })
-    window.addEventListener('resize', transition.finish)
-    return () => {
-      window.removeEventListener('resize', transition.finish)
-      disconnect()
     }
-  }, [dispose, invalidate, prepare, retire, transition])
+  }
+
+  const { cover, cancel } = useCaptureTransitionEffect(transition, {
+    accept,
+    finish: () => {
+      for (const wave of [...active.current]) retire(wave)
+    },
+  })
+  cancelCapture.current = cancel
+
+  useEffect(() => {
+    window.addEventListener('resize', transition.finish)
+    return () => window.removeEventListener('resize', transition.finish)
+  }, [transition])
 
   const sampleActiveWaves = (now: number) => {
     const sharedPulls = new Map<SurfaceBend, number>()
@@ -395,12 +377,7 @@ export function DistortionWaveEffect({ transition }: WaveEffectProps) {
       invalidate()
       return
     }
-    const reduced = window.matchMedia(
-      '(prefers-reduced-motion: reduce)',
-    ).matches
-    if (reduced) transition.finish()
-    else sampleActiveWaves(performance.now())
-    read(gl)
+    sampleActiveWaves(performance.now())
     const drawing = active.current.filter((wave) => wave.snapshotReady)
     const content = drawing.filter((wave) => wave.slot !== null).reverse()
     const instances = [...content, ...drawing]
@@ -428,27 +405,25 @@ export function DistortionWaveEffect({ transition }: WaveEffectProps) {
     element.count = instances.length
     element.instanceMatrix.needsUpdate = true
     element.visible = drawing.length > 0
-    if (drawing.length > 0 || transition.peek()) invalidate()
-    prepare()
+    if (drawing.length > 0) invalidate()
   })
 
   return (
     <>
-      {source}
       <instancedMesh
         ref={mesh}
         args={[resources.geometry, resources.wave.material, MAX_WAVE_INSTANCES]}
         visible={false}
         frustumCulled={false}
-        onAfterRender={(renderer, _scene, _camera, _geometry, material) => {
+        onBeforeRender={cover.onBeforeRender}
+        onAfterRender={(renderer, scene, camera, geometry, material) => {
           if (!warmed.current) {
             warmed.current = true
             if (mesh.current) mesh.current.visible = false
             invalidate()
             return
           }
-          if (owner.current && mesh.current?.count && material === resources.wave.material)
-            presented(renderer.getRenderTarget(), material.colorWrite)
+          cover.onAfterRender(renderer, scene, camera, geometry, material)
         }}
       />
     </>

@@ -1,14 +1,14 @@
 // Stamp reveal — the live form stays on the page throughout the wipe.
 // Capture at the card's layout size and place the wipe over its scaled viewport rectangle.
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { useCaptureHandle } from '@petepetrash/munari'
+import type { CaptureTransition } from '@petepetrash/munari'
+import { useCaptureTransitionEffect, type CaptureTransitionRun, type CaptureTransitionSnapshot } from '@petepetrash/munari/advanced'
 import { HalfFloatType, Mesh, PlaneGeometry, RenderTarget, Vector4 } from 'three'
 import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu'
 import { mix, positionGeometry, smoothstep, texture, uniform, uv, vec2, vec4 } from 'three/tsl'
-import { createCaptureCopy, usePairedCapture, type TransitionSnapshot } from '../../lib/pairedCapture'
+import { createCaptureCopy } from '../../lib/captureCopy'
 import { PAPER_WIDTH, PAPER_HEIGHT } from '../light/lightPaperLaw'
-import type { SurfaceTransition } from '../../lib/surfaceTransition'
 
 interface ActiveStamp {
   card: HTMLElement
@@ -16,14 +16,12 @@ interface ActiveStamp {
   began: number | null
 }
 
-function stampSnapshot(card: HTMLElement, sequence: number): TransitionSnapshot {
+function stampSnapshot(card: HTMLElement): CaptureTransitionSnapshot {
   const element = document.createElement('div')
   element.className = 'light-theme light-inner'
   element.style.cssText = `width:${PAPER_WIDTH}px;height:${PAPER_HEIGHT}px;padding:0`
   // SAFETY: the card is an HTMLElement, and cloneNode preserves its type.
   const copy = card.cloneNode(true) as HTMLElement
-  const anchor = `stamp-${sequence}`
-  copy.setAttribute('data-munari-anchor', anchor)
   copy.querySelector('[id]')?.removeAttribute('id')
   const button = card.querySelector('button')
   const clonedButton = copy.querySelector('button')
@@ -46,7 +44,7 @@ function stampSnapshot(card: HTMLElement, sequence: number): TransitionSnapshot 
     }
   }
   element.append(copy)
-  return { element, size: [PAPER_WIDTH, PAPER_HEIGHT], anchor }
+  return { element, size: [PAPER_WIDTH, PAPER_HEIGHT] }
 }
 
 function stampResources() {
@@ -70,14 +68,11 @@ function stampResources() {
 const STAMP_DURATION = 320
 const ignoreRaycast = () => {}
 
-export function PostcardStamp({ transition }: { transition: SurfaceTransition }) {
+export function PostcardStamp({ transition }: { transition: CaptureTransition }) {
   const gl = useThree(state => state.gl)
   const invalidate = useThree(state => state.invalidate)
-  const capture = useCaptureHandle()
-  const { start, cancel, dispose, read, presented, source } = usePairedCapture(capture, invalidate)
   const [resources] = useState(stampResources)
   const mesh = useRef<Mesh>(null)
-  const sequence = useRef(0)
   const active = useRef<ActiveStamp | null>(null)
   if (!(gl instanceof WebGPURenderer)) throw new Error('Stamp rendering requires SurfaceCanvas')
 
@@ -88,62 +83,47 @@ export function PostcardStamp({ transition }: { transition: SurfaceTransition })
     resources.material.dispose()
   }, [resources])
 
-  useLayoutEffect(() => transition.connect({
-    wake: invalidate,
+  const { cover } = useCaptureTransitionEffect(transition, {
+    accept: ({ target: card }): CaptureTransitionRun | 'wait' => {
+      if (active.current) return 'wait'
+      const stamp: ActiveStamp = { card, visible: false, began: null }
+      active.current = stamp
+      return {
+        before: stampSnapshot(card),
+        after: () => card.isConnected ? stampSnapshot(card) : null,
+        copy: (frame, side) => {
+          const incoming = side === 'after'
+          if (!incoming) {
+            const ratio = Math.min(gl.getPixelRatio(), 2)
+            resources.atlas.setSize(2 * Math.ceil(frame.width * ratio), Math.ceil(frame.height * ratio))
+            resources.inset.value = 0.5 / resources.atlas.width
+          }
+          const width = resources.atlas.width / 2
+          resources.atlas.viewport.set(incoming ? width : 0, 0, width, resources.atlas.height)
+          resources.copy.render(gl, resources.atlas, frame.texture, !incoming)
+          if (!incoming) stamp.visible = true
+        },
+        ready: () => {
+          stamp.began = performance.now()
+          invalidate()
+        },
+        abort: () => {
+          if (active.current === stamp) active.current = null
+          if (mesh.current) mesh.current.visible = false
+          invalidate()
+        },
+      }
+    },
     finish: () => {
-      cancel()
       active.current = null
       if (mesh.current) mesh.current.visible = false
       invalidate()
     },
-    dispose: () => {
-      dispose()
-      active.current = null
-    },
-  }), [cancel, dispose, invalidate, transition])
+  })
 
   useFrame(() => {
     const element = mesh.current
     if (!element) return
-    if (!active.current) {
-      const request = transition.take()
-      if (request) {
-        const { target: card, update } = request
-        if (!card.isConnected) {
-          queueMicrotask(update)
-          invalidate()
-          return
-        }
-        const stamp: ActiveStamp = { card, visible: false, began: null }
-        active.current = stamp
-        start({
-          before: stampSnapshot(card, ++sequence.current),
-          update,
-          after: () => card.isConnected ? stampSnapshot(card, ++sequence.current) : null,
-          copy: (frame, side) => {
-            const incoming = side === 'after'
-            if (!incoming) {
-              const ratio = Math.min(gl.getPixelRatio(), 2)
-              resources.atlas.setSize(2 * Math.ceil(frame.width * ratio), Math.ceil(frame.height * ratio))
-              resources.inset.value = 0.5 / resources.atlas.width
-            }
-            const width = resources.atlas.width / 2
-            resources.atlas.viewport.set(incoming ? width : 0, 0, width, resources.atlas.height)
-            resources.copy.render(gl, resources.atlas, frame.texture, !incoming)
-            if (!incoming) stamp.visible = true
-          },
-          ready: () => {
-            stamp.began = performance.now()
-            invalidate()
-          },
-          abort: () => {
-            active.current = null
-            element.visible = false
-            invalidate()
-          },
-        })
-      }
-    }
     const current = active.current
     if (current && !current.card.isConnected) {
       element.visible = false
@@ -152,7 +132,6 @@ export function PostcardStamp({ transition }: { transition: SurfaceTransition })
       })
       return
     }
-    read(gl)
     const stamp = active.current
     const elapsed = stamp?.began == null ? 0 : performance.now() - stamp.began
     if (elapsed >= STAMP_DURATION) active.current = null
@@ -176,11 +155,10 @@ export function PostcardStamp({ transition }: { transition: SurfaceTransition })
       )
       resources.progress.value = elapsed / STAMP_DURATION
     }
-    if (active.current || transition.peek()) invalidate()
+    if (active.current) invalidate()
   })
 
   return <>
-    {source}
     <mesh
       ref={mesh}
       geometry={resources.geometry}
@@ -189,10 +167,7 @@ export function PostcardStamp({ transition }: { transition: SurfaceTransition })
       visible={false}
       renderOrder={100}
       raycast={ignoreRaycast}
-      onAfterRender={(renderer, _scene, _camera, _geometry, material) => {
-        if (material === resources.material)
-          presented(renderer.getRenderTarget(), material.colorWrite)
-      }}
+      {...cover}
     />
   </>
 }
