@@ -2,8 +2,8 @@
 
 These are dated measurements of the platform under each capture engine.
 Items 1–21, 32 and 33 measure Chrome's HTML-in-canvas capability: the
-library's default capture path uses `drawElementImage`, and entries for
-`texElementImage2D` describe an evaluated alternative. Items 22–31 measure
+library's default capture path uses `drawElementImage`; items 14–16 measure
+`texElementImage2D`, an alternative that Chrome 158 removed. Items 22–31 measure
 snapDOM, the optional second engine. Item 34 measures both engines. Recheck
 the relevant measurements when changing browser versions or the mechanism that
 depends on them.
@@ -13,18 +13,15 @@ Baseline measurements **2026-08-04** against **Chrome 150** (items 11–12; item
 dpr 1, launched with
 `--enable-features=CanvasDrawElement`.
 None of these items are dpr-sensitive — every probe pins its own
-scale — but capability chips (`drawElementImage ✓` /
-`texElementImage2D ✓`) must be verified on load before trusting any
+scale — but capability chips (`drawElementImage ✓`) must be verified on load before trusting any
 run: a relaunch without the flag fails silently into a different set
 of answers.
 
-Later entries carry their own measurement dates. Editorial corrections on
-2026-08-31 clarify cross-references, throughput wording and source ownership;
-they do not change the recorded samples or claim a new browser run.
+Later entries carry their own measurement dates.
 
 | # | What the platform does | Evidence |
 |---|------|---------|
-| 1 | The capability APIs are present under the flag | `drawElementImage ✓` / `texElementImage2D ✓` on load |
+| 1 | The capability APIs are present under the flag. Chrome 158 has `texElementSubImage2D`, not `texElementImage2D`; 152–157 unchecked. | Chrome 150: `drawElementImage ✓` / `texElementImage2D ✓`. 158.0.8127.36 (2026-11-23): `drawElementImage`, 5-argument `texElementSubImage2D` |
 | 2 | The compositor self-paints on DOM mutation — no repaint request is needed | one DOM mutation → `selfPaintsOnRed: 1`, `requestPaintCalls: 0` |
 | 3 | A mutation resolves into the captured buffer, one self-paint each | red → blue mutation: buffer reads `[255,0,0,255]` then `[0,0,255,255]` |
 | 4 | **Compositor-animated root opacity can leave a stale capture.** The root keyframes in this experiment did not produce updated captured pixels; descendant animation did. Do not generalize this to static opacity or transform restyles: item 20 records those separately. | root opacity keyframes: `paintDelta 1`, `distinctColors 1` (frozen); descendant: `paintDelta 133`, 9 distinct colors, landmark ramp 232→206→179→154 |
