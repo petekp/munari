@@ -23,6 +23,7 @@ import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
 import { defaultPlumeEffects, PLUME_GROUPS, plumeTuning } from '../../apps/lab/src/scenes/plume/plumeTuning.ts'
 import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
+import { copiesMatch, readPlainLayout } from './plainLayout.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const chromePath = [
@@ -211,76 +212,7 @@ async function captureHeld(page, name) {
 }
 
 async function requirePlainLayout(page, label, captured = true) {
-  await page.waitForFunction((captured) => {
-    const input = document.querySelector('textarea.plume-input')
-    const copy = document.querySelector('.plume-capture')
-    if (!input || (captured && !copy)) return false
-    if (!captured) return true
-    const native = input.getBoundingClientRect()
-    const source = copy.getBoundingClientRect()
-    return Math.abs(native.width - source.width) < 1 && Math.abs(native.height - source.height) < 1
-  }, { timeout: 5000 }, captured)
-  const layout = await page.evaluate(() => {
-    const page = document.querySelector('.plume-page')
-    const work = document.querySelector('.plume-work')
-    const sheet = document.querySelector('.plume-sheet')
-    const measure = document.querySelector('.plume-measure')
-    const input = document.querySelector('textarea.plume-input')
-    const rect = work.getBoundingClientRect()
-    const pageStyle = getComputedStyle(page)
-    const sheetStyle = getComputedStyle(sheet)
-    const typography = (element) => {
-      if (!element) return null
-      const style = getComputedStyle(element)
-      return {
-        family: style.fontFamily,
-        size: style.fontSize,
-        weight: style.fontWeight,
-        leading: style.lineHeight,
-        spacing: style.letterSpacing,
-        align: style.textAlign,
-        padding: style.padding,
-        width: element.getBoundingClientRect().width,
-        height: element.getBoundingClientRect().height,
-      }
-    }
-    const flowOffset = (selector) => {
-      const flow = document.querySelector(selector)
-      return flow ? new DOMMatrixReadOnly(getComputedStyle(flow).transform).m42 : null
-    }
-    return {
-      width: innerWidth,
-      height: innerHeight,
-      x: rect.left,
-      y: rect.top,
-      workWidth: rect.width,
-      workHeight: rect.height,
-      centerError: Math.hypot(rect.left + rect.width / 2 - innerWidth / 2,
-        rect.top + rect.height / 2 - innerHeight / 2),
-      background: pageStyle.backgroundColor,
-      backgroundImage: pageStyle.backgroundImage,
-      sheetBackground: sheetStyle.backgroundColor,
-      sheetImage: sheetStyle.backgroundImage,
-      border: [sheetStyle.borderTopWidth, sheetStyle.borderRightWidth,
-        sheetStyle.borderBottomWidth, sheetStyle.borderLeftWidth],
-      shadow: sheetStyle.boxShadow,
-      measureHeight: measure?.getBoundingClientRect().height,
-      measureHidden: measure ? getComputedStyle(measure).visibility === 'hidden' : false,
-      input: typography(input),
-      mirror: typography(document.querySelector('.plume-mirror')),
-      capture: typography(document.querySelector('.plume-capture')),
-      scrollTop: input.scrollTop,
-      scrollHeight: input.scrollHeight,
-      clientHeight: input.clientHeight,
-      mirrorOffset: flowOffset('.plume-mirror .plume-copy__flow'),
-      captureOffset: flowOffset('.plume-capture .plume-copy__flow'),
-      pageScroll: scrollY,
-      pageOverflow: document.documentElement.scrollWidth > innerWidth,
-      oldChrome: [...document.querySelectorAll('.plume-intro, .plume-rule, .plume-sheet__meta, .plume-actions, .plume-status')]
-        .filter((element) => !element.closest('[data-plume-controls]')).length,
-      open: !document.querySelector('[data-plume-controls]').hidden,
-    }
-  })
+  const layout = await readPlainLayout(page, captured)
   requireThat(layout.centerError <= 1 && layout.x >= 0 && layout.y >= 0 &&
     layout.x + layout.workWidth <= layout.width + 1 &&
     layout.y + layout.workHeight <= layout.height + 1 && !layout.pageOverflow,
@@ -291,9 +223,7 @@ async function requirePlainLayout(page, label, captured = true) {
     layout.border.every((width) => width === '0px') && layout.shadow === 'none' &&
     layout.oldChrome === 0 && !layout.open && layout.measureHidden,
   `${label}: the quiet page regained visible chrome: ${JSON.stringify(layout)}`)
-  requireThat(layout.input.align === 'center' && layout.input.family.toLowerCase().includes('archivo') &&
-    JSON.stringify(layout.input) === JSON.stringify(layout.mirror) &&
-    (!captured || JSON.stringify(layout.input) === JSON.stringify(layout.capture)),
+  requireThat(copiesMatch(layout, captured),
   `${label}: native, mirror, and capture typography diverged: ${JSON.stringify(layout)}`)
   return layout
 }
