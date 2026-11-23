@@ -284,7 +284,8 @@ function observeInputText(source,captureStages) {
   const perfTextPreparationIdentity=window.__munariPerf.identityFor(options.root)`)
     source=replaceSource(source,'    const image = await template.blank()','    const image = await template.blank(perfTextPreparationIdentity)')
   }
-  source=replaceSource(source,'    const painter = createCertifiedPainter(options, paint, pixels, blank, ascent, descent, targetWidth, targetHeight)',`    const painter = createCertifiedPainter(options, paint, pixels, blank, ascent, descent, targetWidth, targetHeight)
+  const certifiedPainterMarker='    const painter = createCertifiedPainter(options, paint, pixels, blank, ascent, descent, baseline, targetWidth, targetHeight)'
+  source=replaceSource(source,certifiedPainterMarker,`${certifiedPainterMarker}
     window.__munariPerf.record('preparedInputText',{})`)
   if(captureStages)source=replaceSource(source,'    paint(value: string) {',`    paint(value: string) {
       const perfDirectInputStarted=performance.now()`)

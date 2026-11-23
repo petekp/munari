@@ -92,14 +92,34 @@ const radiusLength = (value: string, axis: number) => {
   return /^\d+(?:\.\d+)?px$/.test(length) ? Number.parseFloat(length) : NaN
 }
 
+const innerRadius = (radius: string, axis: number, border: number) => Math.max(0, radiusLength(radius, axis) - border)
+
+// Chrome 157 reports an <input>'s clientLeft and clientWidth from its content
+// box: 13 and 306 px for a 332 px field with a 1 px border and 12 px padding,
+// where 156 reported 1 and 330 (2026-11-23). The clip box therefore starts
+// from the computed border widths. An input never shows a scrollbar; any other
+// element's classic scrollbar is the gap its clientWidth and clientHeight
+// leave, on the left in RTL.
 const clippingBoxContainsText = (element: HTMLElement, style: CSSStyleDeclaration, text: TextBounds) => {
   const rect = element.getBoundingClientRect()
-  const left = rect.left + element.clientLeft, top = rect.top + element.clientTop
-  const right = left + element.clientWidth, bottom = top + element.clientHeight
+  const borderLeft = Number.parseFloat(style.borderLeftWidth), borderRight = Number.parseFloat(style.borderRightWidth)
+  const borderTop = Number.parseFloat(style.borderTopWidth), borderBottom = Number.parseFloat(style.borderBottomWidth)
+  const showsScrollbars = !(element instanceof HTMLInputElement)
+  const scrollbarWidth = showsScrollbars ? Math.max(0, element.offsetWidth - borderLeft - borderRight - element.clientWidth) : 0
+  const scrollbarHeight = showsScrollbars ? Math.max(0, element.offsetHeight - borderTop - borderBottom - element.clientHeight) : 0
+  const scrollbarOnLeft = style.direction === 'rtl'
+  const left = rect.left + borderLeft + (scrollbarOnLeft ? scrollbarWidth : 0), top = rect.top + borderTop
+  const right = rect.right - borderRight - (scrollbarOnLeft ? 0 : scrollbarWidth), bottom = rect.bottom - borderBottom - scrollbarHeight
+  if (![left, top, right, bottom].every(Number.isFinite)) return false
   if (text.left < left || text.right > right || text.top < top || text.bottom > bottom) return false
-  const radii = [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomLeftRadius, style.borderBottomRightRadius]
-  const radiusX = Math.max(...radii.map((radius) => radiusLength(radius, 0)))
-  const radiusY = Math.max(...radii.map((radius) => radiusLength(radius, 1)))
+  const radiusX = Math.max(
+    innerRadius(style.borderTopLeftRadius, 0, borderLeft), innerRadius(style.borderTopRightRadius, 0, borderRight),
+    innerRadius(style.borderBottomLeftRadius, 0, borderLeft), innerRadius(style.borderBottomRightRadius, 0, borderRight),
+  )
+  const radiusY = Math.max(
+    innerRadius(style.borderTopLeftRadius, 1, borderTop), innerRadius(style.borderTopRightRadius, 1, borderTop),
+    innerRadius(style.borderBottomLeftRadius, 1, borderBottom), innerRadius(style.borderBottomRightRadius, 1, borderBottom),
+  )
   return text.left >= left + radiusX && text.right <= right - radiusX
     || text.top >= top + radiusY && text.bottom <= bottom - radiusY
 }
@@ -268,10 +288,10 @@ const createCertifiedPainter = (
   blank: HTMLCanvasElement,
   ascent: number,
   descent: number,
+  baseline: number,
   targetWidth: number,
   targetHeight: number,
 ) => {
-  const baseline = paint.fieldTop + (paint.fieldHeight - ascent - descent) / 2 + ascent
   let disposed = false
   let attached = false
   const canReuse = (field: HTMLInputElement, value: string, scroll: readonly [number, number]) =>
@@ -359,7 +379,13 @@ export async function prepareInputTextPainter(options: InputTextPainterOptions):
     clearCanvas(certificate)
     return null
   }
-  const baseline = paint.fieldTop + (paint.fieldHeight - ascent - descent) / 2 + ascent
+  // snapDOM lays out the value's line box itself. 3.8.2 placed it 1 device
+  // pixel above this centred formula (2026-11-23, Chrome 156: 464 of 53,120
+  // field pixels differed), so the formula and one device pixel either side are
+  // certified.
+  const centredBaseline = paint.fieldTop + (paint.fieldHeight - ascent - descent) / 2 + ascent
+  const devicePixel = 1 / scaleY
+  const candidateBaselines = [centredBaseline, centredBaseline - devicePixel, centredBaseline + devicePixel]
   const blank = document.createElement('canvas')
   blank.width = pixels.width
   blank.height = pixels.height
@@ -375,12 +401,14 @@ export async function prepareInputTextPainter(options: InputTextPainterOptions):
     // full-layout raster has been drawn at the accepted region's origin.
     certificateContext.drawImage(image, clipX, clipY, image.width, image.height)
     blankContext.drawImage(certificate, pixels.left, pixels.top, pixels.width, pixels.height, 0, 0, pixels.width, pixels.height)
-    certificateContext.clearRect(pixels.left, pixels.top, pixels.width, pixels.height)
-    certificateContext.drawImage(blank, pixels.left, pixels.top)
-    drawText(certificateContext, paint, value, baseline)
-    const observed = certificateContext.getImageData(pixels.left, pixels.top, pixels.width, pixels.height).data
-    if (!equalPixels(expected, observed)) return null
-    const painter = createCertifiedPainter(options, paint, pixels, blank, ascent, descent, targetWidth, targetHeight)
+    const baseline = candidateBaselines.find((candidate) => {
+      certificateContext.clearRect(pixels.left, pixels.top, pixels.width, pixels.height)
+      certificateContext.drawImage(blank, pixels.left, pixels.top)
+      drawText(certificateContext, paint, value, candidate)
+      return equalPixels(expected, certificateContext.getImageData(pixels.left, pixels.top, pixels.width, pixels.height).data)
+    })
+    if (baseline === undefined) return null
+    const painter = createCertifiedPainter(options, paint, pixels, blank, ascent, descent, baseline, targetWidth, targetHeight)
     retained = true
     return painter
   } catch {
