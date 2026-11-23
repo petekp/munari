@@ -1,7 +1,7 @@
 // Demo catalog — the one list of demos the site advertises, in the order it
 // shows them. The overview's index and stage, the demo bar's previous and
 // next links, and App's routes all read it, so a new demo is one entry here,
-// one page in App's DEMO_PAGES (typecheck fails until it exists), and a
+// one page in demoPages.ts (typecheck fails until it exists), and a
 // thumbnail at public/thumbs/<id>.jpg (`npm run thumbs`).
 // Source links follow main rather than a pinned commit, so they track the current API.
 
@@ -75,6 +75,11 @@ export const DEMOS = [
     id: 'tear-planner', title: 'Tear-off planner',
     headline: 'A planner you tear a day from',
     instruction: 'Lift the bottom corner of today’s page. Pull through the perforation to tear the day off.',
+  },
+  {
+    id: 'cutaway-prototype', title: 'Cutaway',
+    headline: 'A spec sheet that cuts a camera open',
+    instruction: 'Scroll the spec sheet. The cut follows the part each section describes, from the lens to the sensor.',
   },
 ] as const satisfies readonly Demo[]
 

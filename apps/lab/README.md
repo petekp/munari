@@ -61,7 +61,7 @@ read it. To add one:
 
 1. Build the scene in `src/scenes/<id>/`.
 2. Add its entry to `DEMOS`: id, title, a short headline, and what to try.
-3. Add its page to `DEMO_PAGES` in `src/App.tsx`. Typecheck fails until it exists.
+3. Add its page to `DEMO_PAGES` in `src/demoPages.ts`. Typecheck fails until it exists.
 4. Add a 1280×720 thumbnail at `public/thumbs/<id>.jpg`. `npm run thumbs -w @munari/lab`
    captures the scenes listed in `tools/captureThumbs.mjs`.
 

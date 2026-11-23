@@ -24,7 +24,7 @@ const markers = {
   veil: '.veil-page', knobs: '.knb-page', optics: '.opt-page', logo: '.logo-page .logo-word', selection: '.sel-prose',
   candidates: '.cand-rail', refraction: '.refraction-page', gallery: '.gallery-page', crystal: '.crystal-page',
   controls: '.controls-page', 'marble-hand': '.mh-app', plume: '.plume-page', gravity: '.gv-poem', lamp: '.lamp-page',
-  rain: '.rain-page', 'distortion-wave': '.wave-page', wordmark: '.wordmark-page', style: '.style-page .m-display', why: '.why-page .m-display', 'polymer-prototype': '.poly-page', 'frontier-prototype': '.frontier-page', 'beyond-prototype': '.beyond-page', 'signature-prototype': '.sig-page',
+  rain: '.rain-page', 'distortion-wave': '.wave-page', wordmark: '.wordmark-page', style: '.style-page .m-display', why: '.why-page .m-display', 'polymer-prototype': '.poly-page', 'frontier-prototype': '.frontier-page', 'beyond-prototype': '.beyond-page', 'signature-prototype': '.sig-page', 'cutaway-prototype': '.cw-page',
   light: '.light-page[data-page-ready="true"] .light-masthead-title',
   postcard: '.light-page[data-page-ready="true"] .postcard-hero-holder',
   'review-notes': '.rn-page', 'tear-planner': '.tp-stage',

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useState, type ComponentType, type LazyExoticComponent } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
 import { useThree } from '@react-three/fiber'
 import { Environment, OrbitControls } from '@react-three/drei'
 import { ContactShadows } from './lib/ContactShadows'
@@ -16,6 +16,7 @@ import { BROWSER_GUIDE, DEMOS, demoFor, type DemoId } from './components/sceneCa
 import { SceneBoundary } from './components/SceneBoundary'
 import { revealSite } from './components/siteOpening'
 import { sceneUrl } from './captureMode'
+import { DEMO_PAGES } from './demoPages'
 
 // A home visit must not fetch or evaluate every lab. Keep Home eager; each
 // other scene loads only in its own frame, with the same page and R3F roots.
@@ -45,22 +46,6 @@ const FrontierPrototypeApp = lazy(() => import('./scenes/frontier-prototype/Fron
 const BeyondPrototypeApp = lazy(() => import('./scenes/beyond-prototype/BeyondPrototype').then(m => ({ default: m.BeyondPrototypeApp })))
 const SignaturePrototypeApp = lazy(() => import('./scenes/signature-prototype/SignaturePrototype').then(m => ({ default: m.SignaturePrototypeApp })))
 const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
-
-// Each advertised demo's page, keyed by its catalog id. The `satisfies`
-// makes a catalog entry without a page a type error.
-const DEMO_PAGES = {
-  genie: lazy(() => import('./scenes/genie/Genie').then(m => ({ default: m.GenieApp }))),
-  flight: lazy(() => import('./scenes/flight/Flight').then(m => ({ default: m.FlightApp }))),
-  light: lazy(() => import('./scenes/light/Light').then(m => ({ default: m.LightApp }))),
-  plume: lazy(() => import('./scenes/plume/Plume').then(m => ({ default: m.PlumeApp }))),
-  selection: lazy(() => import('./scenes/selection/Selection').then(m => ({ default: m.SelectionApp }))),
-  'marble-hand': lazy(() => import('./scenes/marble-hand/MarbleHand').then(m => ({ default: m.MarbleHandApp }))),
-  knobs: lazy(() => import('./scenes/knobs/Knobs').then(m => ({ default: m.KnobsApp }))),
-  postcard: lazy(() => import('./scenes/postcard/Postcard').then(m => ({ default: m.PostcardApp }))),
-  logo: lazy(() => import('./scenes/logo/Logo').then(m => ({ default: m.LogoApp }))),
-  'review-notes': lazy(() => import('./scenes/review-notes/ReviewNotes').then(m => ({ default: m.ReviewNotesApp }))),
-  'tear-planner': lazy(() => import('./scenes/tear-planner/TearPlanner').then(m => ({ default: m.TearPlannerApp }))),
-} satisfies Record<DemoId, LazyExoticComponent<ComponentType>>
 
 // The promoted scene roster is decisions.md #75. URL-only studies stay beside
 // it without claiming promotion: the candidates bench, refraction, gallery,
