@@ -224,6 +224,13 @@
 
 .rn-note-text::placeholder { color: #a39889; }
 
+/* The note being edited. Inset, so the captured texture keeps it, and so
+   snapDOM, which paints no caret, still shows where typing goes. */
+.rn-note:has(.rn-note-text:focus) {
+  outline: 2px solid var(--rn-accent);
+  outline-offset: -2px;
+}
+
 .rn-note[data-resolved] .rn-note-text {
   text-decoration: line-through;
   text-decoration-color: var(--rn-accent);

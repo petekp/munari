@@ -46,12 +46,12 @@ const NOTES: readonly NoteSpec[] = [
   {
     id: 'spout', author: 'Mara Ilves', initials: 'MI', time: 'Tue 09:14',
     text: 'Glaze pools where the spout meets the body and drips on the pour. Thin it to 0.3 mm here.',
-    mention: '@Tomás Reyes', pinAt: { theta: 1.02, s: 196 }, delay: 0.25,
+    mention: '@Tomás Reyes', pinAt: { theta: 0.85, s: 196 }, delay: 0.25,
   },
   {
     id: 'belly', author: 'Tomás Reyes', initials: 'TR', time: 'Tue 11:02',
     text: 'Pinholes across the belly after the glaze firing. Slow the cool through 1,000 °C.',
-    mention: '@Mara Ilves', pinAt: { theta: -0.52, s: 112 }, delay: 0.6,
+    mention: '@Mara Ilves', pinAt: { theta: -0.35, s: 112 }, delay: 0.6,
   },
   {
     id: 'draft', author: 'You', initials: 'YO', time: 'now',
