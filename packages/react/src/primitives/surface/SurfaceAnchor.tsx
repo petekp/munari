@@ -34,13 +34,11 @@ export interface SurfaceAnchorBox {
   /** The anchor's captured CSS size — physical, and stable under resize. */
   readonly cssWidth: number
   readonly cssHeight: number
-  /** The same box in the presenter's local units. */
-  readonly width: number
-  readonly height: number
   /**
-   * Where the box sits in the source's texture. A child that samples the
-   * live capture at its own box — an emitter standing over an LED readout —
-   * needs the rect, not just the size.
+   * Where the box sits in the painted texture. Its spans, `uMax - uMin` and
+   * `vMax - vMin`, are the box's size on the default 1×1 plane; other
+   * geometry converts them itself. A child that samples the live capture at
+   * its own box — an emitter standing over an LED readout — reads the rect.
    */
   readonly uv: SourceUvRect
 }
@@ -59,8 +57,8 @@ const SurfaceAnchorBoxContext = createContext<SurfaceAnchorBox | null>(null)
 /**
  * The box this anchor stands on. `cssWidth`/`cssHeight` are the captured CSS
  * dimensions — physical, so a control keeps its real size when the panel it
- * is on resizes — and `width`/`height` are the same box in the presenter's
- * local units, which is what geometry below it should be built in.
+ * is on resizes — and `uv` is the box in the painted texture, whose spans
+ * size geometry built on the default 1×1 plane.
  */
 export function useSurfaceAnchorBox(): SurfaceAnchorBox | null {
   return use(SurfaceAnchorBoxContext)
@@ -68,7 +66,7 @@ export function useSurfaceAnchorBox(): SurfaceAnchorBox | null {
 
 export function SurfaceAnchor({ name, offset = 0, children }: SurfaceAnchorProps) {
   const scope = useSurfaceAnchorContext('Surface.Anchor')
-  const part = useSurfacePart('Surface.Anchor')
+  useSurfacePart('Surface.Anchor')
   useEffect(() => scope.require(name), [scope, name])
 
   const [box, setBox] = useState(() => scope.box(name))
@@ -81,7 +79,6 @@ export function SurfaceAnchor({ name, offset = 0, children }: SurfaceAnchorProps
     return scope.subscribe(read)
   }, [scope, name])
 
-  const [sourceWidth, sourceHeight] = part.size
   const placed = useMemo(() => {
     if (!box) return null
     return { u: (box.uMin + box.uMax) / 2, v: (box.vMin + box.vMax) / 2 }
@@ -94,8 +91,6 @@ export function SurfaceAnchor({ name, offset = 0, children }: SurfaceAnchorProps
       v={placed.v}
       offset={offset}
       rect={box}
-      sourceWidth={sourceWidth}
-      sourceHeight={sourceHeight}
     >
       {children}
     </AnchorGroup>
@@ -114,16 +109,12 @@ function AnchorGroup({
   v,
   offset,
   rect,
-  sourceWidth,
-  sourceHeight,
   children,
 }: {
   u: number
   v: number
   offset: number
   rect: SourceUvRect
-  sourceWidth: number
-  sourceHeight: number
   children?: React.ReactNode
 }) {
   const [group, setGroup] = useState<THREE.Group | null>(null)
@@ -185,14 +176,8 @@ function AnchorGroup({
   })
 
   const box = useMemo<SurfaceAnchorBox>(
-    () => ({
-      cssWidth: rect.cssWidth,
-      cssHeight: rect.cssHeight,
-      width: sourceWidth > 0 ? rect.cssWidth / sourceWidth : 0,
-      height: sourceHeight > 0 ? rect.cssHeight / sourceHeight : 0,
-      uv: rect,
-    }),
-    [rect, sourceWidth, sourceHeight],
+    () => ({ cssWidth: rect.cssWidth, cssHeight: rect.cssHeight, uv: rect }),
+    [rect],
   )
 
   return (

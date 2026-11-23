@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Breaking: `SurfaceAnchorBox` no longer has `width` and `height`. They were
+  the box's share of the source size, which is a local size only on a 1×1
+  plane, and during a resize they used the current source size against an
+  older painted frame. On the default plane, use `uv.uMax - uv.uMin` and
+  `uv.vMax - uv.vMin`. For a size in CSS pixels, use `cssWidth` and
+  `cssHeight`.
 - `useCaptureTransition` runs an app update behind a capture of the content it
   changes. `start(target, update, options)` waits until an effect has drawn the
   outgoing capture on screen, then runs the update. Each update runs once, in

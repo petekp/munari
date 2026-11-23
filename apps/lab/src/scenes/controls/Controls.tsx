@@ -416,14 +416,8 @@ function aimCapAtAnchor(geometry: THREE.BufferGeometry, box: NonNullable<ReturnT
   const uvs = geometry.getAttribute('uv')
   const centerU = (box.uv.uMin + box.uv.uMax) / 2
   const centerV = (box.uv.vMin + box.uv.vMax) / 2
-  const spanU = box.uv.uMax - box.uv.uMin
-  const spanV = box.uv.vMax - box.uv.vMin
   for (let i = 0; i < positions.count; i++) {
-    uvs.setXY(
-      i,
-      centerU + (positions.getX(i) / box.width) * spanU,
-      centerV + (positions.getY(i) / box.height) * spanV,
-    )
+    uvs.setXY(i, centerU + positions.getX(i), centerV + positions.getY(i))
   }
   uvs.needsUpdate = true
 }
@@ -441,8 +435,8 @@ function PhysicalPiece({
 }) {
   const box = useSurfaceAnchorBox()
   const group = useRef<THREE.Group>(null)
-  const width = box?.width ?? 0
-  const height = box?.height ?? 0
+  const width = box ? box.uv.uMax - box.uv.uMin : 0
+  const height = box ? box.uv.vMax - box.uv.vMin : 0
   const depth = controlsTuning.depth[spec.style]
   const round = spec.kind === 'radio' || spec.kind === 'color'
   const capRadius = Math.min(width, height) * (round ? 0.5 : 0.17)

@@ -164,10 +164,12 @@ const ignoreRaycast = () => {}
 export function ButtonBezel() {
   const box = useSurfaceAnchorBox()
   if (!box) return null
+  const width = box.uv.uMax - box.uv.uMin
+  const height = box.uv.vMax - box.uv.vMin
   const depth = 0.04
   return (
     <mesh position={[0, 0, -depth / 2]} raycast={ignoreRaycast}>
-      <boxGeometry args={[box.width * 1.08, box.height * 1.16, depth]} />
+      <boxGeometry args={[width * 1.08, height * 1.16, depth]} />
       <meshStandardMaterial color="#2148bd" roughness={0.35} />
     </mesh>
   )

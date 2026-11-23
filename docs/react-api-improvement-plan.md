@@ -406,18 +406,11 @@ its supported consumer flows pass.
 
 **6. Correct the anchor dimension interface.**
 
-Remove `width` and `height` from `SurfaceAnchorBox`. Preserve the recorded CSS
-dimensions and `uv`, the normalized texture rectangle from the painted snapshot.
-Its U axis runs left to right and V axis runs bottom to top. Compute normalized
-size from `uv.uMax - uv.uMin` and `uv.vMax - uv.vMin`. Position continues to sample
-the presenter's actual geometry.
-
-This is the smallest defined contract across custom and deformed geometry. A
-single width and height on a curved UV patch need a chosen geometric metric;
-this plan does not introduce one. Unit-plane hardware uses UV spans. Pixel-unit
-hardware uses CSS sizes. Other geometry owns its conversion. An eight-unit-wide
-plane uses eight times the U span. This also removes the current calculation's
-dependence on a newer part size during resize.
+Status: built 2026-11-23. `SurfaceAnchorBox` carries `cssWidth`, `cssHeight`
+and `uv`, the normalized texture rectangle from the painted snapshot. Its U
+axis runs left to right and V axis runs bottom to top. Normalized size is
+`uv.uMax - uv.uMin` and `uv.vMax - uv.vMin`; other geometry owns its
+conversion. Position still samples the presenter's actual geometry.
 
 Migrate Controls to the painted UV spans and inspect Knobs' CSS-size usage.
 Update the public type, doc comments, examples, and decision entry together.
