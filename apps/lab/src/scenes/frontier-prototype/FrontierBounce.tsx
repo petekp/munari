@@ -34,16 +34,15 @@ import {
   type ElementCapture,
 } from '@petepetrash/munari'
 import {
-  BOUNCE_SPECIMENS,
   BounceEmitterSpecimen,
   BounceFilmstrip,
   BounceInspectorPane,
   BounceNavSidebar,
   BounceTopToolbar,
   SYNTH_HUES,
-  type BounceSpecimenId,
   type SynthHueId,
 } from './FrontierBouncePanes'
+import { BOUNCE_SPECIMENS, type BounceSpecimenId } from './frontierBounceSpecimens'
 import {
   bouncePresetOffset,
   clampBounceOffset,
@@ -235,8 +234,8 @@ export function FrontierBounce() {
   const canvasId = useId()
   const emitterCapture = useElementCapture({ resolution: 0.25 })
 
-  const [specimenId, setSpecimenId] = useState<BounceSpecimenId>('aperture')
-  const [activeFolder, setActiveFolder] = useState('Screenshots')
+  const [specimenId, setSpecimenId] = useState<BounceSpecimenId>('starry-night')
+  const [activeFolder, setActiveFolder] = useState('Pictures')
   const [finish, setFinish] = useState<BounceFinishId>('satin')
   const [boosted, setBoosted] = useState(false)
   const [synthHueId, setSynthHueId] = useState<SynthHueId>('cyan')
@@ -319,17 +318,8 @@ export function FrontierBounce() {
 
   const selectSpecimen = useCallback((next: BounceSpecimenId, folderOverride?: string) => {
     setSpecimenId(next)
-    if (folderOverride) {
-      setActiveFolder(folderOverride)
-    } else if (next === 'aperture') {
-      setActiveFolder('Screenshots')
-    } else if (next === 'spectrum') {
-      setActiveFolder('Code')
-    } else if (next === 'polarity') {
-      setActiveFolder('sanctuary')
-    } else {
-      setActiveFolder('capacitor')
-    }
+    const folder = folderOverride ?? BOUNCE_SPECIMENS.find((s) => s.id === next)?.folder
+    if (folder) setActiveFolder(folder)
   }, [])
 
   const stepSpecimen = useCallback(
@@ -439,6 +429,7 @@ export function FrontierBounce() {
   }
 
   const specimen = BOUNCE_SPECIMENS.find((s) => s.id === specimenId) ?? BOUNCE_SPECIMENS[0]!
+  const painting = specimen.kind === 'painting' ? specimen : null
   const synthHue = SYNTH_HUES.find((h) => h.id === synthHueId) ?? SYNTH_HUES[0]!
 
   return (
@@ -507,7 +498,8 @@ export function FrontierBounce() {
                 tabIndex={0}
                 role="group"
                 aria-label="Draggable light emitter specimen. Use arrow keys to move toward glass panes, Home or 0 to center"
-                className="fb-emitter-card"
+                className={`fb-emitter-card${painting ? ' fb-emitter-card--painting' : ''}`}
+                style={painting ? { aspectRatio: String(painting.aspect) } : undefined}
                 onDoubleClick={() => snapPose('center')}
                 onKeyDown={onEmitterKeyDown}
                 onPointerDown={onEmitterPointerDown}
@@ -516,11 +508,12 @@ export function FrontierBounce() {
                 onLostPointerCapture={onEmitterPointerUp}
               >
                 <BounceEmitterSpecimen
-                  specimenId={specimenId}
+                  specimen={specimen}
                   synthHue={synthHue}
                   synthNote={synthNote}
                   onSelectSynthHue={setSynthHueId}
                   onChangeSynthNote={setSynthNote}
+                  onImageLoad={emitterCapture.refresh}
                 />
               </div>
             </div>

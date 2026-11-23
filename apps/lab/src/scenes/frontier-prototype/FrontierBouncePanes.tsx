@@ -8,8 +8,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useSurfaceRefresh } from '@petepetrash/munari'
 import type { BouncePosePreset, BounceSeamGaps } from './frontierBounceLaw'
 import { BOUNCE_FINISHES, type BounceFinishId } from './frontierBounceNodes'
-
-export type BounceSpecimenId = 'aperture' | 'spectrum' | 'polarity' | 'synth'
+import { BOUNCE_SPECIMENS, type BounceSpecimenId, type SpecimenMeta } from './frontierBounceSpecimens'
 
 export type SynthHueId = 'cyan' | 'magenta' | 'lime' | 'amber'
 
@@ -28,45 +27,6 @@ export const SYNTH_HUES: readonly SynthHueSpec[] = [
   { id: 'amber', label: 'Solar', hex: '#ff8418', deepHex: '#d9381e', accent: '#ffcb52' },
 ]
 
-export interface SpecimenMeta {
-  readonly id: BounceSpecimenId
-  readonly fileName: string
-  readonly kindLabel: string
-  readonly badgeBg: string
-  readonly shortLabel: string
-}
-
-export const BOUNCE_SPECIMENS: readonly SpecimenMeta[] = [
-  {
-    id: 'aperture',
-    fileName: 'Screenshot 2026-11-09 at 8.06.50 PM.png',
-    kindLabel: 'PNG image · Cyan aperture',
-    badgeBg: 'linear-gradient(135deg, #09bdd4 0%, #0ac8e0 100%)',
-    shortLabel: 'Cyan aperture',
-  },
-  {
-    id: 'spectrum',
-    fileName: 'munari-spectrum.html',
-    kindLabel: '4-band HTML · Vertical locality',
-    badgeBg: 'linear-gradient(180deg, #ff564a 0 25%, #ffaf18 25% 50%, #18db92 50% 75%, #7f5eff 75% 100%)',
-    shortLabel: '4-band spectrum',
-  },
-  {
-    id: 'polarity',
-    fileName: 'split-polarity.svg',
-    kindLabel: 'Dual-edge HTML · Left/right split',
-    badgeBg: 'linear-gradient(90deg, #08c4dc 0 50%, #ff5936 50% 100%)',
-    shortLabel: 'Split polarity',
-  },
-  {
-    id: 'synth',
-    fileName: 'live-emitter-card.tsx',
-    kindLabel: 'Interactive HTML · Live controls',
-    badgeBg: 'linear-gradient(135deg, #f22e84 0%, #ff8418 100%)',
-    shortLabel: 'Live DOM card',
-  },
-]
-
 interface NavItem {
   readonly id: string
   readonly label: string
@@ -81,9 +41,9 @@ export const BOUNCE_NAV_ITEMS: readonly NavItem[] = [
   { id: 'Applications', label: 'Applications', group: 'favorites', icon: 'app' },
   { id: 'Downloads', label: 'Downloads', group: 'favorites', icon: 'down' },
   { id: 'Dropbox', label: 'Dropbox', group: 'favorites', icon: 'box' },
-  { id: 'Screenshots', label: 'Screenshots', group: 'favorites', icon: 'folder', linkedSpecimen: 'aperture' },
-  { id: 'Code', label: 'Code', group: 'favorites', icon: 'folder', linkedSpecimen: 'spectrum' },
-  { id: 'sanctuary', label: 'sanctuary', group: 'favorites', icon: 'folder', linkedSpecimen: 'polarity' },
+  { id: 'Pictures', label: 'Pictures', group: 'favorites', icon: 'folder', linkedSpecimen: 'starry-night' },
+  { id: 'Code', label: 'Code', group: 'favorites', icon: 'folder' },
+  { id: 'sanctuary', label: 'sanctuary', group: 'favorites', icon: 'folder' },
   { id: 'capacitor', label: 'capacitor', group: 'favorites', icon: 'folder', linkedSpecimen: 'synth' },
   { id: 'circuit', label: 'circuit', group: 'favorites', icon: 'folder' },
   { id: 'arc-design-studio', label: 'arc-design-studio', group: 'favorites', icon: 'folder' },
@@ -352,9 +312,7 @@ export function BounceInspectorPane({
     >
       <div className="fb-insp-top-group">
         <div className="fb-insp-head">
-          <span className="fb-insp-thumb" style={{ background: specimen.badgeBg }} aria-hidden="true">
-            {specimen.id === 'aperture' && <span className="fb-insp-thumb-dot" />}
-          </span>
+          <SpecimenThumb specimen={specimen} className="fb-insp-thumb" onImageLoad={refreshSurface} />
           <div className="fb-insp-title-wrap">
             <div className="fb-insp-title">{specimen.fileName}</div>
             <div className="fb-insp-sub">{specimen.kindLabel}</div>
@@ -436,96 +394,60 @@ export function BounceInspectorPane({
 }
 
 export function BounceEmitterSpecimen({
-  specimenId,
+  specimen,
   synthHue,
   synthNote,
   onSelectSynthHue,
   onChangeSynthNote,
+  onImageLoad,
 }: {
-  readonly specimenId: BounceSpecimenId
+  readonly specimen: SpecimenMeta
   readonly synthHue: SynthHueSpec
   readonly synthNote: string
   readonly onSelectSynthHue: (hue: SynthHueId) => void
   readonly onChangeSynthNote: (next: string) => void
+  readonly onImageLoad: () => void
 }) {
-  if (specimenId === 'spectrum') {
+  if (specimen.kind === 'painting') {
     return (
-      <div className="fb-emit-spectrum">
-        <div className="fb-spec-band fb-spec-band--coral">
-          <span>CORAL · 620 nm</span>
-          <span>Top rows</span>
-        </div>
-        <div className="fb-spec-band fb-spec-band--amber">
-          <span>AMBER · 585 nm</span>
-          <span>Upper-mid</span>
-        </div>
-        <div className="fb-spec-band fb-spec-band--mint">
-          <span>MINT · 525 nm</span>
-          <span>Lower-mid</span>
-        </div>
-        <div className="fb-spec-band fb-spec-band--violet">
-          <span>VIOLET · 450 nm</span>
-          <span>Bottom rows</span>
-        </div>
-      </div>
-    )
-  }
-
-  if (specimenId === 'polarity') {
-    return (
-      <div className="fb-emit-polarity">
-        <div className="fb-pol-half fb-pol-half--cyan">
-          <span className="fb-pol-kicker">← LEFT EDGE</span>
-          <strong>Cyan bounce</strong>
-        </div>
-        <div className="fb-pol-half fb-pol-half--ember">
-          <span className="fb-pol-kicker">RIGHT EDGE →</span>
-          <strong>Ember bounce</strong>
-        </div>
-      </div>
-    )
-  }
-
-  if (specimenId === 'synth') {
-    return (
-      <div
-        className="fb-emit-synth"
-        style={{
-          background: `radial-gradient(circle at 50% 28%, ${synthHue.accent} 0%, ${synthHue.hex} 54%, ${synthHue.deepHex} 100%)`,
-        }}
-      >
-        <div className="fb-synth-kicker">LIVE NATIVE HTML EMITTER · DRAG OR CLICK</div>
-        <input
-          type="text"
-          className="fb-synth-input"
-          aria-label="Live emitter headline"
-          value={synthNote}
-          onChange={(e) => onChangeSynthNote(e.target.value)}
-        />
-        <div className="fb-synth-pills" role="group" aria-label="Emitter wavelength">
-          {SYNTH_HUES.map((h) => (
-            <button
-              key={h.id}
-              type="button"
-              className="fb-synth-pill"
-              aria-pressed={h.id === synthHue.id}
-              onClick={() => onSelectSynthHue(h.id)}
-            >
-              <span className="fb-synth-swatch" style={{ background: h.hex }} aria-hidden="true" />
-              {h.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <img
+        className="fb-emit-painting"
+        src={specimen.src}
+        alt={specimen.alt}
+        draggable={false}
+        onLoad={onImageLoad}
+      />
     )
   }
 
   return (
-    <div className="fb-emit-aperture">
-      <div className="fb-aperture-bezel">
-        <div className="fb-aperture-screen">
-          <div className="fb-aperture-disc" />
-        </div>
+    <div
+      className="fb-emit-synth"
+      style={{
+        background: `radial-gradient(circle at 50% 28%, ${synthHue.accent} 0%, ${synthHue.hex} 54%, ${synthHue.deepHex} 100%)`,
+      }}
+    >
+      <div className="fb-synth-kicker">LIVE NATIVE HTML EMITTER · DRAG OR CLICK</div>
+      <input
+        type="text"
+        className="fb-synth-input"
+        aria-label="Live emitter headline"
+        value={synthNote}
+        onChange={(e) => onChangeSynthNote(e.target.value)}
+      />
+      <div className="fb-synth-pills" role="group" aria-label="Emitter wavelength">
+        {SYNTH_HUES.map((h) => (
+          <button
+            key={h.id}
+            type="button"
+            className="fb-synth-pill"
+            aria-pressed={h.id === synthHue.id}
+            onClick={() => onSelectSynthHue(h.id)}
+          >
+            <span className="fb-synth-swatch" style={{ background: h.hex }} aria-hidden="true" />
+            {h.label}
+          </button>
+        ))}
       </div>
     </div>
   )
@@ -552,12 +474,25 @@ export function BounceFilmstrip({
             title={item.shortLabel}
             onClick={() => onSelect(item.id)}
           >
-            <span className="fb-film-art" style={{ background: item.badgeBg }} aria-hidden="true">
-              {item.id === 'aperture' && <span className="fb-film-disc" />}
-            </span>
+            <SpecimenThumb specimen={item} className="fb-film-art" />
           </button>
         )
       })}
     </div>
   )
+}
+
+function SpecimenThumb({
+  specimen,
+  className,
+  onImageLoad,
+}: {
+  readonly specimen: SpecimenMeta
+  readonly className: string
+  readonly onImageLoad?: () => void
+}) {
+  if (specimen.kind === 'painting') {
+    return <img className={className} src={specimen.src} alt="" draggable={false} onLoad={onImageLoad} />
+  }
+  return <span className={className} style={{ background: specimen.badgeBg }} aria-hidden="true" />
 }

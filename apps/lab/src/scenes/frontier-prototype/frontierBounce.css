@@ -329,20 +329,13 @@
 
 .fb-insp-thumb {
   flex: none;
-  display: grid;
-  place-items: center;
+  box-sizing: border-box;
+  object-fit: cover;
   width: 44px;
   height: 34px;
   margin-top: 2px;
   border: 2px solid rgb(255 255 255 / 0.88);
   border-radius: 6px;
-}
-
-.fb-insp-thumb-dot {
-  width: 11px;
-  height: 11px;
-  border-radius: 99px;
-  background: #ffffff;
 }
 
 .fb-insp-title-wrap {
@@ -525,126 +518,20 @@
   cursor: grabbing;
 }
 
-/* Specimen 1: Iconic Cyan Aperture (matching Finder Quick Look reference) */
-.fb-emit-aperture {
-  box-sizing: border-box;
+.fb-emitter-card--painting {
+  width: auto;
+  max-width: calc(100% - 36px);
+}
+
+.fb-emit-painting {
+  display: block;
   width: 100%;
   height: 100%;
-  padding: 12px;
-  border-radius: 10px;
-  background: #ffffff;
+  border-radius: 12px;
+  object-fit: cover;
 }
 
-.fb-aperture-bezel {
-  box-sizing: border-box;
-  width: 100%;
-  height: 100%;
-  padding: 6px;
-  border-radius: 22px;
-  background: #0d1115;
-}
-
-.fb-aperture-screen {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  border-radius: 17px;
-  background: linear-gradient(180deg, #09bed6 0%, #0ac5de 100%);
-}
-
-.fb-aperture-disc {
-  width: 128px;
-  height: 128px;
-  border-radius: 999px;
-  background: #ffffff;
-}
-
-/* Specimen 2: 4-Band Chromatic Locality Stack */
-.fb-emit-spectrum {
-  box-sizing: border-box;
-  display: grid;
-  grid-template-rows: repeat(4, minmax(0, 1fr));
-  width: 100%;
-  height: 100%;
-  padding: 8px;
-  gap: 6px;
-  border-radius: 14px;
-  background: #20232a;
-}
-
-.fb-spec-band {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  border-radius: 8px;
-  color: #0d1015;
-  font: 700 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.04em;
-}
-
-.fb-spec-band--coral {
-  background: #ff5548;
-  color: #ffffff;
-}
-
-.fb-spec-band--amber {
-  background: #ffb01a;
-}
-
-.fb-spec-band--mint {
-  background: #17de93;
-}
-
-.fb-spec-band--violet {
-  background: #7c5cff;
-  color: #ffffff;
-}
-
-/* Specimen 3: Left/Right Split Polarity */
-.fb-emit-polarity {
-  box-sizing: border-box;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  width: 100%;
-  height: 100%;
-  padding: 8px;
-  border-radius: 14px;
-  background: #20232a;
-}
-
-.fb-pol-half {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 18px;
-  border-radius: 9px;
-  color: #ffffff;
-  font-family: Archivo, system-ui, sans-serif;
-}
-
-.fb-pol-half--cyan {
-  background: linear-gradient(180deg, #07bfd8 0%, #069eb8 100%);
-}
-
-.fb-pol-half--ember {
-  background: linear-gradient(180deg, #ff5d38 0%, #f03258 100%);
-  text-align: right;
-}
-
-.fb-pol-kicker {
-  font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
-  letter-spacing: 0.06em;
-}
-
-.fb-pol-half strong {
-  font-size: 22px;
-  line-height: 1.1;
-}
-
-/* Specimen 4: Edge-to-Edge Saturated Live HTML Synth Card */
+/* Live HTML card */
 .fb-emit-synth {
   box-sizing: border-box;
   display: flex;
@@ -739,19 +626,13 @@
 }
 
 .fb-film-art {
-  display: grid;
-  place-items: center;
+  display: block;
+  box-sizing: border-box;
+  object-fit: cover;
   width: 48px;
   height: 34px;
   border: 1px solid rgb(255 255 255 / 0.84);
   border-radius: 5px;
-}
-
-.fb-film-disc {
-  width: 12px;
-  height: 12px;
-  border-radius: 99px;
-  background: #ffffff;
 }
 
 /* ── Tablet & 390 px Mobile Adaptation (Side-by-Side Lateral Bounce!) ── */
@@ -820,21 +701,9 @@
     height: 178px;
   }
 
-  .fb-emit-aperture {
-    padding: 8px;
-  }
-
-  .fb-aperture-disc {
-    width: 60px;
-    height: 60px;
-  }
-
-  .fb-pol-half {
-    padding: 10px;
-  }
-
-  .fb-pol-half strong {
-    font-size: 14px;
+  .fb-emitter-card--painting {
+    width: auto;
+    max-width: calc(100% - 8px);
   }
 
   .fb-emit-synth {
@@ -860,11 +729,6 @@
   .fb-film-art {
     width: 36px;
     height: 25px;
-  }
-
-  .fb-film-disc {
-    width: 9px;
-    height: 9px;
   }
 
   .fb-insp-root {
