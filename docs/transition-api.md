@@ -158,7 +158,7 @@ Each row states what the package does. The queue is
 One hazard stays with the app. An update waits until the cover is on screen, so a
 state change the app makes directly in that window lands first. Postcard calls
 `finish()` before typing for this reason. Functional updates such as
-`n => n + 1` stay correct either way. The README states this rule.
+`n => n + 1` stay correct either way.
 
 The cover hides the live update only where the outgoing capture is opaque. The wave
 snapshot fills its box with the nearest opaque ancestor background, and the postcard

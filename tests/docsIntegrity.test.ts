@@ -68,8 +68,10 @@ function checkBlobTarget(rel: string, rawTarget: string): string[] {
   const slash = rest.indexOf('/')
   const ref = slash >= 0 ? rest.slice(0, slash) : rest
   const repoPath = slash >= 0 ? rest.slice(slash + 1) : ''
-  if ((rel === 'README.md' || rel === 'llms.txt') && ref !== `v${reactPkg.version}`) {
-    errors.push(`${rel}: expected tag v${reactPkg.version}, got ${rawTarget}`)
+  const isPublishedFile = rel === 'README.md' || rel === 'llms.txt'
+  const isReleaseOrMain = ref === `v${reactPkg.version}` || ref === 'main'
+  if (isPublishedFile && !isReleaseOrMain) {
+    errors.push(`${rel}: expected tag v${reactPkg.version} or main, got ${rawTarget}`)
   }
   if (repoPath && !existsSync(join(ROOT, repoPath))) {
     errors.push(`${rel}: missing blob target ${repoPath} in ${rawTarget}`)
@@ -87,7 +89,7 @@ function checkDocLink(rel: string, full: string, rawTarget: string): string[] {
   if (rel === 'README.md' || rel === 'llms.txt') {
     return STAGED_PACKAGE_FILES.has(pathOnly)
       ? []
-      : [`${rel}: unstaged relative link ${rawTarget} (use v${reactPkg.version} GitHub blob URL)`]
+      : [`${rel}: unstaged relative link ${rawTarget} (use a v${reactPkg.version} or main GitHub blob URL)`]
   }
   return existsSync(resolve(dirname(full), pathOnly))
     ? []

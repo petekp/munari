@@ -19,13 +19,13 @@ project is named for the Italian designer and artist Bruno Munari.
   helpers built on them, such as `Text`, `MeshDistortMaterial` and
   `MeshTransmissionMaterial`. In development, `SurfaceCanvas` logs which object
   uses one. Write custom materials as TSL node materials. See
-  [Materials on a SurfaceCanvas](https://github.com/petekp/munari/blob/v0.4.1/docs/scene-content.md#materials-on-a-surfacecanvas).
+  [Materials on a SurfaceCanvas](https://github.com/petekp/munari/blob/main/docs/scene-content.md#materials-on-a-surfacecanvas).
 - **Capture:** HTML-in-canvas is available by default in Chrome 157 and later,
   without a feature flag or origin trial token. See
   [Chrome's stable release announcement](https://developer.chrome.com/blog/html-in-canvas).
   Browsers without this API need snapDOM.
   In Safari, which has no `Element.moveBefore`, a handoff works but restarts a
-  running CSS animation. The [capture engines](https://github.com/petekp/munari/blob/v0.4.1/docs/capture-engines.md) table compares
+  running CSS animation. The [capture engines](https://github.com/petekp/munari/blob/main/docs/capture-engines.md) table compares
   the two.
 
 Without a capture engine, handoff content stays native and usable, but it never
@@ -113,7 +113,7 @@ HTML-in-canvas, and snapDOM has not been enabled. `useSurfaceSupport()` is
 the same sentence once in development. To enable capture:
 
 - Use Chrome 157 or later, where HTML-in-canvas is available by default.
-- Call [`enableSnapdomCapture()`](https://github.com/petekp/munari/blob/v0.4.1/docs/capture-engines.md), which also covers other
+- Call [`enableSnapdomCapture()`](https://github.com/petekp/munari/blob/main/docs/capture-engines.md), which also covers other
   browsers.
 
 `canvasId` selects the `SurfaceCanvas` with a matching `id`. Omit `canvasId` when
@@ -122,21 +122,21 @@ while their HTML stays in different parts of the page.
 
 ## Guides
 
-- [Capture engines](https://github.com/petekp/munari/blob/v0.4.1/docs/capture-engines.md) compares HTML-in-canvas with snapDOM and covers enabling snapDOM, refresh and `live`.
-- [Custom scene content](https://github.com/petekp/munari/blob/v0.4.1/docs/scene-content.md) covers `Surface.Root`, custom materials, `Surface.Prewarm` and renderer settings.
-- [Custom compositor output](https://github.com/petekp/munari/blob/v0.4.1/docs/compositor-output.md) covers confirming presentation when a compositor draws Surfaces into render targets.
-- [HTML that belongs in a scene](https://github.com/petekp/munari/blob/v0.4.1/docs/scene-surface.md) covers `SceneSurface`.
-- [Element capture](https://github.com/petekp/munari/blob/v0.4.1/docs/element-capture.md) covers `useElementCapture`, `CaptureContent` and `useCaptureTransition`, which capture an element that stays native, detached React children, and the state an update replaces.
-- [Sharpness](https://github.com/petekp/munari/blob/v0.4.1/docs/sharpness.md) covers pixel ratio and capture density.
-- [Observe and animate a Surface](https://github.com/petekp/munari/blob/v0.4.1/docs/observing-a-surface.md) covers status, progress, drivers and `useSurfaceBeforeRender`.
-- [Page layouts and canvases](https://github.com/petekp/munari/blob/v0.4.1/docs/page-layouts-and-canvases.md) covers `usePageTarget()`, multiple canvases and pointer routing.
-- [When enhanced rendering is unavailable](https://github.com/petekp/munari/blob/v0.4.1/docs/native-fallback.md) covers the native fallback.
-- [Next.js and server rendering](https://github.com/petekp/munari/blob/v0.4.1/docs/nextjs.md) covers client entries and `useSurfaceSupport()` on the server.
-- [Testing and troubleshooting](https://github.com/petekp/munari/blob/v0.4.1/docs/testing-and-troubleshooting.md) covers the inert copy in the DOM and known console output.
+- [Capture engines](https://github.com/petekp/munari/blob/main/docs/capture-engines.md) compares HTML-in-canvas with snapDOM and covers enabling snapDOM, refresh and `live`.
+- [Custom scene content](https://github.com/petekp/munari/blob/main/docs/scene-content.md) covers `Surface.Root`, custom materials, `Surface.Prewarm` and renderer settings.
+- [Custom compositor output](https://github.com/petekp/munari/blob/main/docs/compositor-output.md) covers confirming presentation when a compositor draws Surfaces into render targets.
+- [HTML that belongs in a scene](https://github.com/petekp/munari/blob/main/docs/scene-surface.md) covers `SceneSurface`.
+- [Element capture](https://github.com/petekp/munari/blob/main/docs/element-capture.md) covers `useElementCapture`, `CaptureContent` and `useCaptureTransition`, which capture an element that stays native, detached React children, and the state an update replaces.
+- [Sharpness](https://github.com/petekp/munari/blob/main/docs/sharpness.md) covers pixel ratio and capture density.
+- [Observe and animate a Surface](https://github.com/petekp/munari/blob/main/docs/observing-a-surface.md) covers status, progress, drivers and `useSurfaceBeforeRender`.
+- [Page layouts and canvases](https://github.com/petekp/munari/blob/main/docs/page-layouts-and-canvases.md) covers `usePageTarget()`, multiple canvases and pointer routing.
+- [When enhanced rendering is unavailable](https://github.com/petekp/munari/blob/main/docs/native-fallback.md) covers the native fallback.
+- [Next.js and server rendering](https://github.com/petekp/munari/blob/main/docs/nextjs.md) covers client entries and `useSurfaceSupport()` on the server.
+- [Testing and troubleshooting](https://github.com/petekp/munari/blob/main/docs/testing-and-troubleshooting.md) covers the inert copy in the DOM and known console output.
 - [Authoring rules](https://github.com/petekp/munari/blob/v0.4.1/docs/authoring.md) describe the browser capture constraints.
 - [Demo source map](https://github.com/petekp/munari/blob/v0.4.1/ALL-DEMO-API.md) links the implementations across Flight, Controls, Knobs, Selection, Gallery and the other scenes.
 - [Agent workflow](https://github.com/petekp/munari/blob/v0.4.1/docs/agent-workflow.md) maps a change to its owner and check.
 - `/advanced` exports frame sources, manual presentation receipts,
   `readSurfaceFrameState`, and capture inspection. These are for custom renderers.
 - The tracked [Munari skill](https://github.com/petekp/munari/blob/v0.4.1/.agents/skills/munari/SKILL.md) teaches this API to agents.
-- [Development](https://github.com/petekp/munari/blob/v0.4.1/docs/development.md) has the repo layout, the check commands and how to run the lab locally.
+- [Development](https://github.com/petekp/munari/blob/main/docs/development.md) has the repo layout, the check commands and how to run the lab locally.
