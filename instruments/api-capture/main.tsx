@@ -9,7 +9,7 @@ import { ControlsApp } from '../../apps/lab/src/scenes/controls/Controls'
 import { afterEachRender, snapshotCanvas } from '../canvasPixels'
 import '../../apps/lab/src/app.css'
 
-interface Sample { sourceId:number;generation:number;revision:number;width:number;height:number;uuid:string;pixel:number[];anchor:CaptureFrame['anchors'][string]|undefined }
+interface Sample { sourceId:number;generation:number;revision:number;width:number;height:number;uuid:string;pixel:number[];anchor:NonNullable<CaptureFrame['anchors']>[string]|undefined }
 interface Records { renders:{a:number;b:number};draws:{a:number;b:number};latest:Record<string,Sample|{empty:true}>;samples:(Sample&{name:'a'|'b'})[];disposal:number }
 const records:Records = { renders:{a:0,b:0}, draws:{a:0,b:0}, latest:{}, samples:[], disposal:0 }
 let setSecond:(value:boolean)=>void=()=>{}
