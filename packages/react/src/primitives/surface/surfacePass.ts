@@ -71,12 +71,6 @@ export interface SurfaceOutputRenderer {
   readonly info: { readonly render: { readonly calls: number; readonly triangles: number; readonly lines: number; readonly points: number } }
 }
 
-export interface SurfaceOutputDraw {
-  readonly renderCall: number
-  readonly primitives: number
-  readonly drawable: boolean
-}
-
 export interface SurfaceObservedPass {
   finish(renderer: SurfaceOutputRenderer): SurfacePassEvidence
 }
@@ -146,19 +140,10 @@ export function beginSurfacePass(
   }
 }
 
-/** Object callbacks also surround attempts with no geometry or zero instances. */
-export function beginSurfaceOutputDraw(renderer: SurfaceOutputRenderer, mesh: THREE.Mesh, geometry: THREE.BufferGeometry): SurfaceOutputDraw {
+/** Whether the geometry's draw range holds at least one whole triangle's worth of elements. */
+export function geometryHasTriangle(geometry: THREE.BufferGeometry): boolean {
   const elements = geometry.index?.count ?? geometry.getAttribute('position')?.count ?? 0
   const start = Math.max(0, geometry.drawRange.start)
   const end = Math.min(elements, geometry.drawRange.start + geometry.drawRange.count)
-  return {
-    renderCall: renderer.info.render.calls,
-    primitives: primitiveCount(renderer),
-    drawable: geometryDraws(geometry) && end - start >= 3 && (!(mesh instanceof THREE.InstancedMesh) || mesh.count > 0),
-  }
-}
-
-/** Nested renderer calls cannot supply another mesh's missing draw evidence. */
-export function surfaceOutputDrawCompleted(renderer: SurfaceOutputRenderer, draw: SurfaceOutputDraw): boolean {
-  return draw.drawable && renderer.info.render.calls === draw.renderCall && primitiveCount(renderer) > draw.primitives
+  return end - start >= 3
 }

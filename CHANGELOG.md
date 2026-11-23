@@ -59,6 +59,10 @@
 - `@petepetrash/munari/advanced` exports `restoreScroll(element, top, left)`.
   It sets scroll offsets whose `scroll` event a capture does not take as user
   input or as a reason to capture.
+- `useSurfaceOutput` now counts a draw whose material triggers a nested
+  shadow or blur render. It used to reject any draw during which the
+  renderer's call count changed, so such an output mesh never closed its
+  frame tail. Primitives drawn by nested renders still do not count.
 - `@petepetrash/munari/advanced` exports `releasedSample(sample)`, which
   returns a pointer sample with no buttons pressed.
 - `@petepetrash/munari/advanced` replaces `passIsWarmUp`, `passPresentsDirectly`
