@@ -10,7 +10,7 @@ Munari's own code is small: `@munari/core` is **`39.2 kB` min / `14.6 kB` gzip**
 
 ## 1. Measured payload baseline
 
-All full-app measurements run Vite 8 / Rolldown in production mode against staged artifacts in `packages/react/dist` (`"sideEffects": ["*.css"]` in [stage-manifest.mjs](../packages/react/scripts/stage-manifest.mjs)). "Net gzip" subtracts the `57.3 kB` gzip React 19 + `react-dom/client` baseline.
+All full-app measurements run Vite 8 / Rolldown in production mode against the staged package (`packages/react/dist`, built by `npm run build`; `"sideEffects": ["*.css"]` in [stage-manifest.mjs](../packages/react/scripts/stage-manifest.mjs)). "Net gzip" subtracts the `57.3 kB` gzip React 19 + `react-dom/client` baseline.
 
 ### 1.1 End-to-end consumer bundles today
 

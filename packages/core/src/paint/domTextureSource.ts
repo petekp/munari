@@ -453,7 +453,7 @@ type CaptureCanvasMemory = 'gpu' | 'cpu'
 let captureMemory: CaptureCanvasMemory | null = null
 let choosing: Promise<void> | null = null
 
-// Past this wait, captures take GPU storage as they did before decisions.md #74.
+// Past this, captures take GPU storage (decisions.md #74). An adapter took 1.1 s
 const ADAPTER_WAIT_MS = 3000
 
 async function chooseCaptureMemory(): Promise<void> {

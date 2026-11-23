@@ -72,9 +72,12 @@ function PrototypeSwitcher({
     [idx, onSelect],
   )
 
+  const switcherVisible = process.env.NODE_ENV !== 'production'
+
   useEffect(() => {
+    if (!switcherVisible) return
     const onKey = (event: globalThis.KeyboardEvent) => {
-      if (isEditableTarget(event.target)) return
+      if (event.defaultPrevented || isEditableTarget(event.target)) return
       if (event.key === 'ArrowLeft') {
         event.preventDefault()
         step(-1)
@@ -85,9 +88,9 @@ function PrototypeSwitcher({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [step])
+  }, [step, switcherVisible])
 
-  if (process.env.NODE_ENV === 'production') return null
+  if (!switcherVisible) return null
 
   return (
     <aside className="poly-switcher" aria-label="Prototype variant switcher">

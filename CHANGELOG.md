@@ -65,10 +65,11 @@
   and `passNeedsHostTail` with `presentationRoute(pass, hasHost)`, which
   returns `'empty'`, `'warm-up'`, `'color-off'`, `'now'`, `'tail'` or
   `'no-host'`. `SurfacePassEvidence` gains a `drawable` field.
-- `@petepetrash/munari/advanced` retires six superseded helpers (`hostTailPresents`,
+- `@petepetrash/munari/advanced` retires six helpers that nothing called (`hostTailPresents`,
   `poseMatrix3d`, `posePoint`, `projectSurfaceAnchor`, `stampSurfaceAnchors`,
-  and `planeToScreen`) in favor of `SurfaceHost.closeFrameTail(targets)`,
-  `matchDomPose`, `Surface.Anchor` / `useSurfaceAnchor`, and `screenProjectedAxes`.
+  and `planeToScreen`). They have no replacement export. `Surface.Anchor`,
+  `useSurfaceAnchorBox` and `useSurfaceAnchorRects` in the root entry cover
+  anchoring content to a Surface.
 - `@petepetrash/munari` narrows `useSurfaceStatus` to return `SurfaceStatus`
   directly and exports referenced component prop, return, and callback types
   (`CaptureContentProps`, `SurfaceLitMaterialProps`, `SurfaceChromeState`,

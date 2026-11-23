@@ -223,6 +223,21 @@ describe('fontEmbedPlugin', () => {
     expect(await carried(sheetNode)).toContain("font-family:'FlakySheet'")
   })
 
+  it('fetches a font that answers 404 once across captures', async () => {
+    const style = document.createElement('style')
+    style.textContent = "@font-face{font-family:'GoneFace';src:url(https://lab.test/gone.woff2)}"
+    document.head.append(style)
+    let calls = 0
+    vi.stubGlobal('fetch', async () => {
+      calls += 1
+      return new Response('missing', { status: 404 })
+    })
+
+    const node = letter('GoneFace')
+    for (let capture = 0; capture < 3; capture += 1) expect(await carried(node)).toBe('')
+    expect(calls).toBe(1)
+  })
+
   it('survives synchronous fetch throws and throttles repeated cross-origin sheet retries', async () => {
     const blockedSheet = 'https://blocked.test/fonts.css'
     const sheet = Object.create(CSSStyleSheet.prototype, {

@@ -1,10 +1,20 @@
-// Page snapshot and live-node eligibility for <Surface.HTML>.
+// Page snapshot — the copy a Surface keeps on the page, and the test for when
+// the live node must stand in for it.
 //
-// While a Surface stays on the page, its capture root holds a structural clone
-// carrying form values, checked/indeterminate state, scroll offsets, canvas
-// bitmaps, and hover/active/focus-visible attribute twins. Only active browser
-// focus or a non-collapsed text selection inside the subtree requires borrowing
-// the live node ahead of the crossing.
+// The law: while a Surface stays on the page, its capture root holds a
+// structural clone carrying form values, checked/indeterminate state, scroll
+// offsets, canvas bitmaps, and hover/active/focus-visible attribute twins.
+// Only active browser focus or a non-collapsed text selection inside the
+// subtree requires borrowing the live node ahead of the crossing (decisions.md
+// #63).
+//
+// The fault, 2026-09-13: preparation stood the capture host over a page copy
+// it assumed was showing, guarded by `holder.hidden`, which CSS never
+// touches, so a docked window flashed at its desk position. Preparation now
+// borrows the live node only when focus or a selection needs it.
+//
+// Ownership: this module builds copies and answers eligibility. Surface.tsx
+// decides when to borrow the live node.
 
 import { copyFieldState } from '../elementCapture'
 import type { ScrollOffsets } from '../retainedMove'
@@ -101,6 +111,13 @@ export function placeholderCopy(liveRoot: HTMLElement, unsupported?: string | nu
   return copy
 }
 
+/**
+ * Does this content have something the page-side copy cannot carry? A
+ * snapshot reproduces markup, field values, checked state, scroll offsets and
+ * the hover/active/focus-visible twins. A blinking caret and a selection
+ * highlight belong to the node that owns them, and a clone has neither. The
+ * live node is worth borrowing exactly when one of those is present.
+ */
 export function sourceNeedsLiveNode(root: HTMLElement): boolean {
   const doc = root.ownerDocument
   if (root.contains(doc.activeElement)) return true
