@@ -23,7 +23,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useFrame, useThree } from '@react-three/fiber'
 import type { DomPaintReceipt } from '@munari/core'
-import type { BufferGeometry, Camera, Material, Scene, Texture, WebGLRenderer } from 'three'
+import { WebGLRenderer, type BufferGeometry, type Camera, type Material, type Scene, type Texture } from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import {
   connectCapture,
@@ -353,7 +353,7 @@ export function useCaptureTransitionEffect<Options>(
     gl.domElement.dataset.apiCaptureConsumer = ''
     if (gl instanceof WebGPURenderer || warnedRenderer.current || !isDevelopmentRuntime()) return
     warnedRenderer.current = true
-    console.warn(unsupportedRendererMessage(gl.isWebGLRenderer ? 'WebGLRenderer' : 'another renderer'))
+    console.warn(unsupportedRendererMessage(gl instanceof WebGLRenderer ? 'WebGLRenderer' : 'another renderer'))
   }, [gl])
   useLayoutEffect(() => runner.connect(), [runner])
   useFrame(() => runner.frame(gl))
