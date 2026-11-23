@@ -203,11 +203,19 @@ export function createBounceMaterial(
     const dirToEmit = seamVec.div(max(distToEmit, float(0.001)))
     const perpDir = vec2(dirToEmit.y.negate(), dirToEmit.x)
 
-    // `offAxis = min(dxOut, dyOut)` is 0 everywhere directly across from any of the 4
-    // emitter edges, and equals exact out-of-span overshoot past the corners (`Recents`, etc.)
+    // Out-of-span overshoot is measured along the seam only: vertical for a pane beside
+    // the emitter, horizontal for one above or below it. `min(dxOut, dyOut)` creased
+    // the reflection along the 45° diagonal from each emitter corner (Pete, 2026-11-22):
+    // sidebar points above the emitter's top took the small horizontal distance, so
+    // light ran up the seam edge and left a dark wedge beside it.
+    const panelMin = vec2(u.panelRectCss.x, u.panelRectCss.y)
+    const panelMax = panelMin.add(size)
+    const seamGapX = max(emitMin.x.sub(panelMax.x), panelMin.x.sub(emitMax.x))
+    const seamGapY = max(emitMin.y.sub(panelMax.y), panelMin.y.sub(emitMax.y))
+    const paneBesideEmitter = seamGapX.greaterThanEqual(seamGapY)
     const dxOut = max(emitMin.x.sub(worldCss.x), max(worldCss.x.sub(emitMax.x), float(0)))
     const dyOut = max(emitMin.y.sub(worldCss.y), max(worldCss.y.sub(emitMax.y), float(0)))
-    const offAxis = min(dxOut, dyOut)
+    const offAxis = paneBesideEmitter.select(dyOut, dxOut)
     const spanRatio = offAxis.div(max(u.spanSigmaPx, float(16)))
     const spanFade = exp(spanRatio.mul(spanRatio).negate())
 
