@@ -1,0 +1,313 @@
+/* Review notes — a paper review thread beside a teapot on a banding wheel.
+   One accent (vermilion), one display face (Bodoni Moda), a monospace readout. */
+
+.rn-host {
+  --rn-paper: #ece7de;
+  --rn-thread: #f5f2ec;
+  --rn-ink: #1c1611;
+  --rn-muted: #7b7166;
+  --rn-rule: #d8d0c4;
+  --rn-accent: #c8431c;
+  background: var(--rn-paper);
+  color: var(--rn-ink);
+}
+
+.rn-page {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 372px 1fr;
+  font-family: 'Archivo', system-ui, sans-serif;
+}
+
+.rn-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* ── the thread ───────────────────────────────────────────── */
+
+.rn-thread {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 36px 36px 28px 40px;
+  background: var(--rn-thread);
+  border-right: 1px solid var(--rn-rule);
+  overflow: hidden;
+}
+
+.rn-kicker,
+.rn-meta,
+.rn-readout,
+.rn-hint {
+  font-family: 'Courier Prime', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--rn-muted);
+  margin: 0;
+}
+
+.rn-readout { font-size: 12px; color: var(--rn-ink); }
+
+.rn-kicker { text-transform: uppercase; letter-spacing: 0.14em; }
+
+.rn-thread-title {
+  margin: 8px 0 6px;
+  font-family: 'Bodoni Moda', serif;
+  font-weight: 500;
+  font-size: 34px;
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+}
+
+.rn-meta { line-height: 1.5; }
+
+.rn-list {
+  display: grid;
+  gap: 18px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rn-slot {
+  position: relative;
+  width: 232px;
+  height: 136px;
+}
+
+.rn-placeholder {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  text-align: left;
+  background: none;
+  cursor: pointer;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 18px 0 34px;
+  border: 1px dashed #c4b9aa;
+  border-radius: 4px;
+  font-family: 'Bodoni Moda', serif;
+  font-style: italic;
+  font-size: 19px;
+  color: var(--rn-ink);
+}
+
+.rn-placeholder[hidden] { display: none; }
+
+.rn-placeholder:hover { border-color: var(--rn-accent); }
+
+.rn-placeholder:focus-visible { outline: 2px solid var(--rn-accent); outline-offset: 2px; }
+
+.rn-placeholder-dot {
+  position: absolute;
+  left: 15px;
+  top: calc(50% - 15px);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--rn-accent);
+}
+
+.rn-placeholder-kicker {
+  font-family: 'Courier Prime', ui-monospace, monospace;
+  font-style: normal;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--rn-accent);
+}
+
+.rn-placeholder-where {
+  font-family: 'Courier Prime', ui-monospace, monospace;
+  font-style: normal;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--rn-muted);
+}
+
+.rn-holder {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.rn-holder > * { pointer-events: auto; }
+
+.rn-note-page {
+  border-radius: 3px;
+  box-shadow: 0 1px 0 rgba(60, 40, 20, 0.08), 0 6px 18px -8px rgba(60, 40, 20, 0.35);
+}
+
+.rn-hint { margin-top: auto; line-height: 1.6; max-width: 290px; }
+
+/* ── a note (captured: no transform, opacity or masks on this root) ── */
+
+.rn-note {
+  box-sizing: border-box;
+  width: 232px;
+  height: 136px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: 10px 12px 9px 13px;
+  background: #fffdf8;
+  border-radius: 3px;
+  color: var(--rn-ink);
+  font-family: 'Archivo', system-ui, sans-serif;
+}
+
+.rn-note-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.rn-avatar {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--rn-accent);
+  color: #fff8ef;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.rn-who { font-size: 12px; font-weight: 650; }
+
+.rn-time {
+  font-family: 'Courier Prime', ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--rn-muted);
+}
+
+.rn-grip {
+  margin-left: auto;
+  width: 12px;
+  height: 8px;
+  background-image: radial-gradient(circle, #b7ab9b 1.1px, transparent 1.3px);
+  background-size: 4px 4px;
+}
+
+.rn-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.rn-note-text {
+  margin: 6px 0 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  resize: none;
+  outline: none;
+  font: 400 12.5px/1.38 'Archivo', system-ui, sans-serif;
+  color: var(--rn-ink);
+  overflow: hidden;
+}
+
+.rn-note-text::placeholder { color: #a39889; }
+
+.rn-note[data-resolved] .rn-note-text {
+  text-decoration: line-through;
+  text-decoration-color: var(--rn-accent);
+  color: var(--rn-muted);
+}
+
+.rn-note-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 6px;
+  border-top: 1px solid #ece5da;
+}
+
+.rn-mention {
+  font-family: 'Courier Prime', ui-monospace, monospace;
+  font-size: 10.5px;
+  color: var(--rn-accent);
+}
+
+.rn-resolve {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.rn-resolve input {
+  position: relative;
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  border: 1.5px solid #9d9182;
+  border-radius: 2px;
+  background: #fffdf8;
+  cursor: pointer;
+}
+
+.rn-resolve input:checked { background: var(--rn-accent); border-color: var(--rn-accent); }
+
+.rn-resolve input:checked::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0px;
+  width: 3.5px;
+  height: 7px;
+  border: solid #fff8ef;
+  border-width: 0 1.5px 1.5px 0;
+  rotate: 45deg;
+}
+
+/* ── the stage ────────────────────────────────────────────── */
+
+.rn-stage {
+  position: relative;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.rn-statement {
+  position: absolute;
+  left: 44px;
+  bottom: 40px;
+}
+
+.rn-statement h2 {
+  margin: 0;
+  font-family: 'Bodoni Moda', serif;
+  font-weight: 400;
+  font-size: 44px;
+  line-height: 1.04;
+  white-space: nowrap;
+  letter-spacing: -0.015em;
+}
+
+.rn-readout {
+  position: absolute;
+  right: 36px;
+  top: 34px;
+  display: flex;
+  gap: 18px;
+  text-transform: uppercase;
+}
