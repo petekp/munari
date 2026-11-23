@@ -12,8 +12,9 @@ return (
 
 Import `useElementCapture` from the package. `GlassEffect` is application scene
 code: inside it, `useCaptureFrame(capture).get()` reads the latest painted texture,
-dimensions, and anchors, or `null` while unavailable. Paints wake the renderer
-without causing a React render per frame. The texture is borrowed; consumers do
+dimensions, and anchors, or `null` while unavailable. A frame's `anchors` is
+`null` when its anchors could not be matched to the captured snapshot. Paints
+wake the renderer without causing a React render per frame. The texture is borrowed; consumers do
 not dispose it.
 
 The native element remains in place. Attach the ref to an element, `document.body`,

@@ -50,7 +50,7 @@ function Reader({name,capture}:{name:'a'|'b';capture:CaptureHandle}) {
     const size=renderer.getDrawingBufferSize(new THREE.Vector2())
     const pixel=snapshotCanvas(renderer.domElement)(Math.floor(size.x/2),Math.floor(size.y/2))
     records.draws[name]++
-    const entry={sourceId:frame.sourceId,generation:frame.generation,revision:frame.revision,width:frame.width,height:frame.height,uuid:frame.texture.uuid,pixel,anchor:frame.anchors.label}
+    const entry={sourceId:frame.sourceId,generation:frame.generation,revision:frame.revision,width:frame.width,height:frame.height,uuid:frame.texture.uuid,pixel,anchor:frame.anchors?.label}
     records.latest[name]=entry;records.samples.push({name,...entry});if(records.samples.length>1000)records.samples.shift()
   }),[renderer,name])
   return <mesh ref={mesh} visible={false}><planeGeometry args={[2,2]}/><meshBasicMaterial ref={material} premultipliedAlpha/></mesh>

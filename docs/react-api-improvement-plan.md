@@ -401,7 +401,7 @@ must actually release its ink. Permanent `null` metadata cannot satisfy that
 acceptance. Temporary unknown metadata withholds dependent geometry; recovery
 must resume the requested effect without mismatched pixels. If snapshot geometry
 is unavailable, keep native content usable and mark the enhancement incomplete.
-An intermediate nullable type may land, but the feature remains unfinished until
+The nullable type landed 2026-11-23, but the feature remains unfinished until
 its supported consumer flows pass.
 
 **6. Correct the anchor dimension interface.**

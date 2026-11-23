@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Breaking: `CaptureFrame.anchors` can be `null`, which means the anchors could
+  not be matched to the captured snapshot. An empty map still means the
+  snapshot has no named anchors. No engine publishes `null` yet, but code that
+  reads `frame.anchors` must now handle it.
 - In development, `useCaptureTransitionEffect` warns once when its canvas does
   not render with `WebGPURenderer`. Under another renderer every transition
   waits 1 s and then applies its update with no effect.

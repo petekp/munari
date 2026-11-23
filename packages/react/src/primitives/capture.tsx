@@ -12,7 +12,12 @@ import { useLatest } from './useLatest'
 export interface CaptureFrame {
   readonly sourceId:number; readonly generation:number; readonly revision:number
   readonly texture:Texture; readonly width:number; readonly height:number
-  readonly anchors:Readonly<Record<string,Readonly<{x:number;y:number;width:number;height:number}>>>
+  /**
+   * Each `data-munari-anchor` box in CSS pixels from the frame's top left, by
+   * name. `null` means the anchors could not be matched to the captured
+   * snapshot; an empty map means the snapshot holds no named anchors.
+   */
+  readonly anchors:Readonly<Record<string,Readonly<{x:number;y:number;width:number;height:number}>>>|null
 }
 export type CaptureStatus = { readonly status:'waiting'|'ready'|'unsupported'|'error'; readonly error?:string; readonly reason?:string }
 interface CaptureModel {

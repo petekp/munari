@@ -44,6 +44,7 @@ import {
   type UnitPhase,
 } from './plumeLaw'
 import { createPlumeMaterial, createPlumeValues } from './plumeNodes'
+import { PlumeReleaseBridge } from './plumeReleaseBridge'
 import { PlumeTweaks } from './plumeTweaks'
 import {
   defaultPlumeEffects,
@@ -301,30 +302,6 @@ function sameIds(current: ReadonlySet<string>, next: ReadonlySet<string>): boole
   if (current.size !== next.size) return false
   for (const id of next) if (!current.has(id)) return false
   return true
-}
-
-function PlumeReleaseBridge({ capture, ids, onAnchors }: {
-  capture: CaptureHandle
-  ids: readonly string[]
-  onAnchors: (anchors: Readonly<Record<string, SourceUvRect>>) => void
-}) {
-  const frames = useCaptureFrame(capture)
-  const last = useRef('')
-  useFrame(() => {
-    const frame = frames.get()
-    if (!frame || ids.some(id => !frame.anchors[id])) return
-    const key = `${frame.sourceId}:${frame.generation}:${ids.join('|')}`
-    if (last.current === key) return
-    last.current = key
-    const anchors: Record<string, SourceUvRect> = {}
-    for (const id of ids) {
-      const box = frame.anchors[id]
-      anchors[id] = { cssWidth: box.width, cssHeight: box.height, uMin: box.x / frame.width, uMax: (box.x + box.width) / frame.width,
-        vMin: 1 - (box.y + box.height) / frame.height, vMax: 1 - box.y / frame.height }
-    }
-    onAnchors(anchors)
-  })
-  return null
 }
 
 function PlumeParticles({ capture, box, ids, onAnchors, ...material }: Omit<PlumeMaterialProps, 'texture'> & {
