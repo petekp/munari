@@ -41,7 +41,7 @@ import type { CaptureEngine } from './captureEngine'
 
 export interface HtmlInCanvasSupport {
   drawElementImage: boolean
-  texElementImage2D: boolean
+  texElementSubImage2D: boolean
 }
 
 /**
@@ -65,7 +65,7 @@ export function detectHtmlInCanvas(): HtmlInCanvasSupport {
   const gl2 = 'WebGL2RenderingContext' in globalThis ? WebGL2RenderingContext : undefined
   return {
     drawElementImage: context2d !== undefined && 'drawElementImage' in context2d.prototype,
-    texElementImage2D: gl2 !== undefined && 'texElementImage2D' in gl2.prototype,
+    texElementSubImage2D: gl2 !== undefined && 'texElementSubImage2D' in gl2.prototype,
   }
 }
 

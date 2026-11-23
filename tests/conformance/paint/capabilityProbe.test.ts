@@ -26,7 +26,7 @@ describe('detectHtmlInCanvas', () => {
     vi.stubGlobal('WebGL2RenderingContext', class {})
     expect(detectHtmlInCanvas()).toEqual({
       drawElementImage: false,
-      texElementImage2D: false,
+      texElementSubImage2D: false,
     })
   })
 
@@ -38,7 +38,7 @@ describe('detectHtmlInCanvas', () => {
     vi.stubGlobal('WebGL2RenderingContext', class {})
     expect(detectHtmlInCanvas()).toEqual({
       drawElementImage: true,
-      texElementImage2D: false,
+      texElementSubImage2D: false,
     })
   })
 
@@ -47,7 +47,7 @@ describe('detectHtmlInCanvas', () => {
     vi.stubGlobal('WebGL2RenderingContext', undefined)
     expect(detectHtmlInCanvas()).toEqual({
       drawElementImage: false,
-      texElementImage2D: false,
+      texElementSubImage2D: false,
     })
   })
 })

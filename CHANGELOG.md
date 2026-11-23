@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Breaking: `detectHtmlInCanvas()` reports `texElementSubImage2D` instead of
+  `texElementImage2D`. Chrome 158 has only the 5-argument
+  `texElementSubImage2D`, so the old field was always `false` there. Munari's
+  capture path uses neither.
 - Breaking: `CaptureFrame.anchors` can be `null`, which means the anchors could
   not be matched to the captured snapshot. An empty map still means the
   snapshot has no named anchors. No engine publishes `null` yet, but code that
