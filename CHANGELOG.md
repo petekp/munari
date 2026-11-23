@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- In development, `useCaptureTransitionEffect` warns once when its canvas does
+  not render with `WebGPURenderer`. Under another renderer every transition
+  waits 1 s and then applies its update with no effect.
 - The page layouts guide explains that a mesh in front of a Surface does not
   block the pointer by default, and shows the handlers that stop propagation
   on the relay route.

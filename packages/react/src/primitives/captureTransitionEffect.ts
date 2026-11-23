@@ -19,11 +19,12 @@
 // This hook owns the capture phases, their bounds, the upload proof and the
 // cover-draw proof. The effect owns admission, snapshots, texture copies,
 // drawing and timing.
-import { useLayoutEffect, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { useFrame, useThree } from '@react-three/fiber'
 import type { DomPaintReceipt } from '@munari/core'
 import type { BufferGeometry, Camera, Material, Scene, Texture, WebGLRenderer } from 'three'
+import { WebGPURenderer } from 'three/webgpu'
 import {
   connectCapture,
   createCapture,
@@ -39,6 +40,7 @@ import {
   type CaptureTransitionRequest,
 } from './captureTransition'
 import { useLatest } from './useLatest'
+import { isDevelopmentRuntime } from '../lib/developmentRuntime'
 
 /** One capture request may wait this long for its frame and, outgoing, its cover draw. */
 export const CAPTURE_REQUEST_LIMIT_MS = 1000
@@ -319,13 +321,20 @@ function createRunner<Options>(
   return { connect, frame, cover, cancel }
 }
 
+function unsupportedRendererMessage(renderer: string): string {
+  return `[munari] useCaptureTransitionEffect needs WebGPURenderer, which SurfaceCanvas creates. ` +
+    `This canvas renders with ${renderer}, whose draw counters the transition can't read, so every ` +
+    `transition will wait ${CAPTURE_REQUEST_LIMIT_MS / 1000} s and then apply its update with no effect. ` +
+    'Call the hook inside a SurfaceCanvas.'
+}
+
 /**
  * Draws a capture transition. Provisional: its shape may change in any
  * release. Call it in the effect component inside a `SurfaceCanvas`, and
  * spread `cover` on the mesh that draws every run. The cover-draw check reads
  * `WebGPURenderer`'s draw counters, which a plain `WebGLRenderer` counts
  * differently, so under another canvas every run times out and applies its
- * update with no effect.
+ * update with no effect. Development builds warn once per hook when that happens.
  *
  * Pass the same `transition` handle on every render. The hook binds the first
  * handle it receives and ignores later ones, so create it once, in a component
@@ -339,8 +348,12 @@ export function useCaptureTransitionEffect<Options>(
   const gl = useThree(state => state.gl)
   const effectRef = useLatest(effect)
   const [runner] = useState(() => createRunner(transition, effectRef, invalidate))
+  const warnedRenderer = useRef(false)
   useLayoutEffect(() => {
     gl.domElement.dataset.apiCaptureConsumer = ''
+    if (gl instanceof WebGPURenderer || warnedRenderer.current || !isDevelopmentRuntime()) return
+    warnedRenderer.current = true
+    console.warn(unsupportedRendererMessage(gl.isWebGLRenderer ? 'WebGLRenderer' : 'another renderer'))
   }, [gl])
   useLayoutEffect(() => runner.connect(), [runner])
   useFrame(() => runner.frame(gl))
