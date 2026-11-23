@@ -18,7 +18,7 @@
 import type { FisheyeProbeApi } from '../scenes/fisheye/Fisheye'
 import type { SliderProbeApi } from '../scenes/slider/Slider'
 import type { KnobsResizeProbeApi } from '../scenes/knobs/Knobs'
-import type { GenieFilmProbeEvent } from '../scenes/genie/Genie'
+import type { GenieFilmProbeEvent } from '../scenes/genie/genieFilmProbe'
 import type { LogoProbeApi } from '../scenes/logo/Logo'
 import type { MarbleBackgroundProbe } from '../scenes/marble-hand/marbleHandBackground'
 

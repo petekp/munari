@@ -794,13 +794,13 @@ every omitted paint layer.
 
 ## genie-film-reorder
 
-Checks that Genie replaces its old live normalized film rectangle with
-the keyed anchor from the successful outer DOM paint.
-`npm run gate:genie-film-reorder`. A probe-only airborne source
-exchanges the titlebar and film order without changing the outer sheet
-size. The gate requires a newer accepted paint and moved film UVs,
-then proves the native window stays visible until the required film
-frame earns a qualifying presentation receipt.
+Checks that Genie replaces its old film rectangle with the keyed anchor
+from a newer outer DOM paint. `npm run gate:genie-film-reorder`. A
+probe-only edit swaps the titlebar and film in the page's window, keeping
+the sheet size, and calls `useSurfaceRefresh()`. The gate requires a
+newer accepted paint and moved film UVs, then proves the native window
+stays visible until the required film frame earns a qualifying
+presentation receipt.
 
 ## shader-compile
 

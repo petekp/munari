@@ -51,6 +51,7 @@ import {
   useFreezeSurface,
   useSurfaceDriver,
   useSurfacePaintedSize,
+  useSurfaceRefresh,
   useSurfaceSourceRoot,
   useSurfaceTexture,
   useSurfaceNodes,
@@ -67,6 +68,7 @@ import {
   type PresentationRequirement,
   type SurfaceManualPresenter,
 } from '@petepetrash/munari/advanced'
+import { filmPageSheet, probeFilm, REORDER_PROBE } from './genieFilmProbe'
 import {
   GENIE_DEFAULTS,
   SETTLE_DEFAULTS,
@@ -411,7 +413,12 @@ function WindowBody({
   const study: StudyId | null =
     scheda.id === 'quadrato' || scheda.id === 'cerchio' ? scheda.id : null
   return (
-    <div className="gen-sheet" data-win={scheda.id} data-front={front ? 'true' : undefined}>
+    <div
+      ref={REORDER_PROBE && scheda.id === FILM_WIN ? filmPageSheet : undefined}
+      className="gen-sheet"
+      data-win={scheda.id}
+      data-front={front ? 'true' : undefined}
+    >
       <div className="gen-window">
         <div
           className="gen-titlebar"
@@ -541,6 +548,7 @@ function FilmComposite({
   const paintedSize = useSurfacePaintedSize()
   const rects = useSurfaceAnchorRects(FILM_ANCHORS)
   const uv = rects?.film ?? null
+  const refreshCapture = useSurfaceRefresh()
 
   // React Doctor's no-pass-data-to-parent warning is intentional. The
   // anchor transaction commits in the Surface presenter tree, while the
@@ -556,10 +564,7 @@ function FilmComposite({
     // film inside a sheet that keeps its box, so nothing but a freshly
     // collected set can say where the film went.
     const sheet = captureRoot?.querySelector<HTMLElement>('.gen-sheet') ?? null
-    const reordering =
-      new URLSearchParams(window.location.search).get('probe') === 'genie-film-reorder' &&
-      sheet !== null &&
-      sheet.dataset.anchorReorder !== 'true'
+    const reordering = REORDER_PROBE && sheet !== null && sheet.dataset.anchorReorder !== 'true'
     // Withheld while the reorder is pending: this set is true of pixels the
     // probe is about to move, and drawing on it would put the film where
     // the content no longer is.
@@ -572,8 +577,19 @@ function FilmComposite({
       paintedSize: paintedSize(),
       anchor: uv,
     })
-    if (reordering && sheet) sheet.dataset.anchorReorder = 'true'
-  }, [uv, onAnchor, captureRoot, paintName, token, paintedSize])
+    const pageSheet = filmPageSheet.current
+    if (reordering && pageSheet) {
+      pageSheet.dataset.anchorReorder = 'true'
+      // A scripted same-size reorder sends none of the signals a source
+      // that is not live follows, and this window's source is not live.
+      // So the probe asks for a fresh copy and capture, as an app must.
+      // Without the ask, the gate passed only when the source's settle
+      // re-cut happened to request a paint after the move. In a Linux
+      // container on SwiftShader the re-cut came 238 ms before the move,
+      // and the move was never captured (2026-11-22, Chrome 158).
+      refreshCapture()
+    }
+  }, [uv, onAnchor, captureRoot, paintName, token, paintedSize, refreshCapture])
 
   if (!film) return null
   return (
@@ -695,41 +711,6 @@ function frameCovers(receipt: FrameDrawReceipt, required: FrameId): boolean {
     receipt.frame.sourceId === required.sourceId &&
     receipt.frame.generation >= required.generation
   )
-}
-
-export type GenieFilmProbeEvent =
-  | {
-      type: 'require'
-      token: number
-      direction: Dir
-      frame: FrameId
-      presentationRevision: number
-      source: FrameSource
-      canvas: HTMLCanvasElement | null
-      video: HTMLVideoElement | null
-    }
-  | { type: 'receipt'; token: number; receipt: FrameDrawReceipt }
-  | {
-      type: 'outer-anchor'
-      token: number
-      stage: 'before-reorder' | 'accepted'
-      /** The outer source's paint count when this set was committed. */
-      generation: number
-      paintedSize: readonly [number, number]
-      anchor: SourceUvRect
-    }
-  | { type: 'accept'; token: number; receipt: FrameDrawReceipt }
-  | { type: 'present'; token: number; receipt: PresentationReceipt }
-  | { type: 'show'; token: number; frame: FrameId }
-  | { type: 'land'; token: number; wall: 0 | 1; frame?: FrameId }
-  | { type: 'reveal'; token: number; frame: FrameId }
-  | { type: 'release'; token: number; wall: 0 | 1 }
-  | { type: 'revoke'; token: number; reason: 'renderer-lost' }
-
-/** Hand one step of the film's handoff to whoever is watching. Nothing in
- *  the scene reads this; the hook is installed by a probe or by hand. */
-function probeFilm(event: GenieFilmProbeEvent): void {
-  window.__genieFilmProbe?.(event)
 }
 
 interface FlightProps {
