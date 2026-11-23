@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `supportsCapture()` and `useCaptureSupport()` are the new names of the
+  capability check. It asks whether an installed capture engine can run in
+  this browser, which the old names did not say.
+- Deprecated: `supportsSurfaces` and `useSurfaceSupport` remain as aliases
+  of the new names and will be removed in the next minor release.
 - Breaking: `SurfaceAnchorBox` no longer has `width` and `height`. They were
   the box's share of the source size, which is a local size only on a 1×1
   plane, and during a resize they used the current source size against an

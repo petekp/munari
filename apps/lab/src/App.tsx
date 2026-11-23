@@ -5,7 +5,7 @@ import { ContactShadows } from './lib/ContactShadows'
 import {
   FocusScene,
   SurfaceCanvas,
-  useSurfaceSupport,
+  useCaptureSupport,
 } from '@petepetrash/munari'
 import { captureEngine, paintStats } from '@petepetrash/munari/advanced'
 import { showChrome, showShell } from './bareMode'
@@ -259,7 +259,7 @@ function renderSitePage(scene: SceneId) {
 }
 
 export default function App() {
-  const unsupported = !useSurfaceSupport()
+  const unsupported = !useCaptureSupport()
   const [scene, setScene] = useState(readScene)
   const [, setSearch] = useState(() => window.location.search)
 

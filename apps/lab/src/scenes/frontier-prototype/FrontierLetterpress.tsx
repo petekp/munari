@@ -12,7 +12,7 @@ import {
   SurfaceCanvas,
   useCaptureFrame,
   useElementCapture,
-  useSurfaceSupport,
+  useCaptureSupport,
   type ElementCapture,
 } from '@petepetrash/munari'
 import { Button, Tag } from '../../components/system'
@@ -125,7 +125,7 @@ function LetterpressOverlayMesh({
 }
 
 export function FrontierLetterpress() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const reducedMotion = useReducedMotion()
   const canvasId = useId()
   const pressCapture = useElementCapture()

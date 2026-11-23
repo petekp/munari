@@ -267,7 +267,7 @@ export const PARKED_HOST_ATTRIBUTE = 'data-munari-parked'
  *
  * The default engine rests on an origin trial, so "the trial is not here"
  * is a first-class answer and deserves a first-class error. Consumers that
- * want to degrade rather than crash should ask `supportsSurfaces()` (or
+ * want to degrade rather than crash should ask `supportsCapture()` (or
  * `captureEngine().available()`) BEFORE mounting a Surface — by the time
  * this throws, the honest answer was already available and simply never
  * requested.

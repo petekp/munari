@@ -24,7 +24,7 @@ import {
   useSurfaceNodes,
   useSurfaceRefresh,
   useSurfaceStatus,
-  useSurfaceSupport,
+  useCaptureSupport,
   useSurfaceTextureOf,
   type SurfaceHandle,
 } from '@petepetrash/munari'
@@ -402,7 +402,7 @@ function SundialCardHtml({
 const REVISIONS = ['REV A · DRAFT', 'REV B · VERIFIED', 'REV C · APPROVED'] as const
 
 export function SignatureSundial() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const reducedMotion = useReducedMotion()
   const canvasId = useId()
   const cardSurface = useSurfaceHandle('sundial-card')

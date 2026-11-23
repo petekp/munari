@@ -1,12 +1,12 @@
 // Capture engine status — displays whether Surface capture runs through native
 // Chrome HTML-in-canvas or the automatic snapDOM fallback.
 
-import { useSurfaceSupport } from '@petepetrash/munari'
+import { useCaptureSupport } from '@petepetrash/munari'
 import { captureEngine } from '@petepetrash/munari/advanced'
 import { Status } from './system'
 
 export function CaptureEngineStatus() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const engine = captureEngine()
 
   if (!supported) {

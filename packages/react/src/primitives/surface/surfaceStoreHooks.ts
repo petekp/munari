@@ -5,7 +5,7 @@ import { useMemo, useSyncExternalStore } from 'react'
 import { type SurfaceHandle } from './surfaceHandle'
 import { type SurfaceStatus, type SurfaceViewDestination } from './surfaceStatus'
 import { useSurfaceDriver as useSurfaceDriverBinding, useSurfaceStoreOf } from './useSurfaceDriver'
-import { useSurfaceSupport } from './surfaceSupport'
+import { useCaptureSupport } from './surfaceSupport'
 
 function useRequiredSurfaceStore(hook: string, surface?: SurfaceHandle) {
   const store = useSurfaceStoreOf(surface)
@@ -20,7 +20,7 @@ export function useSurfaceRefresh(surface?: SurfaceHandle): () => void {
 
 export function useSurfaceStatus(surface?: SurfaceHandle): SurfaceStatus {
   const store = useRequiredSurfaceStore('useSurfaceStatus', surface)
-  const browserSupported = useSurfaceSupport()
+  const browserSupported = useCaptureSupport()
   const snapshot = useSyncExternalStore(store.subscribe, store.getStatus, store.getStatus)
   return useMemo(() => ({ ...snapshot, supported: browserSupported && snapshot.supported }), [snapshot, browserSupported])
 }

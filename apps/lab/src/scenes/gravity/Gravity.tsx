@@ -14,7 +14,7 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { DirectRenderPipeline, WebGPURenderer, type MeshBasicNodeMaterial } from 'three/webgpu'
-import { useSurfaceSupport } from '@petepetrash/munari'
+import { useCaptureSupport } from '@petepetrash/munari'
 import { createNativeWordMaterial } from './gravityNodes'
 import { GravitySurfaces } from './gravitySurfaces'
 import { useRendererReplacement } from '../../lib/rendererReplacement'
@@ -147,7 +147,7 @@ function useReducedMotion(): boolean {
 }
 
 export function GravityApp() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   return supported ? <GravitySurfaces words={WORDS} /> : <GravityNativeApp />
 }
 

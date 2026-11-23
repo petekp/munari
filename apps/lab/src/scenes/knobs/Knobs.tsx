@@ -44,7 +44,7 @@ import { PMREMGenerator, WebGPURenderer } from 'three/webgpu'
 import {
   SceneSurface,
   SurfaceCanvas,
-  useSurfaceSupport,
+  useCaptureSupport,
   type SourceUvRect,
   useSurfaceAnchorBox,
   useSurfaceAnchorRects,
@@ -2394,7 +2394,7 @@ function DegradedKnobs() {
 }
 
 export function KnobsApp() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const hostCleanup = useRef<(() => void) | null>(null)
   const kick = useRef<((dir: number) => void) | null>(null)
   const assets = useHardwareAssets()

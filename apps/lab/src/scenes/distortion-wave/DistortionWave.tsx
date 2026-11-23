@@ -3,7 +3,7 @@ import { useLayoutEffect, useState } from 'react'
 import {
   SurfaceCanvas,
   useCaptureTransition,
-  useSurfaceSupport,
+  useCaptureSupport,
 } from '@petepetrash/munari'
 import { WaveHighlight, WaveIcon } from './distortionWaveArtwork'
 import { announcePageReady } from '../../components/siteOpening'
@@ -29,7 +29,7 @@ function controlPalette(trigger: HTMLElement): WavePalette {
 
 export function DistortionWaveApp() {
   useLayoutEffect(announcePageReady, [])
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const transition = useCaptureTransition<WaveOptions>()
   const [light, setLight] = useState(false)
   const [duration, setDuration] = useState(1800)

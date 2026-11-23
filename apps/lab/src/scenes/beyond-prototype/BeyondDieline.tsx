@@ -26,7 +26,7 @@ import {
   useSurfaceNodes,
   useSurfaceRefresh,
   useSurfaceStatus,
-  useSurfaceSupport,
+  useCaptureSupport,
 } from '@petepetrash/munari'
 import { Button, Slider } from '../../components/system'
 import {
@@ -317,7 +317,7 @@ function DielineSheetHtml({
 }
 
 export function BeyondDieline() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const reducedMotion = useReducedMotion()
   const canvasId = useId()
   const titleInputId = useId()

@@ -198,7 +198,7 @@ scene declared before its first request is valid and stays quiet.
 ## Input and paint contracts
 
 - Ordinary handoff HTML stays native when capture is unavailable. Branch inside
-  scene-dependent actions with `supportsSurfaces()` so their native outcomes
+  scene-dependent actions with `supportsCapture()` so their native outcomes
   still finish. A SceneSurface needs its own native fallback when necessary.
 - Page-owned preparation leaves the live instance on the page and captures a copy.
   It borrows the instance through a native rig only when focus is inside the

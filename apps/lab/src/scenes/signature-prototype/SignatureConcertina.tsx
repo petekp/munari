@@ -25,7 +25,7 @@ import {
   useSurfaceNodes,
   useSurfaceRefresh,
   useSurfaceStatus,
-  useSurfaceSupport,
+  useCaptureSupport,
 } from '@petepetrash/munari'
 import { Button, Slider } from '../../components/system'
 import {
@@ -263,7 +263,7 @@ function ConcertinaBoardHtml({
 }
 
 export function SignatureConcertina() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const reducedMotion = useReducedMotion()
   const canvasId = useId()
 

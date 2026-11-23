@@ -30,7 +30,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceSupport, useSurfaceHandle, useSurfaceNodes } from '@petepetrash/munari'
+import { Surface, useCaptureSupport, useSurfaceHandle, useSurfaceNodes } from '@petepetrash/munari'
 import { buildCloud, grainSize, type CloudSpec } from './candidateCloud'
 import { createCloudMaterial } from './candidateNodes'
 import {
@@ -110,7 +110,7 @@ export function CandidateDissolve() {
   const [slot, setSlot] = useState<Slot>('left')
   const [flying, setFlying] = useState(false)
   const [edits, setEdits] = useState(0)
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const surface = useSurfaceHandle('dissolve')
   const transitionFrom = useRef<Slot>('left')
   const phase = usePhase()

@@ -19,7 +19,7 @@ it prepares, because a capture needs live DOM. Covering it is app code.
 
 ```tsx
 export function KnobsDemo() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   return (
     <Loading onLoaded={announceLoaded} late={{ afterMs: 4000, onLate: chooseNative }}>
       <FontsWait />
@@ -347,7 +347,7 @@ Surface's root in `<Loading independent>`.
 ### Ruled out, and renderer status
 
 An entry is derived from author intent, not from the rendered destination.
-During SSR hydration, `useSurfaceSupport` returns false, which makes the
+During SSR hydration, `useCaptureSupport` returns false, which makes the
 Surface render in the page (`Surface.tsx:200-216`). Author intent and the
 store's own latched capture support (`surfaceHandle.ts:391`) do not flip.
 
@@ -440,7 +440,7 @@ below checks whether this clamp is right.
 | Frame source | `shown` scene at the first presented pass of an uploaded frame. A source that never publishes waits on `source-frame` |
 | Native fallback: capture engine missing | Known at mount. Exclusive: `shown` page with the capture reason. Resident and capture: `unavailable` |
 | Native fallback: unsupported content | Exclusive: `shown` page with the reason; Resident: `unavailable`. Read live until the load, because a content change recomputes it (`Surface.tsx:467-498`) |
-| SSR hydration | Entries read author intent and latched support, so they do not flip. The app's own `useSurfaceSupport` branch flips in a re-render; whether that lands before the first check is unmeasured |
+| SSR hydration | Entries read author intent and latched support, so they do not flip. The app's own `useCaptureSupport` branch flips in a re-render; whether that lands before the first check is unmeasured |
 | html-in-canvas path | `engine: 'html-in-canvas'`; the conditions as written |
 | snapDOM path | `engine: 'snapdom'`. Live pacing near 250 ms delays the entry. A font fetch that fails embeds nothing (`snapdomFonts.ts:242-263`) while `document.fonts.status` reads `loaded`; the font check cannot see that |
 | `DegradedKnobs`, or no library entries | Loads after the first commit and the recheck, once app waits are done |

@@ -218,8 +218,7 @@ recipes.
 5. Should SurfaceCanvas get an `overlay` preset? Recommendation: no, after the
    pixel check.
 
-The capability check keeps its name, `useSurfaceSupport`, here. The React API
-improvement plan proposes `useCaptureSupport`. Neither depends on the other.
+The capability check, `useCaptureSupport`, is outside this proposal.
 
 ## Rollout
 

@@ -24,7 +24,7 @@ import {
   useSurfaceNodes,
   useSurfaceRefresh,
   useSurfaceStatus,
-  useSurfaceSupport,
+  useCaptureSupport,
 } from '@petepetrash/munari'
 import { Button } from '../../components/system'
 import {
@@ -162,7 +162,7 @@ function XrayScenePresenter({
 }
 
 export function BeyondXray() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const reducedMotion = useReducedMotion()
   const canvasId = useId()
 

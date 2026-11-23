@@ -2,7 +2,7 @@
 //
 // The hook's contract, which is not the function's.
 //
-// `supportsSurfaces` asks the INSTALLED CAPTURE ENGINE, not the trial probe
+// `supportsCapture` asks the INSTALLED CAPTURE ENGINE, not the trial probe
 // — the two disagree on any browser where a second engine is installed, and
 // the probe's own honesty is pinned in
 // `tests/conformance/paint/capabilityProbe.test.ts`. What is pinned HERE is
@@ -20,7 +20,7 @@ import { flushSync } from 'react-dom'
 import { hydrateRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { setCaptureEngine, type CaptureEngine } from '@munari/core'
-import { supportsSurfaces, useSurfaceSupport } from './surfaceSupport'
+import { supportsCapture, useCaptureSupport } from './surfaceSupport'
 
 const containers: HTMLElement[] = []
 const roots: Root[] = []
@@ -49,7 +49,7 @@ function hydrate() {
   containers.push(container)
   const seen: string[] = []
   const Probe = () => {
-    const answer = useSurfaceSupport() ? 'yes' : 'no'
+    const answer = useCaptureSupport() ? 'yes' : 'no'
     seen.push(answer)
     return createElement('p', null, answer)
   }
@@ -60,10 +60,10 @@ function hydrate() {
   return { seen, errors, text: () => container.textContent }
 }
 
-describe('supportsSurfaces', () => {
+describe('supportsCapture', () => {
   it('follows the installed engine, not the trial — a browser without the trial can still present', () => {
     // No trial stub: the default engine cannot run here.
-    expect(supportsSurfaces()).toBe(false)
+    expect(supportsCapture()).toBe(false)
     // An engine that needs nothing from the platform makes the same browser
     // capable, and this is the answer a Surface acts on — the three lab
     // scenes that read the raw probe instead would still refuse to cross.
@@ -78,15 +78,15 @@ describe('supportsSurfaces', () => {
       refusal: 'unreachable',
     }
     setCaptureEngine(anywhere)
-    expect(supportsSurfaces()).toBe(true)
+    expect(supportsCapture()).toBe(true)
 
     setCaptureEngine(null)
     stubTrial()
-    expect(supportsSurfaces()).toBe(true)
+    expect(supportsCapture()).toBe(true)
   })
 })
 
-describe('useSurfaceSupport', () => {
+describe('useCaptureSupport', () => {
   it('answers no on the first pass in a browser that can present, then yes', () => {
     stubTrial()
     const { seen, errors, text } = hydrate()

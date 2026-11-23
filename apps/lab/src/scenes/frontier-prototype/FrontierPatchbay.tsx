@@ -10,7 +10,7 @@ import {
   useSurfaceAnchorRects,
   useSurfacePaintedSize,
   useSurfaceStatus,
-  useSurfaceSupport,
+  useCaptureSupport,
 } from '@petepetrash/munari'
 import { Button, Tag } from '../../components/system'
 import {
@@ -443,7 +443,7 @@ function PatchbaySceneRig({
 }
 
 export function FrontierPatchbay() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const reducedMotion = useReducedMotion()
   const canvasId = useId()
 

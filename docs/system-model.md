@@ -99,7 +99,7 @@ scene-rendered replica. See their contracts in [the lab guide](../apps/lab/READM
 
 | Question | Current read or signal | What it does not prove |
 |---|---|---|
-| Can this browser capture DOM? | `useSurfaceSupport()`, `supportsSurfaces()` | Permission to act, successful capture, or correct appearance |
+| Can this browser capture DOM? | `useCaptureSupport()`, `supportsCapture()` | Permission to act, successful capture, or correct appearance |
 | What did the app request? | `useSurfaceStatus().requestedInScene` / `inScene` | Current renderer hold |
 | Which declared presentations hold the content? | `useSurfaceStatus().presentation`, `onPresentationChange` | Material quality or correct occlusion |
 | Have required presenters made eligible first draws? | `sceneReady`, `onReady` | That a color-writing frame reached the presentation boundary |

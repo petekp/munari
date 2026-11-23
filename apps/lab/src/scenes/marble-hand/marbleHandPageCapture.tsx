@@ -15,7 +15,7 @@ import {
   useCaptureHandle,
   useCaptureFrame,
   useCaptureStatus,
-  useSurfaceSupport,
+  useCaptureSupport,
   type CaptureHandle,
   type SurfaceSize,
 } from '@petepetrash/munari'
@@ -58,7 +58,7 @@ export function MarbleHandPageCapture({ page, target }: {
   page: RefObject<HTMLElement | null>
   target: MarblePageCaptureState
 }) {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const capture = useCaptureHandle()
   const [wrapper] = useState(captureWrapper)
   const [size, setSize] = useState<SurfaceSize | null>(null)

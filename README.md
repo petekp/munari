@@ -29,8 +29,8 @@ project is named for the Italian designer and artist Bruno Munari.
   the two.
 
 Without a capture engine, handoff content stays native and usable, but it never
-enters the scene. `useSurfaceSupport()` reports capability after hydration;
-`supportsSurfaces()` is the imperative check for an event handler.
+enters the scene. `useCaptureSupport()` reports capability after hydration;
+`supportsCapture()` is the imperative check for an event handler.
 
 ## Install
 
@@ -66,7 +66,7 @@ uncontrolled inputs survive the round trip.
 
 ```tsx
 import { useId, useState } from 'react'
-import { Surface, SurfaceCanvas, useSurfaceSupport } from '@petepetrash/munari'
+import { Surface, SurfaceCanvas, useCaptureSupport } from '@petepetrash/munari'
 import '@petepetrash/munari/style.css'
 
 function Counter() {
@@ -80,7 +80,7 @@ function Counter() {
 
 export function Example() {
   const canvasId = useId()
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const [inScene, setInScene] = useState(false)
   return (
     <main style={{ position: 'relative', minHeight: 400, padding: 32 }}>
@@ -107,7 +107,7 @@ flight, deformation, lighting, and shader effects come from your scene code.
 ### If "Show in scene" stays disabled
 
 No capture engine can run in this browser. The browser does not provide
-HTML-in-canvas, and snapDOM has not been enabled. `useSurfaceSupport()` is
+HTML-in-canvas, and snapDOM has not been enabled. `useCaptureSupport()` is
 `false`, so the example renders no canvas and the content stays on the page.
 `useSurfaceStatus().reason` says so, and a Surface asked to enter the scene logs
 the same sentence once in development. To enable capture:
@@ -131,7 +131,7 @@ while their HTML stays in different parts of the page.
 - [Observe and animate a Surface](https://github.com/petekp/munari/blob/main/docs/observing-a-surface.md) covers status, progress, drivers and `useSurfaceBeforeRender`.
 - [Page layouts and canvases](https://github.com/petekp/munari/blob/main/docs/page-layouts-and-canvases.md) covers `usePageTarget()`, multiple canvases and pointer routing.
 - [When enhanced rendering is unavailable](https://github.com/petekp/munari/blob/main/docs/native-fallback.md) covers the native fallback.
-- [Next.js and server rendering](https://github.com/petekp/munari/blob/main/docs/nextjs.md) covers client entries and `useSurfaceSupport()` on the server.
+- [Next.js and server rendering](https://github.com/petekp/munari/blob/main/docs/nextjs.md) covers client entries and `useCaptureSupport()` on the server.
 - [Testing and troubleshooting](https://github.com/petekp/munari/blob/main/docs/testing-and-troubleshooting.md) covers the inert copy in the DOM and known console output.
 - [Authoring rules](https://github.com/petekp/munari/blob/v0.4.1/docs/authoring.md) describe the browser capture constraints.
 - [Demo source map](https://github.com/petekp/munari/blob/v0.4.1/ALL-DEMO-API.md) links the implementations across Flight, Controls, Knobs, Selection, Gallery and the other scenes.

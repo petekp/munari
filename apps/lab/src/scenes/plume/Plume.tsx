@@ -29,7 +29,7 @@ import {
   useCaptureFrame,
   type CaptureHandle,
   SurfaceCanvas,
-  useSurfaceSupport,
+  useCaptureSupport,
   type SourceUvRect,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
@@ -344,7 +344,7 @@ function PlumeParticles({ capture, box, ids, onAnchors, ...material }: Omit<Plum
 }
 
 export function PlumeApp() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const reduced = useReducedMotion()
   const inkCapture = useCaptureHandle()
   const sheet = useRef<HTMLDivElement>(null)

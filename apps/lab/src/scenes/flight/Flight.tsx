@@ -67,7 +67,7 @@ import {
   useSurfaceSourceRoot,
   useSurfaceNodes,
   useSurfaceTextureOf,
-  useSurfaceSupport,
+  useCaptureSupport,
 } from '@petepetrash/munari'
 import {
   cameraDistance,
@@ -1461,7 +1461,7 @@ export function FlightApp() {
     return locations
   }, [board])
   // No trial, no flight — see `carryPlainly`.
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const physicalMotion = supported && !reduced
   const [flyingId, setFlyingId] = useState<string | null>(null)
   // The card's identity, declared here because the board is what asks for a

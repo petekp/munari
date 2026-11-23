@@ -55,7 +55,7 @@ import {
   useSurfaceSourceRoot,
   useSurfaceTexture,
   useSurfaceNodes,
-  useSurfaceSupport,
+  useCaptureSupport,
 } from '@petepetrash/munari'
 import {
   FrameSurface,
@@ -1577,7 +1577,7 @@ function GestureRig({ api }: { api: React.RefObject<GestureApi> }) {
 
 export function GenieApp() {
   // No trial, no flight — see `fold`.
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const [filmController] = useState<GenieFilmController>(() =>
     createGenieFilmController({
       onError: (error) => console.warn('[munari] Genie film frame failed:', error),

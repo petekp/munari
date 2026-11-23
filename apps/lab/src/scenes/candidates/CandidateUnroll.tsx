@@ -25,7 +25,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { uniform } from 'three/tsl'
 import type { UniformNode } from 'three/webgpu'
-import { SceneSurface, useSurfaceSupport, useSurfaceHandle, useSurfaceNodes, useSurfaceStatus } from '@petepetrash/munari'
+import { SceneSurface, useCaptureSupport, useSurfaceHandle, useSurfaceNodes, useSurfaceStatus } from '@petepetrash/munari'
 import { curlSample, unrolledLength } from './candidateCurlLaw'
 import { createSheetMaterial } from './candidateNodes'
 import { plainAttribute } from '../../lib/geometry'
@@ -123,7 +123,7 @@ function RollSheet({
 }
 
 export function CandidateUnroll() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const surface = useSurfaceHandle('unroll-menu')
   const state = useSurfaceStatus(surface)
   const [presenting, setPresenting] = useState(false)

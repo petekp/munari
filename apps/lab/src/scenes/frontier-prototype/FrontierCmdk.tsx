@@ -29,7 +29,7 @@ import {
   useSurfacePaintedSize,
   useSurfaceRefresh,
   useSurfaceStatus,
-  useSurfaceSupport,
+  useCaptureSupport,
   type CaptureHandle,
   type ElementCapture,
 } from '@petepetrash/munari'
@@ -246,7 +246,7 @@ function CmdkScenePresenter({
 }
 
 export function FrontierCmdk() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const reducedMotion = useReducedMotion()
   const canvasId = useId()
   const inputId = useId()

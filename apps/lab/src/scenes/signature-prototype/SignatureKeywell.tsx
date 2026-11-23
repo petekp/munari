@@ -25,7 +25,7 @@ import {
   useSurfaceNodes,
   useSurfaceRefresh,
   useSurfaceStatus,
-  useSurfaceSupport,
+  useCaptureSupport,
 } from '@petepetrash/munari'
 import { Button } from '../../components/system'
 import {
@@ -259,7 +259,7 @@ function KeywellDeckHtml({
 }
 
 export function SignatureKeywell() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const reducedMotion = useReducedMotion()
   const canvasId = useId()
   const macroInputId = useId()

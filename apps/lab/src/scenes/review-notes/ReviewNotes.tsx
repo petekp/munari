@@ -15,7 +15,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { createSurface, Surface, SurfaceCanvas, useSurfaceStatus, useSurfaceSupport, type SurfaceHandle } from '@petepetrash/munari'
+import { createSurface, Surface, SurfaceCanvas, useSurfaceStatus, useCaptureSupport, type SurfaceHandle } from '@petepetrash/munari'
 import { readSurfaceFrameState } from '@petepetrash/munari/advanced'
 import { DemoHost } from '../../components/DemoHost'
 import { BodyFinder, Teapot, StudioLights } from './ReviewNotesTeapot'
@@ -159,7 +159,7 @@ function NoteCard({ spec, state, onText, onResolved, onGrab }: {
 
 function ReviewNotesPage() {
   const canvasId = useId()
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const board = useMemo<Board>(() => {
     const b = createBoard()
     for (const spec of NOTES) b.notes.set(spec.id, noteMotion(spec.pinAt, spec.delay))

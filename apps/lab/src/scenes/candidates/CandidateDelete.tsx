@@ -34,7 +34,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Surface, useSurfaceChrome, useSurfaceSupport, useSurfaceHandle, useSurfaceNodes } from '@petepetrash/munari'
+import { Surface, useSurfaceChrome, useCaptureSupport, useSurfaceHandle, useSurfaceNodes } from '@petepetrash/munari'
 import { plainAttribute } from '../../lib/geometry'
 import { buildShards } from './candidateShards'
 import { curlSample, unrolledLength } from './candidateCurlLaw'
@@ -225,7 +225,7 @@ function DeleteRow({
   variant: Variant
   onGone: (id: string) => void
 }) {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const surface = useSurfaceHandle(`delete-${id}`)
   const holder = useRef<HTMLLIElement>(null)
   const phase = usePhase()

@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { supportsSurfaces } from '@petepetrash/munari'
+import { supportsCapture } from '@petepetrash/munari'
 // The library's own stylesheet first — it is all mechanism, and shadcn.css
 // below is this app's answer to what it asks for.
 import '@petepetrash/munari/style.css'
@@ -16,7 +16,7 @@ import { observeSurfaceSources } from './lib/surfaceFrames'
 // dynamically imported only when native HTML-in-canvas is absent, so Chrome
 // 157+ pays zero bundle cost while every unflagged browser, webview, Safari,
 // and Firefox session falls back to snapDOM automatically regardless of URL.
-if (CAPTURE_MODE === 'snapdom' || (CAPTURE_MODE === 'auto' && !supportsSurfaces())) {
+if (CAPTURE_MODE === 'snapdom' || (CAPTURE_MODE === 'auto' && !supportsCapture())) {
   const { enableSnapdomCapture } = await import('@petepetrash/munari/snapdom')
   enableSnapdomCapture({
     always: CAPTURE_MODE === 'snapdom',

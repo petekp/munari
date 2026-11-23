@@ -45,7 +45,7 @@ not available APIs.
 | `SurfaceHandle` | Add stable `refresh(part?: SurfacePartId): void`. | Surface and SceneSurface sources need the same discrete update choice while retaining their presentation identity. |
 | `SurfaceAnchorBox` | Remove `width` and `height`. Keep `cssWidth`, `cssHeight`, and `uv`. | UV spans already describe normalized size. A source fraction cannot promise a size on arbitrary deformed geometry. |
 | `CaptureFrame.anchors` | Allow `null` when snapshot correspondence cannot be established. | Unknown anchor geometry differs from a coherent snapshot containing no named anchors. |
-| Global capability functions | Replace `supportsSurfaces` and `useSurfaceSupport` with `supportsCapture` and `useCaptureSupport`. | The names should describe the capture capability they measure. |
+| Global capability functions | Built 2026-11-23: `supportsCapture` and `useCaptureSupport`, old names as deprecated aliases. | The names should describe the capture capability they measure. |
 | `SurfaceStatus` | Add one discriminated `renderer` snapshot. | A known renderer failure must be distinguishable from normal startup and preparation. |
 | `SurfaceCanvas` | Add `onRendererStatusChange(status)`. | The host must report startup failure even when its scene children never mount. |
 

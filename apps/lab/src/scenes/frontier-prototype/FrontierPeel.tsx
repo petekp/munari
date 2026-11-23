@@ -23,7 +23,7 @@ import {
   deformSurfaceGeometry,
   useSurfaceNodes,
   useSurfaceStatus,
-  useSurfaceSupport,
+  useCaptureSupport,
 } from '@petepetrash/munari'
 import { Button, Slider, Tag } from '../../components/system'
 import { evaluatePeelPoint, peelCreaseLine } from './frontierPeelLaw'
@@ -209,7 +209,7 @@ function PeelSceneRig({
 }
 
 export function FrontierPeel() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const reducedMotion = useReducedMotion()
   const canvasId = useId()
   const titleFieldId = useId()

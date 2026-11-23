@@ -327,7 +327,7 @@ export const snapdomCaptureEngine: CaptureEngine = {
     createRasterizedSource(rasterize, 'snapdom', content, width, height, options),
   refusal:
     'munari: snapDOM capture needs a browser document. Server-render the page ' +
-    'presentation and let useSurfaceSupport() report capability after hydration.',
+    'presentation and let useCaptureSupport() report capability after hydration.',
 }
 
 /**

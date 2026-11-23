@@ -14,7 +14,7 @@ import {
 import {
   Surface,
   type SurfacePresentation,
-  useSurfaceSupport,
+  useCaptureSupport,
   useSurfaceHandle,
 } from '@petepetrash/munari'
 import { useCarriedMotion } from '@petepetrash/munari/advanced'
@@ -133,7 +133,7 @@ export function LogoApp() {
   // swap frame pixel-identical even mid-breath. The handle holds the phases,
   // the evidence gate, and the reversal rule; this page reads back what it
   // needs to dress the DOM.
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const [view, setView] = useState<SurfacePresentation>('page')
   const [presented, setPresented] = useState<SurfacePresentation>('page')
   const [settledOn, setSettledOn] = useState<SurfacePresentation>('page')

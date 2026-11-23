@@ -2,7 +2,7 @@
 // The lamp lights the page and the card, so the card casts its shadow in both
 // presentations; the form keeps its React state through every handoff.
 import { useMemo, useRef } from 'react'
-import { useSurfaceSupport } from '@petepetrash/munari'
+import { useCaptureSupport } from '@petepetrash/munari'
 import { LightLamp } from '../light/LightLamp'
 import { useLightOpening } from '../light/lightOpening'
 import { useLightReducedMotion } from '../light/lightMotion'
@@ -18,7 +18,7 @@ export function PostcardApp() {
 }
 
 function PostcardPage() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const reduced = useLightReducedMotion()
   const viewportRef = useDemoViewport()
   const pageRef = useRef<HTMLDivElement>(null)

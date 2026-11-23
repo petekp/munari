@@ -2,7 +2,7 @@
 import type { ComponentProps } from 'react'
 import {
   Surface, SceneSurface, SurfaceCanvas, createSurface, useSurfaceHandle,
-  useSurfaceStatus, useSurfaceRefresh, useSurfaceDriver, useSurfaceMotion, useFreezeSurface, useSurfaceProgress, useSurfaceSupport, supportsSurfaces,
+  useSurfaceStatus, useSurfaceRefresh, useSurfaceDriver, useSurfaceMotion, useFreezeSurface, useSurfaceProgress, useCaptureSupport, supportsCapture,
   useElementCapture, CaptureContent, useCaptureHandle, usePageTarget, useSurfaceBeforeRender,
   type SurfaceHandle, type SurfacePresentation, type SurfaceDestination, type SurfaceProps,
   type SurfaceStatus, type CaptureContentProps, type SurfaceLitMaterialProps, type SurfaceChromeState,
@@ -66,7 +66,7 @@ function Observations() {
   useSurfaceDriver(null,own)
   const motion=useSurfaceMotion(({position,target,scenePresented,dtMs})=>scenePresented?Math.min(target,position+dtMs/1000):0,own)
   const position:number=motion.get()
-  void useSurfaceSupport();void supportsSurfaces();void [hold,raw,eased,position]
+  void useCaptureSupport();void supportsCapture();void [hold,raw,eased,position]
   // @ts-expect-error Canvas is not a public destination.
   const oldDestination:SurfaceDestination='canvas'
   void oldDestination

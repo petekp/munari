@@ -48,7 +48,7 @@ export function warnCaptureUnavailableOnce(): void {
  * For events, effects and diagnostics. Branching a RENDER on this is a
  * hydration mismatch on any server-rendered page; use the hook.
  */
-export function supportsSurfaces(): boolean {
+export function supportsCapture(): boolean {
   return captureAvailable()
 }
 
@@ -68,6 +68,12 @@ const unsupported = () => false
  * after a Surface mounts does not reach it (`setCaptureEngine`) — so this
  * never updates more than once.
  */
-export function useSurfaceSupport(): boolean {
-  return useSyncExternalStore(subscribe, supportsSurfaces, unsupported)
+export function useCaptureSupport(): boolean {
+  return useSyncExternalStore(subscribe, supportsCapture, unsupported)
 }
+
+/** @deprecated Renamed `supportsCapture`. This alias is removed in the next minor release. */
+export const supportsSurfaces = supportsCapture
+
+/** @deprecated Renamed `useCaptureSupport`. This alias is removed in the next minor release. */
+export const useSurfaceSupport = useCaptureSupport

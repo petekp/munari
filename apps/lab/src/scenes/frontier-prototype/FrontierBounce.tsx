@@ -18,7 +18,7 @@ import {
   type PointerEvent,
 } from 'react'
 import { useThree } from '@react-three/fiber'
-import { Surface, SurfaceCanvas, useElementCapture, useSurfaceSupport } from '@petepetrash/munari'
+import { Surface, SurfaceCanvas, useElementCapture, useCaptureSupport } from '@petepetrash/munari'
 import {
   BounceEmitterSpecimen,
   BounceFilmstrip,
@@ -86,7 +86,7 @@ function BounceCanvasWakeBridge({
 }
 
 export function FrontierBounce() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const reducedMotion = useReducedMotion()
   const canvasId = useId()
   const emitterCapture = useElementCapture({ resolution: 0.25 })

@@ -10,7 +10,7 @@ export const INSTALL_SNIPPET =
 
 export const HANDOFF_SNIPPET = `function LitCardHandoff() {
   const canvasId = useId()
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const [inScene, setInScene] = useState(false)
 
   return (

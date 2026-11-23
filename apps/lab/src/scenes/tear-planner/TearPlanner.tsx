@@ -19,7 +19,7 @@ import {
   useSurfaceNodes,
   useSurfaceRefresh,
   useSurfaceStatus,
-  useSurfaceSupport,
+  useCaptureSupport,
   type SurfaceHandle,
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
@@ -217,7 +217,7 @@ function updateTask(days: Days, id: string, change: (task: Task) => Task) {
 }
 
 export function TearPlannerApp() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const canvasId = useId()
   const handles = [useSurfaceHandle('tear-sheet-a'), useSurfaceHandle('tear-sheet-b')] as const
   const slotRef = useRef<HTMLDivElement>(null)

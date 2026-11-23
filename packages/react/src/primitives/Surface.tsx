@@ -16,7 +16,7 @@ import { surfaceViewPresentation, type SurfaceViewPresentation, type SurfaceView
 import { type SurfaceSize, type SurfaceSourceRuntime, type SurfaceResolution, type SurfacePartPublication } from './surface/surfaceSourceRuntime'
 import { useLatest } from './useLatest'
 import { usePageTargetAttachment, type PageTarget } from './pageTarget'
-import { useSurfaceSupport } from './surface/surfaceSupport'
+import { useCaptureSupport } from './surface/surfaceSupport'
 import { surfaceChromeElement } from './surface/surfaceChromeElement'
 import { validateSurfaceSize } from './surface/surfaceSize'
 import { watchSurfacePlacement } from './surface/surfacePlacement'
@@ -82,7 +82,7 @@ const SurfaceContentContext = createContext<{
 function SurfaceRoot({ inScene, surface, canvasId, name, children, ...controls }: SurfaceRootProps) {
   const own = useSurfaceHandle(name)
   const handle = surface ?? own
-  const browserSupported = useSurfaceSupport()
+  const browserSupported = useCaptureSupport()
   const [reasons, setReasons] = useState<ReadonlyMap<SurfacePartId, string | null>>(() => new Map())
   const reportSupport = useCallback((part: SurfacePartId, reason: string | null | undefined) => {
     setReasons(current => {

@@ -92,12 +92,14 @@ export { SURFACE_FOCUS_ATTRIBUTE } from './primitives/surface/surfaceFocus'
 // report presentation, readiness, and motion rather than these pixel receipts.
 export type { DomPaintReceipt, PresentationReceipt } from '@munari/core'
 // The capability check every consumer runs before deciding which tree to
-// render. `useSurfaceSupport` is the one to reach for: it is
+// render. `useCaptureSupport` is the one to reach for: it is
 // hydration-safe, and the branch it answers is decided above the Surface,
 // where a handle's state is not yet the obvious place to look.
 // `detectHtmlInCanvas` remains for diagnostics — it reports both trial
 // entry points, and a Surface only needs `drawElementImage`.
 export {
+  supportsCapture,
+  useCaptureSupport,
   supportsSurfaces,
   useSurfaceSupport,
 } from './primitives/surface/surfaceSupport'

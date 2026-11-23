@@ -22,7 +22,7 @@ import {
   useSurfaceHandle,
   useSurfaceNodes,
   useSurfaceRefresh,
-  useSurfaceSupport,
+  useCaptureSupport,
 } from '@petepetrash/munari'
 import { CaptureEngineStatus } from '../../components/CaptureEngineStatus'
 import { cutDepthAt, projectOntoSheet, stationIndexAt, type CutStation } from './cutawayDepthLaw'
@@ -182,7 +182,7 @@ function SheetRefresh({ depthTenths }: { readonly depthTenths: number }) {
 }
 
 export function CutawayPrototypeApp({ onReady }: { readonly onReady?: () => void }) {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const canvasId = useId()
   const sheet = useSurfaceHandle('cutaway-sheet')
   const uniforms = useMemo(createCutawayUniforms, [])

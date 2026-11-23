@@ -1,6 +1,6 @@
 // Gallery crossing — the selected DOM edit gates automatic travel.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSurfaceSupport, useSurfaceTextureOf, type SurfaceHandle } from '@petepetrash/munari'
+import { useCaptureSupport, useSurfaceTextureOf, type SurfaceHandle } from '@petepetrash/munari'
 import type { WebGPURenderer } from 'three/webgpu'
 import type { Texture } from 'three'
 import { readSurfaceFrame, uploadSurfaceFrame, waitForSurfaceFrame, type LabSurfaceFrame } from '../../lib/surfaceFrames'
@@ -14,7 +14,7 @@ type GalleryEdit = { from: Slot; to: Slot; revision: number }
 const READ_DEADLINE_MS = 2500
 
 export function useGalleryCrossing(surface: SurfaceHandle, itemCount: number, renderer: React.RefObject<WebGPURenderer | null>) {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const left = useSurfaceTextureOf(surface, 'item-0')
   const right = useSurfaceTextureOf(surface, 'item-1')
   const revision = useRef(0)

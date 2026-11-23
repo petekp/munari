@@ -51,7 +51,7 @@ export interface HtmlInCanvasSupport {
  *
  * This is the RAW platform probe and reports both trial entry points. The
  * question a consumer usually means — "can a Surface capture here?" — is
- * `supportsSurfaces()`, which asks the installed engine and so answers
+ * `supportsCapture()`, which asks the installed engine and so answers
  * `true` on a browser with no trial but a capture engine installed.
  */
 export function detectHtmlInCanvas(): HtmlInCanvasSupport {
@@ -308,6 +308,6 @@ export const htmlInCanvasEngine: CaptureEngine = {
     'API this library is built on. Use Chrome 157+ (or relaunch older Chrome with ' +
     '--enable-features=CanvasDrawElement after quitting it fully). Or install ' +
     '@zumer/snapdom and call enableSnapdomCapture() from @petepetrash/munari/snapdom, ' +
-    'which runs in any current browser. Call supportsSurfaces() before mounting a ' +
+    'which runs in any current browser. Call supportsCapture() before mounting a ' +
     'Surface to branch on this instead of throwing.',
 }

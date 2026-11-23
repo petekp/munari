@@ -17,7 +17,7 @@ All full-app measurements run Vite 8 / Rolldown in production mode against the s
 | Consumer bundle | Minified | Gzip | Brotli | Net gzip | What enters the graph |
 |---|---:|---:|---:|---:|---|
 | React 19 + `react-dom/client` baseline | `184.8 kB` | `57.3 kB` | `49.5 kB` | `0.0 kB` | React runtime only |
-| `useSurfaceSupport()` gate only | `193.4 kB` | `60.8 kB` | `52.6 kB` | `+3.5 kB` | `SurfaceCanvas-*.js` + `src-*.js` (Three & R3F tree-shake out) |
+| `useCaptureSupport()` gate only | `193.4 kB` | `60.8 kB` | `52.6 kB` | `+3.5 kB` | `SurfaceCanvas-*.js` + `src-*.js` (Three & R3F tree-shake out) |
 | `encodedOutput` (6-line TSL helper) only | `765.3 kB` | `226.3 kB` | `180.4 kB` | `+169.0 kB` | Evaluates `dist/index.js` -> drags `Surface`, `three/webgpu`, `three/tsl` |
 | `useElementCapture` + `useCaptureFrame` only | `929.1 kB` | `275.9 kB` | `214.5 kB` | `+218.6 kB` | Evaluates `dist/index.js` + `three` (`CanvasTexture`) + R3F (`useThree`) |
 | Minimal flat unlit `<Surface>` + `<SurfaceCanvas>` | `1,874.5 kB` | `519.6 kB` | `399.4 kB` | `+462.3 kB` | `three/webgpu` + legacy `three` (`WebGLRenderer`) + R3F `<Canvas>` + all `Surface.*` |
@@ -78,7 +78,7 @@ Auditing all 28 routes and 7 candidate studies in [ALL-DEMO-API.md](../ALL-DEMO-
 
 | Class | Scenes (`apps/lab/src/scenes/*`) | Required machinery | Dead weight bundled today |
 |---|---|---|---|
-| **0. Standalone Three / pure DOM** | `home`, `style`, `why`, `wordmark`, `lamp`, `rain` | `useSurfaceSupport` (`+3.5 kB` gz) or `encodedOutput` (`0.2 kB` gz) | `lamp` & `rain` pull `109.4 kB` min (`39.6 kB` gz) of Munari just for `encodedOutput` |
+| **0. Standalone Three / pure DOM** | `home`, `style`, `why`, `wordmark`, `lamp`, `rain` | `useCaptureSupport` (`+3.5 kB` gz) or `encodedOutput` (`0.2 kB` gz) | `lamp` & `rain` pull `109.4 kB` min (`39.6 kB` gz) of Munari just for `encodedOutput` |
 | **1A. Imperative capture + raw Three** | `light` (`createDomTextureSource` + `CanvasTexture` on raw `WebGPURenderer`) | `@munari/core` capture (`3.6 kB` gz) + `encodedOutput` + `three/webgpu` | Pulls `109.4 kB` min of `Surface` + R3F bindings via root `encodedOutput` |
 | **1B. In-place DOM + shader overlay** | `veil`, `selection`, `distortion-wave`, `plume`, `marble-hand` | `useElementCapture` / `CaptureContent` + `useCaptureFrame` + 1-quad stage | Pays for `Surface`, `SceneSurface`, `SurfaceMesh`, `forwardEvents`, `Anchor`, `LitMaterial`, R3F `react-reconciler`, wildcard `THREE` |
 | **2. Scene-only HTML & compositors** | `explode`, `glass`, `crystal`, `candidates/unroll`, `copy` | `SceneSurface.Root/HTML/Mesh`, `SurfaceCanvas`, `forwardEvents`, `passMaterial` | Pays for page-handoff rig (`Surface.HTML`, `surfacePageClip`, `surfaceHostSpace`, `retainedMove`, `pageTarget`), `Anchor`, `LitMaterial` |
@@ -125,7 +125,7 @@ Five `apps/lab` scenes (`Light`, `Lamp`, `Rain`, the `Marble hand` background, t
 
 | Tier | Target effect classes | Entry / configuration | Total app gzip (min) | Net gzip | vs today (`519.6 kB` gz) |
 |---|---|---|---:|---:|---:|
-| **Tier 0: Probe / TSL util** | `useSurfaceSupport`, `encodedOutput` in existing Three app | `@petepetrash/munari` (Phase 1) | `60.8 kB` (`193 kB`) probe; `129.8 kB` (`472 kB`) `encodedOutput`, all of it `three/tsl` | `+3.5 kB` probe | `-88%` probe; `encodedOutput` `224.7` -> `129.8 kB` gz |
+| **Tier 0: Probe / TSL util** | `useCaptureSupport`, `encodedOutput` in existing Three app | `@petepetrash/munari` (Phase 1) | `60.8 kB` (`193 kB`) probe; `129.8 kB` (`472 kB`) `encodedOutput`, all of it `three/tsl` | `+3.5 kB` probe | `-88%` probe; `encodedOutput` `224.7` -> `129.8 kB` gz |
 | **Tier 1A: Kernel + raw quad** | Single-quad DOM transitions & lenses (`DistortionWave`, `Veil`, `Rain`) | `/advanced` + `registry/` WebGL2/WebGPU quad | `~75 kB` (`~235 kB`), estimated | `+18 kB` | **`-86%` total / `-96%` net** |
 | **Tier 1B: Classic WebGL Three** | Unlit GLSL quads/planes (`Light` backdrop, flat tilted cards) | `/advanced` `createDomTextureSource` + `three` `WebGLRenderer` | `197.8 kB` (`736 kB`) | `+140.5 kB` | **`-62%` (`-321.8 kB` gz)** |
 | **Tier 2: `/stage` (no R3F)** | TSL overlays, `useElementCapture`, single `<Surface>` without JSX scene | `/stage` + `/capture` (`three/webgpu`, R3F optional) | `306.1 kB` (`1,094 kB`) | `+248.8 kB` | **`-41%` (`-213.5 kB` gz)** |

@@ -29,7 +29,7 @@ import {
   useSurfaceNodes,
   useSurfaceRefresh,
   useSurfaceStatus,
-  useSurfaceSupport,
+  useCaptureSupport,
   type CaptureHandle,
 } from '@petepetrash/munari'
 import { Button, Slider } from '../../components/system'
@@ -281,7 +281,7 @@ function HologramPassHtml({
 }
 
 export function BeyondHologram() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const reducedMotion = useReducedMotion()
   const canvasId = useId()
   const bearerInputId = useId()

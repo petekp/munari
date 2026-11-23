@@ -48,12 +48,12 @@ Munari mounts your React component once. When `inScene` turns `true`, it compile
 
 ```tsx
 import { useId, useState } from 'react'
-import { Surface, SurfaceCanvas, useSurfaceSupport } from '@petepetrash/munari'
+import { Surface, SurfaceCanvas, useCaptureSupport } from '@petepetrash/munari'
 import '@petepetrash/munari/style.css'
 
 export function LitCardHandoff() {
   const canvasId = useId()
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const [inScene, setInScene] = useState(false)
 
   return (

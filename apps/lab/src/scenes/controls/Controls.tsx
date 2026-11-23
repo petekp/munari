@@ -34,7 +34,7 @@ import { Discard, Fn, texture as textureNode, uv } from 'three/tsl'
 import {
   premultipliedOutput,
   SurfaceCanvas,
-  useSurfaceSupport,
+  useCaptureSupport,
   useSurfaceAnchorBox,
   useSurfaceHandle,
   useSurfaceStatus,
@@ -607,7 +607,7 @@ const DelayedControls3D = lazy(() => new Promise<{default:typeof Controls3D}>(re
 }))
 
 export function ControlsApp() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const surface = useSurfaceHandle('controls-board')
   const status = useSurfaceStatus(surface)
   const state = { supported: status.supported, presented: status.presentation, isChanging: status.isTransitioning }

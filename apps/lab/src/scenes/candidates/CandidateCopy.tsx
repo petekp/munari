@@ -28,7 +28,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { SceneSurface, useSurfaceSupport, useSurfaceHandle, useSurfaceChrome, useSurfaceNodes } from '@petepetrash/munari'
+import { SceneSurface, useCaptureSupport, useSurfaceHandle, useSurfaceChrome, useSurfaceNodes } from '@petepetrash/munari'
 import { createSuckMaterial } from './candidateNodes'
 import { tokenize } from './candidateTokens'
 import {
@@ -97,7 +97,7 @@ function SuckMaterial({
 }
 
 export function CandidateCopy() {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const surface = useSurfaceHandle('copy-block')
   const holder = useRef<HTMLDivElement>(null)
   const phase = usePhase()

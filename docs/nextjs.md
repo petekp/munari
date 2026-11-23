@@ -12,7 +12,7 @@ Next.js. A
 component that calls a hook still needs its own `'use client'`, and `Surface`
 needs an `inScene` boolean prop.
 
-`useSurfaceSupport()` is `false` on the server and on the first client render,
+`useCaptureSupport()` is `false` on the server and on the first client render,
 then reports the browser. Gate the canvas on it, as the first example does, and
 the server and client markup match.
 

@@ -2,7 +2,7 @@
 // casting coherent global-light soft shadows at 0 fps idle (?scene=polymer-prototype&variant=A|B|C).
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
-import { SurfaceCanvas, useSurfaceSupport } from '@petepetrash/munari'
+import { SurfaceCanvas, useCaptureSupport } from '@petepetrash/munari'
 import { captureEngine } from '@petepetrash/munari/advanced'
 import { CaptureEngineStatus } from '../../components/CaptureEngineStatus'
 import { Button, Status, Tag } from '../../components/system'
@@ -183,7 +183,7 @@ function TelemetryHud({
 }
 
 export function PolymerPrototypeApp({ onReady }: { readonly onReady?: () => void }) {
-  const supported = useSurfaceSupport()
+  const supported = useCaptureSupport()
   const canvasId = useId()
   const [variant, setVariant] = useState<PolymerVariantId>(readVariant)
   const [polymerEnabled, setPolymerEnabled] = useState(true)
