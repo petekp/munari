@@ -4,6 +4,8 @@ import { Activity, Fragment, StrictMode, createElement, use } from 'react'
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { afterEach, expect, it, vi } from 'vitest'
+import { createRasterizedSource, htmlInCanvasEngine, setCaptureEngine, type CaptureEngine } from '@munari/core'
+import { snapdomCaptureEngine } from '../../snapdom'
 import { Surface, SceneSurface } from '../Surface'
 import { SurfaceRoot } from './SurfaceRoot'
 import { createSurfaceStore, type SurfaceStore } from './surfaceHandle'
@@ -251,5 +253,36 @@ it('preserves named host wiring across Strict Mode and Activity hide/show cycles
     flushSync(() => root.unmount())
     firstCanvas?.release()
     wokenCanvas?.release()
+  }
+})
+
+it.each([
+  ['HTML-in-canvas', htmlInCanvasEngine, true],
+  ['snapDOM', snapdomCaptureEngine, false],
+] as const)('a live part on %s publishes and builds its source to match the engine', (_label, builtIn, expected) => {
+  const sourceLive: (boolean | undefined)[] = []
+  const engine: CaptureEngine = {
+    ...builtIn,
+    available: () => true,
+    createSource: (content, width, height, options) => {
+      sourceLive.push(options?.live)
+      return createRasterizedSource(() => new Promise(() => {}), builtIn.name, content, width, height, options)
+    },
+  }
+  setCaptureEngine(engine)
+  const store = createSurfaceStore('live-part'), container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+  try {
+    flushSync(() => root.render(
+      <Surface.Root surface={store.handle} inScene={false}>
+        <Surface.HTML live>content</Surface.HTML>
+      </Surface.Root>,
+    ))
+    expect(store.parts().map(part => part.live)).toEqual([expected])
+    expect(sourceLive).toEqual([expected])
+  } finally {
+    flushSync(() => root.unmount())
+    setCaptureEngine(null)
   }
 })

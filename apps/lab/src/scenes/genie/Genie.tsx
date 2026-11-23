@@ -57,7 +57,6 @@ import {
   useSurfaceSupport,
 } from '@petepetrash/munari'
 import {
-  cameraDistance,
   FrameSurface,
   paintStats,
   presentationReceiptSatisfies,
@@ -67,7 +66,6 @@ import {
   type FrameSource,
   type PresentationRequirement,
   type SurfaceManualPresenter,
-  useFrameTexture,
 } from '@petepetrash/munari/advanced'
 import {
   GENIE_DEFAULTS,
@@ -81,24 +79,24 @@ import {
 } from './genieLaw'
 import {
   DRIVE_DEFAULTS,
+  type DriveBox,
   driveCommit,
   driveGrabStep,
   drivePresentationStep,
   driveSpringPresentationStep,
   easeInCubic,
   pourOut,
+  restingDrive,
 } from './genieDrive'
 import { dockFill, dockPose, dockRingDone, dockSwell } from './genieDock'
-import { BOUNCE_MARKS, holdBounceMarks, registerBounceCourt } from './genieBounce'
+import { holdBounceMarks } from './genieBounce'
+import { PlayLayer, StudyPattern, type StudyId } from './GenieWindowContent'
 import { genieTuning } from './genieTuning'
 import { GenieTweakPanel } from './GenieTweaks'
+import { FOV, PixelPerfect } from './GenieCamera'
 import { showChrome } from '../../bareMode'
-import {
-  createGenieFilmMaterial,
-  createGenieFilmPlacement,
-  createGenieMaterial,
-  createGenieShade,
-} from './genieNodes'
+import { createGenieMaterial, createGenieShade } from './genieNodes'
+import { FilmCompositeMaterial, SHADE_FADE } from './GenieFilmMaterial'
 import {
   GENIE_FILM_HEIGHT,
   GENIE_FILM_WIDTH,
@@ -117,7 +115,6 @@ import { closestFrom } from '../../lib/dom'
 import { plainAttribute } from '../../lib/geometry'
 import './genie.css'
 
-const FOV = 42
 // Subdivision is vertical-heavy: the funnel's curvature lives almost
 // entirely in y, and a flat sheet renders identically at any tessellation
 // so the rest cost is zero.
@@ -185,39 +182,6 @@ interface GenieFlight {
   }
 }
 
-// ── the drive box: who owns t right now, shared by refs ─────────────────
-//
-// clock   an untouched flight, eased time
-// grab    a hand: t is wherever the hand says (driveGrabStep)
-// spring  after release: analytic spring to the committed wall
-// settle  after a landing at rest: the wobble consuming arrival momentum
-
-interface DriveBox {
-  mode: 'clock' | 'grab' | 'spring' | 'settle'
-  t: number
-  v: number
-  /** Progress actually drawn. It only differs from t while catching up
-   *  after a hand moved during the hidden texture handoff. */
-  visibleT: number
-  grabT: number
-  target: 0 | 1
-  clockStart: number | null
-  settleTau: number
-  settleV: number
-}
-
-const restingDrive = (): DriveBox => ({
-  mode: 'clock',
-  t: 0,
-  v: 0,
-  visibleT: 0,
-  grabT: 0,
-  target: 1,
-  clockStart: null,
-  settleTau: 0,
-  settleV: 0,
-})
-
 // ── the desk's four windows ─────────────────────────────────────────────
 //
 // Munari kept returning to three figures — the square, the circle, the
@@ -245,6 +209,10 @@ interface Scheda {
   /** The bay's drawing: a pane that fills when occupied, then the mark
    *  stroked over it, so the drawing itself never goes anywhere. */
   mark: React.ReactNode
+  /** The body moves on its own, and on HTML-in-canvas the flight shows it
+   *  moving. The film window does not ask: its frames reach the scene
+   *  through a FrameSurface, not through the capture. */
+  live?: boolean
 }
 
 // Dock order, left to right. The three figures, then the window that
@@ -253,6 +221,7 @@ const SCHEDE: Scheda[] = [
   {
     id: 'quadrato',
     title: 'quadrato',
+    live: true,
     mark: (
       <>
         <rect className="gen-icon-base" x="1.4" y="1.4" width="17.2" height="17.2" rx="0.8" />
@@ -264,6 +233,7 @@ const SCHEDE: Scheda[] = [
   {
     id: 'cerchio',
     title: 'cerchio',
+    live: true,
     mark: (
       <>
         <circle className="gen-icon-base" cx="10" cy="10" r="8.8" />
@@ -296,6 +266,7 @@ const SCHEDE: Scheda[] = [
   {
     id: 'scheda',
     title: 'scheda',
+    live: true,
     mark: (
       <>
         <rect className="gen-icon-base" x="0.9" y="2.2" width="18.2" height="15.6" rx="0.9" />
@@ -367,122 +338,7 @@ function windowStyle(zIndex: number, at: { x: number; y: number } | undefined): 
  *  end up underneath, so it is stated as a ceiling rather than as n + 1. */
 const OVERLAY_Z = 100
 
-// Two of the studies. Each figure is drawn at its viewBox size exactly,
-// so one strokeWidth means one rendered hairline — the same 1.5px the
-// bays are drawn at, which is what makes the big figure and its 20px bay
-// read as the same hand rather than two drawings of the same shape.
-//
-// The triangolo has no study. Its window is the film (below), and the
-// trade is the point: the other two windows show a figure drawn, this
-// one shows the man who drew them turning one by hand.
-type StudyId = 'quadrato' | 'cerchio'
-
 // ── the window ───────────────────────────────────────────────────────────
-
-type GenieMotionStyle = React.CSSProperties & {
-  '--line-delay'?: string
-  '--line-opacity'?: number
-}
-
-function StudyPattern({ kind }: { kind: StudyId }) {
-  const lines = Array.from({ length: kind === 'quadrato' ? 7 : 9 })
-  return (
-    <svg
-      className="gen-math-pattern"
-      data-pattern={kind}
-      viewBox="0 0 120 120"
-      aria-hidden
-    >
-      {lines.map((_, i) => {
-        const style: GenieMotionStyle = {
-          '--line-delay': `${i * 0.12}s`,
-          '--line-opacity': 0.28 + i * 0.075,
-        }
-        if (kind === 'quadrato') {
-          const inset = 12 + i * 4.8
-          return (
-            <rect
-              key={i}
-              className="gen-math-line"
-              x={inset}
-              y={inset}
-              width={120 - inset * 2}
-              height={120 - inset * 2}
-              rx={1.5 + i * 0.2}
-              pathLength="100"
-              transform={`rotate(${i * 11.25} 60 60)`}
-              style={style}
-            />
-          )
-        }
-        return (
-          <ellipse
-            key={i}
-            className="gen-math-line"
-            cx="60"
-            cy="60"
-            rx="46"
-            ry="19"
-            pathLength="100"
-            transform={`rotate(${i * 20} 60 60)`}
-            style={style}
-          />
-        )
-      })}
-    </svg>
-  )
-}
-
-// One bouncing mark. The box is the mark's rest diameter; the shared
-// simulation (genieBounce.ts) positions it by inline transform, so its
-// layout stays put and the capture sees the same numbers the page
-// draws. Strokes are non-scaling: the size knob resizes the figure,
-// not the pen.
-function BounceMark({ index }: { index: number }) {
-  const mark = BOUNCE_MARKS[index]
-  const d = mark.r * 2
-  return (
-    <div className="gen-bounce" data-mark={mark.id} style={{ width: d, height: d }}>
-      <svg
-        className="gen-bounce-figure"
-        viewBox="0 0 100 100"
-        style={{ color: mark.color }}
-        aria-hidden
-      >
-        {mark.id === 'quadrato' && (
-          <rect className="gen-mark-stroke" x="4" y="4" width="92" height="92" rx="6" />
-        )}
-        {mark.id === 'cerchio' && <circle className="gen-mark-stroke" cx="50" cy="50" r="46" />}
-        {mark.id === 'triangolo' && (
-          <polygon className="gen-mark-stroke" points="50,5 96,95 4,95" />
-        )}
-      </svg>
-    </div>
-  )
-}
-
-// The marks' layer, its own component so its court registers with the
-// simulation when it mounts.
-function PlayLayer() {
-  // Live content, not decoration — while the window is on the desk. The
-  // marks are HELD for the whole of a flight (`holdBounceMarks`), so the
-  // drain is the only thing moving in it and both engines draw the same
-  // picture; see that function for why the engines would otherwise
-  // disagree.
-  //
-  // The simulation writes inline transforms, so the snapshot of this window
-  // that the capture reads carries the same numbers as the live marks.
-  // Layout effect, so the marks are in position before their first paint.
-  const root = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => registerBounceCourt(root.current!), [])
-  return (
-    <div className="gen-play" aria-hidden ref={root}>
-      {BOUNCE_MARKS.map((mark, i) => (
-        <BounceMark key={mark.id} index={i} />
-      ))}
-    </div>
-  )
-}
 
 // The window whose content is DECODED VIDEO. Everything else on this
 // desk is markup the replay was always going to catch; a video frame is
@@ -630,51 +486,7 @@ function WindowBody({
   )
 }
 
-// ── the camera: z = 0 is the viewport, 1 world unit = 1 CSS px ──────────
-
-function PixelPerfect() {
-  // SAFETY: r3f types the store's camera as the base class and hands back a
-  // PerspectiveCamera unless the Canvas asks for `orthographic`. This one
-  // does not, and could not: fitting the frustum to the viewport is what
-  // makes a CSS pixel a world unit, and orthographic has no fov to fit.
-  const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
-  const size = useThree((s) => s.size)
-  useEffect(() => {
-    camera.fov = FOV
-    camera.position.set(0, 0, cameraDistance(size.height, FOV))
-    camera.near = 1
-    camera.far = camera.position.z * 3
-    camera.updateProjectionMatrix()
-  }, [camera, size.height])
-  return null
-}
-
 // ── the sheet's material ────────────────────────────────────────────────
-
-/** How hard the funnel has to be squeezing a row before its shadow goes.
- *
- *  Measured, and the measurement overturned the first answer. Reasoning
- *  from the drop's width said a 5px band stops reading as a shadow at
- *  about two rendered pixels, so the band was set to leave between row
- *  scales 0.45 and 0.20 — and shadow-travels then read the identical
- *  profile with the fade on and with it disabled. The reason is that a
- *  minified band does not stay crisp and merely narrow: the GPU averages
- *  it against the transparent margin outside it, so it loses ALPHA at
- *  the same time it loses width. Ink measured down the held funnel, one
- *  frame (2026-08-09, `--drop: 5px`):
- *
- *      row scale   1.00   0.80   0.77   0.69   0.63   0.52   ≤0.35
- *      shade ink    190     89     63     41     27     15       0
- *
- *  Half the shadow is gone by 0.80 and four fifths by 0.69, with none of
- *  that asked for — which is exactly the complaint, a shadow that
- *  dissolves into a grey haze down one flank instead of leaving. A fade
- *  under 0.45 had nothing left to fade. So the band is placed where the
- *  ink still exists: whole above 0.95, gone by 0.55, which LEADS the
- *  dissolution rather than trailing it and takes the smear with it. The
- *  ceiling stays clear of 1.0 for the reason it always did — a sheet at
- *  rest, and the whole first stretch of a flight, must be untouched. */
-const SHADE_FADE: [number, number] = [0.55, 0.95]
 
 function GenieMaterial({ shade }: { shade: [number, number] }) {
   const surface = useSurfaceNodes()
@@ -692,52 +504,6 @@ function GenieMaterial({ shade }: { shade: [number, number] }) {
  *  is withheld until a whole set describes the generation on this
  *  geometry, so the shader can never cut a hole where the film used to be. */
 const FILM_ANCHORS = ['film'] as const
-
-interface FilmCompositeMaterialProps {
-  chromeTexture: THREE.Texture
-  film: NonNullable<GenieFlight['film']>
-  /** The film's box in the outer capture, once the anchor set is whole. */
-  uv: SourceUvRect | null
-  shade: [number, number]
-  width: number
-  height: number
-  ref: React.RefObject<MeshBasicNodeMaterial | null>
-}
-
-function FilmCompositeMaterial({
-  chromeTexture,
-  film,
-  uv,
-  shade,
-  width,
-  height,
-  ref,
-}: FilmCompositeMaterialProps) {
-  const filmTexture = useFrameTexture()
-  const [values] = useState(() => ({ shade: createGenieShade(SHADE_FADE), placement: createGenieFilmPlacement() }))
-  values.placement.size.value.set(width, height)
-  values.shade.edge.value.set(shade[0], shade[1])
-  if (uv) {
-    values.placement.rect.value.set(uv.uMin, 1 - uv.vMax, uv.uMax - uv.uMin, uv.vMax - uv.vMin)
-  }
-  values.placement.radius.value = film.radius
-  // The first child render has no FrameSurface texture, and a node material
-  // cannot be built around a missing sampler. FrameSurface suppresses the
-  // mesh until the texture exists; the material is built then.
-  const material = useMemo(
-    () => (filmTexture ? createGenieFilmMaterial(chromeTexture, filmTexture, values.placement, values.shade) : null),
-    [chromeTexture, filmTexture, values],
-  )
-  useLayoutEffect(() => {
-    ref.current = material
-    return () => {
-      ref.current = null
-      material?.dispose()
-    }
-  }, [ref, material])
-  if (!material) return null
-  return <primitive object={material} attach="material" />
-}
 
 interface FilmCompositeProps {
   f: GenieFlight
@@ -828,13 +594,62 @@ function FilmComposite({
       <FilmCompositeMaterial
         ref={material}
         chromeTexture={chromeTexture}
-        film={film}
+        filmRadius={film.radius}
         uv={uv}
         shade={f.shade}
         width={width}
         height={height}
       />
     </FrameSurface>
+  )
+}
+
+// ── pipelines built at load ─────────────────────────────────────────────
+//
+// A flight's presenters wait for their pipelines before they draw, and
+// with shaders no cache holds that wait is the length of a shader compile.
+// These meshes wear every material a flight draws with, on a sheet with
+// the flight's attributes, so the pipelines are built while the desk is
+// still: the sheet, the film placeholder, and the film composite.
+// `?prewarm=off` leaves the wait at the flight, for the first-flight probe.
+
+const PREWARM_OFF = new URLSearchParams(window.location.search).get('prewarm') === 'off'
+
+function FilmPrewarmMaterial() {
+  const chromeTexture = useSurfaceTexture()
+  const material = useRef<MeshBasicNodeMaterial | null>(null)
+  return (
+    <FilmCompositeMaterial
+      ref={material}
+      chromeTexture={chromeTexture}
+      filmRadius={0}
+      uv={null}
+      shade={[1, 1]}
+      width={1}
+      height={1}
+    />
+  )
+}
+
+function GeniePrewarm({ onReady }: { onReady: () => void }) {
+  const [sheet] = useState(() => {
+    const geometry = new THREE.PlaneGeometry(1, 1, GRID_X, GRID_Y)
+    geometry.setAttribute('squeeze', new THREE.BufferAttribute(new Float32Array(geometry.attributes.position.count), 1))
+    return geometry
+  })
+  useEffect(() => () => sheet.dispose(), [sheet])
+  return (
+    <Surface.Prewarm alpha="source" onReady={onReady}>
+      <mesh geometry={sheet}>
+        <GenieMaterial shade={[1, 1]} />
+      </mesh>
+      <mesh geometry={sheet}>
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+      <mesh geometry={sheet}>
+        <FilmPrewarmMaterial />
+      </mesh>
+    </Surface.Prewarm>
   )
 }
 
@@ -1933,6 +1748,10 @@ export function GenieApp() {
   // put away? True while it is docked and for the whole of a restore,
   // which starts docked. The two hides compose, and neither has to know
   // when the other turns.
+  // Docked and not on its way back out. Its slot is hidden and its Surface
+  // is on the page, so nothing shows its content, and a live window drops
+  // `live` until a restore starts.
+  const restingInDock = (win: WinId) => dockedSet.has(win) && air[win]?.direction !== 'restoring'
   const hiddenFor = (win: WinId) => {
     const a = air[win]
     if (a) return a.direction === 'restoring'
@@ -1948,7 +1767,7 @@ export function GenieApp() {
   // `front` is read inside the capture root, that snap is IN THE
   // TEXTURE, not a page-side detail the flight hides.
   const front =
-    [...order].reverse().find((w) => !dockedSet.has(w) || air[w]?.direction === 'restoring') ?? null
+    [...order].reverse().find((w) => !restingInDock(w)) ?? null
 
   const slotOf = (win: WinId) => slotRefs.current[win] ?? null
   const ringOf = (win: WinId): Ring => {
@@ -2399,10 +2218,13 @@ export function GenieApp() {
   }
   const apiRef = useRef<GestureApi>(api)
   apiRef.current = api
+  const [prewarmed, setPrewarmed] = useState(false)
+  const markPrewarmed = useCallback(() => setPrewarmed(true), [])
 
   return (
     <div
       className="gen-page"
+      data-genie-prewarm={PREWARM_OFF ? 'off' : prewarmed ? 'ready' : 'building'}
       data-degraded={supported ? undefined : 'true'}
       data-genie-film-direction={air[FILM_WIN]?.direction}
       data-genie-film-framed={framed[FILM_WIN] ? 'true' : 'false'}
@@ -2466,7 +2288,7 @@ export function GenieApp() {
               inScene={Boolean(air[s.id]) && air[s.id]?.requestedPresentation !== 'page'}
               onPresentationChange={view => onPresentedView(s.id, view)}
             >
-              <Surface.HTML pageClassName="gen-page-presentation" resolution={2}>
+              <Surface.HTML pageClassName="gen-page-presentation" resolution={2} live={s.live && !restingInDock(s.id)}>
                 {bodyFor(s)}
               </Surface.HTML>
             </Surface.Root>
@@ -2545,6 +2367,7 @@ export function GenieApp() {
         onRendererLost={revokeRendererHold}
       >
         <PixelPerfect />
+        {!PREWARM_OFF && <GeniePrewarm onReady={markPrewarmed} />}
         <GestureRig api={apiRef} />
         <Bays
           slotOf={slotOf}

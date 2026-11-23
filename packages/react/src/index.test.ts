@@ -1,7 +1,7 @@
 // The two entry lists, pinned.
 //
 // The root is CURATED and `./advanced` is the deliberate second doorway
-// (decisions.md #6, amended 2026-08-17). Neither of those is checkable by
+// (decisions.md #6). Neither of those is checkable by
 // reading a module: a name reaches the root by someone adding a line, and
 // the cost of the wrong line — a scene recipe published as library API, or
 // an escape hatch a newcomer finds first — is paid by consumers who then

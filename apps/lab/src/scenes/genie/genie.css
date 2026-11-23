@@ -577,9 +577,9 @@
  *
  * Three dock marks — the square, the circle, the triangle, each in its
  * dock color — drifting gently around the card and bouncing off the
- * walls and one another. Live content while the window is on the desk;
- * they are held for the whole of a flight (holdBounceMarks in
- * genieBounce.ts), so the drain is the only thing moving in the air.
+ * walls and one another. Live content: on HTML-in-canvas they keep
+ * bouncing through a flight; on snapDOM they are held for it
+ * (holdBounceMarks in genieBounce.ts).
  *
  * NO CSS ANIMATION MOVES THEM, and that is the load-bearing choice.
  * The wormhole this replaces ran on compositor transform animations,
@@ -660,18 +660,12 @@
   font-size: 14px;
 }
 
-/* The dash motion below belongs to the DESK, not to the flight.
+/* The dash motion below keeps running in flight on HTML-in-canvas.
  *
- * It used to be claimed the other way round: a paint animation, unlike a
- * compositor transform, repaints the drawing and so was said to keep the
- * airborne copy live. That was only ever true on one engine. A CSS animation
- * mutates nothing, so a rasterizing engine never saw it at all, and no engine
- * follows a change nobody asked for unless the content is declared `live`
- * (decisions.md #64) — an infinite animation is captured at its start and
- * then held (platform.md #22). These windows do not ask, so what flies is a
- * still figure on every engine, which is at least the same still figure.
- * The scene's live-content claim rests on the film window, whose frames
- * reach the mesh through a FrameSurface rather than through the capture. */
+ * quadrato and cerchio declare `live`, so the compositor's paint of every
+ * frame reaches the airborne copy (decisions.md #64). snapDOM ignores
+ * `live`: a CSS animation mutates nothing, each capture is a full raster,
+ * and the figure is held still while the canvas has the window (#66). */
 .gen-figure {
   display: grid;
   place-items: center;

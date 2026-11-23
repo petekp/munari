@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- A `Surface.Mesh`, or a `FrameSurface` given a `presentation` requirement,
+  no longer freezes the canvas on its first draw. three built each missing
+  render pipeline at the draw with a blocking call. With shaders that no
+  browser cache held, every frame froze for 150-270 ms, as on Genie's first
+  flight. Such a presenter now builds its pipelines asynchronously and first
+  draws once they are ready. Until then the content stays where it was. A
+  `FrameSurface` without a requirement still draws at once.
+- `Surface.Prewarm` builds pipelines for presenters that mount later, so
+  their first draw waits for nothing. It takes meshes that wear those
+  presenters' materials, the `alpha` they use, and an `onReady` callback.
+  `SurfacePrewarmProps` is exported.
+- `SurfaceCanvas` builds three's mipmap pass for both texture formats while
+  the renderer starts. It used to be built at a Surface's first mipmapped
+  upload, which froze the canvas for 85-114 ms.
+
+- On snapDOM, a Surface ignores `live`. Its content holds still while the
+  scene has it, as content without `live` does, and `useFreezeSurface()`
+  turns true. HTML-in-canvas still follows a live Surface every frame.
+  `useElementCapture` and `CaptureContent` keep `live` on both engines. Call
+  the `useSurfaceRefresh()` function when a change must reach the scene on
+  snapDOM. The new `CaptureEngine.honorsSurfaceLive` field says which engines
+  follow a live Surface, and a custom engine must set it.
 - A scrolled container inside captured content now keeps its scroll
   position. `useElementCapture` and the copy a Surface captures while its
   content is on the page both showed the container scrolled to the top.

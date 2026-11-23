@@ -56,6 +56,7 @@ import {
   type SurfaceReadiness,
 } from '@munari/core'
 import { useLatest } from '../useLatest'
+import { listenerSet } from './listenerSet'
 import { surfaceViewPresentation, type SurfaceStatus } from './surfaceStatus'
 import { CAPTURE_UNAVAILABLE_REASON } from './surfaceSupport'
 import { SurfaceHandleContext } from './surfaceContext'
@@ -295,22 +296,6 @@ function runCallback(fn: (() => void) | undefined): void {
   }
 }
 
-/** A listener set whose `emit` walks the live Set, so re-entrant changes behave as a plain `for…of`. */
-function listenerSet() {
-  const set = new Set<() => void>()
-  return {
-    subscribe(listener: () => void): () => void {
-      set.add(listener)
-      return () => {
-        set.delete(listener)
-      }
-    },
-    emit(): void {
-      for (const listener of set) listener()
-    },
-  }
-}
-
 /** Count one holder of `key`; the returned release drops it once, however often it is called. */
 function retain<K>(counts: Map<K, number>, key: K, onRelease?: () => void): () => void {
   counts.set(key, (counts.get(key) ?? 0) + 1)
@@ -491,7 +476,8 @@ export function createSurfaceStore(name?: string): SurfaceStore {
   // a rAF loop or a <video> the hold cannot pause. Stopping one on the
   // presentation edge instead lets it run through the capture, which is the
   // backwards step the hold removed for CSS (decisions.md #67). A Surface
-  // whose every part is `live` never freezes.
+  // whose every part is `live` never freezes; on snapDOM no part is
+  // published live (decisions.md #64).
   let frozen = false
   const freezeListeners = listenerSet()
   const announceFreeze = () => {

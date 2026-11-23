@@ -10,10 +10,11 @@ output. Preserve both distinctions when resolving a conflict.
 | Make payload opt-in by effect class | [Payload optimization research](payload-optimization-research.md) | Measured bundle breakdown and proposed opt-in tiers; unbuilt |
 | Design opt-in developer experience | [Opt-in DX proposal](opt-in-dx-proposal.md) | Proposed three-posture interface, subpath map, and rollout; unbuilt |
 | Set up and use the package | [Root README](../README.md), public entry types | Current usage |
+| Capture a page element that stays native | [Element capture](element-capture.md) | Current usage |
 | Find the owner, control and relevant check | [Agent operating guide](agent-workflow.md) | Current workflow |
 | Understand how the abstractions fit | [System model](system-model.md), [glossary](../CONTEXT.md) | Current model and constraints |
 | Improve the public React authoring interface | [React API improvement plan](react-api-improvement-plan.md) | Partially shipped (SurfaceCanvas, SurfaceStatus, handles/callbacks in v0.4.x); remaining items proposed |
-| WebGPU renderer, TSL materials, and fallback | [Decision #69](decisions.md#69) (with #70–#74) | Shipped in v0.4.0 (`WebGPURenderer` + TSL node materials, WebGL 2 fallback) |
+| WebGPU renderer, TSL materials, and fallback | [Decision #69](decisions/renderer.md#69) (with #70–#74) | Shipped in v0.4.0 (`WebGPURenderer` + TSL node materials, WebGL 2 fallback) |
 | Build the next agent-facing capability | [Agent system plan](agent-system-plan.md) | Work in progress; unbuilt stages are explicit |
 | Review earlier performance findings | [Performance audit](performance-audit.md) | Assessment of 2026-09-26; each remedy is unbuilt unless its finding says otherwise |
 | Diagnose capture and GPU costs | [Performance diagnosis](performance-diagnosis.md) | 2026-10-14 diagnosis; capture optimizations are linked below |
@@ -26,18 +27,19 @@ output. Preserve both distinctions when resolving a conflict.
 | Check snapDOM input region performance | [Incremental capture report](incremental-capture.md) | Implementation and local benchmark evidence |
 | Add automatic canvas refresh without idle polling | [Automatic canvas refresh spec](automatic-canvas-refresh-spec.md) | Proposed, unbuilt; browser and pixel-lifetime gates are explicit |
 | Report when components first show complete content on load | [Loading spec](loading-spec.md) | Proposed, unbuilt; names and policy settled |
-| Add snapDOM as a second capture engine | [Decision #60](decisions.md#60) (with #61–#64) | Shipped 2026-09-10; completed plan archived in Git history |
-| Understand an architectural choice | [Decisions](decisions.md) | Numbered decisions with dated amendments |
+| Add snapDOM as a second capture engine | [Decision #60](decisions/capture.md#60) (with #61–#64) | Shipped 2026-09-10; completed plan archived in Git history |
+| Understand an architectural choice | [Decisions](decisions.md) | Current rules by number, grouped by area |
 | Check a browser-specific claim | [Platform](platform.md), [instruments](../instruments/README.md) | Measurements under the recorded conditions |
-| Write captured HTML | [Authoring](authoring.md) | Current rules derived from measurements |
+| Write captured HTML | [Authoring](authoring.md), [retained HTML](retained-html.md) | Current rules derived from measurements |
+| Work on the repo itself | [Development](development.md) | Repo layout and check commands |
 | Implement focus and spatial navigation | [Focus](focus.md) | Contract, implemented in the binding |
 | Check a kernel law | [Conformance suites](../tests/conformance/README.md) | Intended behavior with scoped evidence |
 | Find an implemented example | [Demo source map](../ALL-DEMO-API.md) | Current source links; verification belongs to each instrument |
-| Understand the retained-HTML cutover | [Decision #43](decisions.md#43), with #42–45 and #47–48 | Adoption, behavior, sharpness and naming contracts |
+| Understand the retained-HTML cutover | [Decision #43](decisions/surface.md#43), with #42, #44, #45 and #48 | Current API, behavior, sharpness and naming rules |
 
 Code comments cite `decisions.md #N` and `platform.md #N`; numbering never
-changes. Decision entries retain their original text, with dated amendments
-for changes. A new measurement records its conditions and probe instead of
+changes. Each decision states the current rule. A change rewrites it, and Git
+history keeps the earlier text. A new measurement records its conditions and probe instead of
 silently changing a threshold. If code, a contract and a browser result
 disagree, record the conflict and run the smallest discriminating check.
 

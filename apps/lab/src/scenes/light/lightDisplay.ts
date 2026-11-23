@@ -1,6 +1,6 @@
 // Light display — soft page shadows and crisp paper edges in one multiplier.
 // The broad field stays at CSS-pixel density. Paper draws over it at native
-// density with multisample coverage, fixing the coarse overlay edge (#53).
+// density with multisample coverage, fixing the coarse overlay edge (#51).
 import * as THREE from 'three'
 import {MeshBasicNodeMaterial,type DirectRenderPipeline,type Node,type WebGPURenderer} from 'three/webgpu'
 import {positionGeometry,texture,vec4} from 'three/tsl'

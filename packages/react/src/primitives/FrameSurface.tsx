@@ -55,7 +55,10 @@ import { surfaceStoreOf, type SurfaceHandle } from './surface/surfaceHandle'
 import { useSurfaceHostContext } from './surface/surfaceHostContext'
 import { surfaceTextureLimit } from './surface/SurfaceCanvas'
 import { beginSurfacePass, drawnByOverride, type SurfaceObservedPass } from './surface/surfacePass'
+import { useSurfaceCompiled } from './surface/surfaceCompile'
 import { useLatest } from './useLatest'
+import { blankCanvas, canvasIsOriginClean } from './canvasOrigin'
+import { hearingGatedRaycast } from './hearingGatedRaycast'
 import { isDevelopmentRuntime } from '../lib/developmentRuntime'
 
 export interface FrameDrawReceipt {
@@ -333,38 +336,6 @@ export function createFrameSurfaceRuntime(
   }
 }
 
-let originProbe: CanvasRenderingContext2D | null | undefined
-
-/**
- * Whether a canvas's pixels may be uploaded, checked without creating a
- * context on the caller's canvas: drawing it into a private canvas carries its
- * taint there. True where no DOM exists to check with.
- */
-function canvasIsOriginClean(canvas: HTMLCanvasElement): boolean {
-  if (originProbe === undefined) {
-    originProbe = globalThis.document?.createElement('canvas').getContext('2d', { willReadFrequently: true }) ?? null
-  }
-  if (!originProbe || canvas.width === 0 || canvas.height === 0) return true
-  // Setting the size clears the probe's own taint from an earlier check.
-  originProbe.canvas.width = 1
-  originProbe.canvas.height = 1
-  try {
-    originProbe.drawImage(canvas, 0, 0, 1, 1)
-    originProbe.getImageData(0, 0, 1, 1)
-    return true
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'SecurityError') return false
-    throw error
-  }
-}
-
-function blankCanvas(): HTMLCanvasElement {
-  const canvas = document.createElement('canvas')
-  canvas.width = 1
-  canvas.height = 1
-  return canvas
-}
-
 function presentationKey(receipt: PresentationReceipt): string {
   return [
     receipt.surfaceEpoch,
@@ -379,21 +350,6 @@ let nextSurfaceEpoch = 0
 
 const warnRejectedPresentation = (message: string) => {
   if (isDevelopmentRuntime()) console.warn(message)
-}
-
-/**
- * A raycast that exists only while `hears()` answers true. Declining at the
- * raycast rather than in handlers means no raycaster — r3f's or a scene's
- * own — ever counts the mesh as a pointer target while the page copy is the
- * presented one.
- */
-export function hearingGatedRaycast(
-  hears: () => boolean,
-): (this: THREE.Mesh, raycaster: THREE.Raycaster, intersects: THREE.Intersection[]) => void {
-  return function raycast(raycaster, intersects) {
-    if (!hears()) return
-    THREE.Mesh.prototype.raycast.call(this, raycaster, intersects)
-  }
 }
 
 export function assertFrameMaterialSupported(
@@ -440,6 +396,11 @@ export function FrameSurface({
   const onPresentedRef = useLatest(onPresented)
   const warnedTransferRef = useRef<number | null>(null)
   const warnedHearingRef = useRef(false)
+  const [mesh, setMesh] = useState<THREE.Mesh | null>(null)
+  // Only a crossing has another presenter that keeps showing the content
+  // while the pipelines build. Without one, a hidden mesh leaves a blank frame,
+  // so it draws as three builds them.
+  const compiled = useSurfaceCompiled(mesh, presentation !== undefined)
 
   // A presentation requirement is the one moment this component KNOWS it is
   // a Surface handoff. With neither `surface` nor an authored `raycast`, the
@@ -573,7 +534,8 @@ export function FrameSurface({
     <mesh
       {...meshProps}
       {...(effectiveRaycast !== undefined ? { raycast: effectiveRaycast } : {})}
-      visible={runtime !== null && visible}
+      ref={setMesh}
+      visible={runtime !== null && visible && compiled}
       onBeforeRender={handleBeforeRender}
       onAfterRender={handleAfterRender}
     >

@@ -65,7 +65,7 @@ import {
 /**
  * The quiet a source leaves the main thread between captures.
  *
- * Why this number (decisions.md #60, amended 2026-09-11): a whole-panel
+ * Why this number (decisions.md #60): a whole-panel
  * raster costs ~88 ms of wall clock in WebKit at dpr 2, so an ungoverned
  * source captures continuously and the scene gets whatever is left. Swept
  * against scene frame rate over three conditions — idle, a hand drag, and an

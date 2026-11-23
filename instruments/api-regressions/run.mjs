@@ -189,7 +189,7 @@ async function check(page,kind,enhanced){
   }else if(kind==='prepare-unfocused'){
     // While the page is still the one showing, the live node is taken into the
     // capture host only for what a page-side copy cannot carry: a caret or a
-    // selection (decisions.md #42, as narrowed). A declared part with no presenter holds preparation open
+    // selection (decisions.md #63). A declared part with no presenter holds preparation open
     // until the runner has checked both states.
     await page.waitForFunction(()=>window.__apiRegression.status?.supported)
     await pause(page,150)
@@ -214,7 +214,7 @@ async function check(page,kind,enhanced){
     await pause(page,150)
     if(kind==='clip-dynamic'){await page.evaluate(()=>window.__apiRegression.setClipHeight(150));await frameWait(page)}
     // The clip belongs to the RIDING host, and preparation rides only for a
-    // caret or a selection (decisions.md #42, as narrowed): a source nobody is
+    // caret or a selection (decisions.md #63): a source nobody is
     // in keeps its live node on the page, where the page's own overflow already
     // clips it and there is no second box to get wrong. Focus is therefore this
     // case's precondition, and it is taken before the native shot so both

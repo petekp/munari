@@ -1,6 +1,6 @@
 // Headline treatments — native text anchors beveled geometry and shader colour.
 // One renderer follows the masthead's frame; the DOM retains layout and selection.
-// Crop to the visible viewport before allocating zoomed pixels (decision #54).
+// Crop to the visible viewport before allocating zoomed pixels (decision #52).
 import * as THREE from 'three'
 import {DirectRenderPipeline,MeshStandardNodeMaterial,WebGPURenderer} from 'three/webgpu'
 import {output,toneMapping} from 'three/tsl'

@@ -22,6 +22,8 @@ export interface ElementCaptureOptions {
    * and its DOM answers, when its layout, stylesheets, fonts or images
    * change, when a transition or animation ends, and on `refresh()`. On,
    * every mutation and every running animation is followed, frame by frame.
+   * Unlike a Surface's `live`, this one also holds on snapDOM, which
+   * re-captures at most about four times a second.
    */
   live?: boolean
   onError?: (error: Error) => void
@@ -283,7 +285,7 @@ export function useElementCapture(options: ElementCaptureOptions = {}): ElementC
 
 export type CaptureContentProps = {
   capture: CaptureHandle; size: SurfaceSize; resolution?: SurfaceResolution
-  /** See `SurfaceHTMLProps.live`. */
+  /** See `ElementCaptureOptions.live`. */
   live?: boolean
   onError?: (error: Error) => void
 } & ({ children: ReactNode; element?: never } | { element: HTMLElement | null; children?: never })

@@ -16,8 +16,10 @@
 // than a relative path quietly reaching around it.
 
 // ── HTML, scene, and captured elements ───────────────────────────────────
-export { Surface, SceneSurface, useSurfaceStatus, useSurfaceRefresh, useSurfaceMotion, useSurfaceDriver, useFreezeSurface } from './primitives/Surface'
-export type { SurfaceProps, SurfaceRootProps, SurfaceHTMLProps, SceneSurfaceHTMLProps, SceneSurfaceRootProps, SceneSurfaceProps, SurfaceSceneProps, SurfaceControls, SurfaceDriverFrame, SurfaceDriverStep, SurfaceMotionFrame } from './primitives/Surface'
+export { Surface, SceneSurface } from './primitives/Surface'
+export { useSurfaceStatus, useSurfaceRefresh, useSurfaceMotion, useSurfaceDriver, useFreezeSurface } from './primitives/surface/surfaceStoreHooks'
+export type { SurfaceProps, SurfaceRootProps, SurfaceHTMLProps, SceneSurfaceHTMLProps, SceneSurfaceRootProps, SceneSurfaceProps, SurfaceSceneProps, SurfaceControls } from './primitives/Surface'
+export type { SurfaceDriverFrame, SurfaceDriverStep, SurfaceMotionFrame } from './primitives/surface/surfaceStoreHooks'
 export { useElementCapture, CaptureContent } from './primitives/elementCapture'
 export type { ElementCapture, ElementCaptureOptions, CaptureContentProps } from './primitives/elementCapture'
 export { useCaptureHandle, useCaptureFrame, useCaptureStatus } from './primitives/capture'
@@ -26,6 +28,7 @@ export { SurfaceCanvas, type SurfaceCanvasProps } from './primitives/surface/Sur
 export type { SurfaceCanvasId } from './primitives/surface/surfaceHostRegistry'
 export type { SurfaceIdentityProps } from './primitives/surface/SurfaceRoot'
 export type { SurfacePointerEvents, SurfaceRadius, SurfaceMeshProps } from './primitives/surface/SurfaceMesh'
+export type { SurfacePrewarmProps } from './primitives/surface/SurfacePrewarm'
 export type { SurfaceResolution, SurfaceSize } from './primitives/surface/surfaceSourceRuntime'
 
 // ── Identity and frame reads ─────────────────────────────────────────────
@@ -120,8 +123,8 @@ export type {
 // The camera rig that follows a FocusScene is NOT here. It is one scene's
 // answer to how a camera should move, tuned against one layout, and a
 // published component would make that answer the library's — so it ships as
-// a copyable recipe under `registry/focus-orbit` instead (decisions.md #6,
-// amended 2026-08-17), with its arc layout and camera poses beside it.
+// a copyable recipe under `registry/focus-orbit` instead (decisions.md #6),
+// with its arc layout and camera poses beside it.
 
 // ── Physical controls ────────────────────────────────────────────────────
 export { Dial, type DialProps } from './primitives/controls/Dial'

@@ -23,7 +23,12 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { guardPointerCapture, type SurfaceChrome, type SurfacePartId } from '@munari/core'
+import {
+  captureEngine,
+  guardPointerCapture,
+  type SurfaceChrome,
+  type SurfacePartId,
+} from '@munari/core'
 import { useSurfaceDevicePixelRatio } from './surfaceDevicePixelRatio'
 import { useLatest } from '../useLatest'
 import { applyScrollOffsets, readScrollOffsets, type ScrollOffsets } from '../retainedMove'
@@ -93,6 +98,12 @@ export function SurfaceSourceHost({
 }: SurfaceSourceHostProps) {
   const [sourceHostId] = useState(() => `source-${sourceHostSequence++}`)
   const [runtime, setRuntime] = useState<SurfaceSourceRuntime | null>(null)
+  // Read off the engine this part's source was built with, which a later
+  // `setCaptureEngine` does not change. Until the source exists, the
+  // installed engine answers, so a live part that mounts mid-flight does not
+  // join the hold for one commit.
+  const [runtimeFollowsLive, setRuntimeFollowsLive] = useState(() => captureEngine().honorsSurfaceLive)
+  const effectiveLive = live && runtimeFollowsLive
   const [pageRoot, setPageRoot] = useState<HTMLElement | null>(null)
   const outwardContent = useMemo(createSurfaceOutwardContentStore, [])
   const store = root.store
@@ -153,13 +164,14 @@ export function SurfaceSourceHost({
   useLayoutEffect(() => {
     if (!captureRoot || !store.getState().supported) return
     let created: SurfaceSourceRuntime
+    const followsLive = captureEngine().honorsSurfaceLive
     try {
       created = createSurfaceSourceRuntime({
         label: root.name,
         content: captureRoot,
         size: sizeRef.current,
         resolution: resolutionRef.current,
-        live: liveRef.current,
+        live: liveRef.current && followsLive,
         pixelRatio: window.devicePixelRatio,
         onError: (error) => root.store.reportError(error),
         onChrome: (chrome) => onChromeRef.current?.(chrome),
@@ -175,6 +187,7 @@ export function SurfaceSourceHost({
     if (carried.current?.root === captureRoot) applyScrollOffsets(carried.current.scrolls)
     carried.current = null
     setRuntime(created)
+    setRuntimeFollowsLive(followsLive)
     // The source was replaced: every presenter's proof is void and readiness
     // starts a new lifetime, but the presenters themselves remain.
     root.store.replaceSource(id)
@@ -205,8 +218,8 @@ export function SurfaceSourceHost({
     runtime?.setResolution(resolution)
   }, [runtime, resolution])
   useEffect(() => {
-    runtime?.setLive(live)
-  }, [runtime, live])
+    runtime?.setLive(effectiveLive)
+  }, [runtime, effectiveLive])
 
   useLayoutEffect(() => {
     if (!runtime) return
@@ -287,13 +300,13 @@ export function SurfaceSourceHost({
     () => store.publishPart(id, {
       id,
       runtime,
-      live,
+      live: effectiveLive,
       size: [sourceWidth, sourceHeight],
       captureRoot,
       pageRoot,
       pageContent,
     }),
-    [store, id, runtime, live, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent],
+    [store, id, runtime, effectiveLive, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent],
   )
 
   // Content reaches the container by whichever door this wiring has. Both

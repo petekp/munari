@@ -292,14 +292,12 @@ function tick(now: number): void {
 /**
  * Hold the marks where they are, for the whole of a flight.
  *
- * A window in flight is drawn from a capture, and how closely that capture
- * follows content moving on its own is the engine's decision, not the
- * scene's: the compositor follows every frame for nothing, while a
- * rasterizing engine follows only what the user did (`live` on
- * Surface.HTML, which this window does not ask for). Marks that keep
- * bouncing therefore travel at one speed on one engine and another speed
- * on the other. Held, they are the same picture everywhere, and the drain
- * is the only thing moving — which is what the flight is about.
+ * Called on the window's freeze signal, which fires only where its `live`
+ * takes no effect: on snapDOM, whose every capture is a full raster. There
+ * the capture holds one pose while the canvas has the window, and marks
+ * left bouncing would walk away from it, so the lift would step back and
+ * the return jump forward (decisions.md #66, #67). On HTML-in-canvas the
+ * window is live and the marks bounce through the flight.
  *
  * The loop stops rather than idling, and the clock restarts on release so
  * the held time is not integrated as one enormous step.

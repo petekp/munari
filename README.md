@@ -42,7 +42,7 @@ browser and what they can draw.
 |---|---|---|
 | Needs | HTML-in-canvas support; enabled by default in Chrome 157+ | any browser with a document |
 | Draws | the live element | a rasterized copy of the subtree |
-| What the texture follows | user input, layout/font/image changes, transition ends, and `useSurfaceRefresh()`; ongoing changes need `live` | same; `live` re-captures at most ~4 times/s |
+| What the texture follows | user input, layout/font/image changes, transition ends, and `useSurfaceRefresh()`; ongoing changes need `live` | same, but a Surface ignores `live`; a live `useElementCapture` re-captures at most ~4 times/s |
 | Caret and selection | real, painted by the browser | not painted |
 | Everything else on the page | pixel-exact | close: laid-out lengths snap to whole CSS pixels, and vertical geometry can sit up to two device pixels off |
 | Input to texture, Knobs panel at dpr 2 | 12 ms | 37 ms for a change that lands on a quiet Surface; up to 150 ms more on one that is already re-capturing |
@@ -112,9 +112,12 @@ layout resizes, font/image loads, transition ends, and `useSurfaceRefresh()`,
 while pausing declarative CSS/Web Animations in the scene. Changes nobody asked
 for — a clock, an animation loop, or new props/data arriving from outside the
 Surface after mount — require `live`. With `live`, HTML-in-canvas accepts every
-compositor paint and snapDOM re-captures at most about four times a second.
-`useElementCapture` takes the same `live` option because it also maintains a
-copy of the native element.
+compositor paint. snapDOM ignores a Surface's `live`, because each of its
+captures is a full raster, so that content holds still in the scene there. Call
+the `useSurfaceRefresh()` function when a change must reach the scene on
+snapDOM. `useElementCapture` takes the same `live` option because it also
+maintains a copy of the native element; on snapDOM a live capture re-captures at
+most about four times a second.
 
 ```tsx
 <Surface inScene={inScene} live><Clock /></Surface>
@@ -333,6 +336,44 @@ add lights under `SurfaceCanvas`. A JSX tag such as `<meshBasicNodeMaterial />`
 throws "is not part of the THREE namespace" until you register it with R3F's
 `extend()`, so build the material as above instead.
 
+#### First draws and Surface.Prewarm
+
+A `Surface.Mesh` in a `SurfaceCanvas`, and a `FrameSurface` given a
+`presentation` requirement, first draw once their render pipelines are built.
+Until then the content stays where it was. A shader that no browser cache
+holds can take a few hundred milliseconds to build, and the content waits
+that long to move into the scene.
+
+To build them ahead, mount `Surface.Prewarm` in the `SurfaceCanvas` with
+meshes that wear your presenters' materials:
+
+```tsx
+<SurfaceCanvas>
+  <Surface.Prewarm alpha="source" onReady={() => setPrewarmed(true)}>
+    <mesh>
+      <planeGeometry />
+      <TintMaterial />
+    </mesh>
+  </Surface.Prewarm>
+  {/* Surfaces that mount later */}
+</SurfaceCanvas>
+```
+
+The meshes are never drawn. Inside `Surface.Prewarm`, `useSurfaceNodes()`,
+`useSurfaceTexture()` and `useFrameTexture()` return stand-in textures, so a
+material component written for a `Surface.Mesh` works there unchanged.
+
+A pipeline is reused only when everything three keys it by matches:
+
+- the material's shader, blending and `side`
+- the geometry's attributes
+- `alpha`, which takes the same value as the presenters' `Surface.Mesh`
+
+An opaque `Surface.Mesh` with rounded corners turns on `alphaToCoverage`,
+so its stand-in material sets that too. `onReady` fires once every build has
+finished. Keep `Surface.Prewarm` mounted while a presenter may need its
+pipelines, because three deletes a pipeline that nothing uses.
+
 ### Renderer settings
 
 `gl` passes options to the `WebGPURenderer` that `SurfaceCanvas` creates.
@@ -411,83 +452,10 @@ fallback when the scene is essential to the experience.
 
 ## Capture an element that stays native
 
-```tsx
-const capture = useElementCapture()
-return (
-  <>
-    <article ref={capture.ref}>Native selectable content</article>
-    <SurfaceCanvas><GlassEffect capture={capture} /></SurfaceCanvas>
-  </>
-)
-```
-
-Import `useElementCapture` from the package. `GlassEffect` is application scene
-code: inside it, `useCaptureFrame(capture).get()` reads the latest painted texture,
-dimensions, and anchors, or `null` while unavailable. Paints wake the renderer
-without causing a React render per frame. The texture is borrowed; consumers do
-not dispose it.
-
-The native element remains in place. Attach the ref to an element, `document.body`,
-or `document.documentElement`; exclude unsupported content and the capture's own
-preview when capturing a document. The copy is rebuilt when the user acts on the
-element, when its layout, stylesheets, fonts or images change, and when a
-transition ends. A change nobody made on it (data arriving, a store update, a
-control elsewhere on the page) is not followed: call `capture.refresh()` from
-whatever makes it, or pass `useElementCapture({ live: true })` to follow every
-mutation and every running animation. `CaptureContent` instead supplies separately
-authored React children or a detached element to a `useCaptureHandle()` identity.
-`CaptureContent` requires explicit dimensions for either input. [Selection](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/selection/Selection.tsx)
-and [Veil](https://github.com/petekp/munari/blob/v0.4.1/apps/lab/src/scenes/veil/Veil.tsx) are complete element-capture callers.
-
-`CaptureContent` children are HTML, so `CaptureContent` with children belongs
-in the page tree. Inside `SurfaceCanvas` it throws. There, pass a built element
-with `element` instead. For children, create the handle in a page component,
-render `CaptureContent` there, and pass the handle to the scene component:
-
-```tsx
-import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
-import type { Mesh, MeshBasicMaterial } from 'three'
-import { CaptureContent, SurfaceCanvas, useCaptureFrame, useCaptureHandle, type CaptureHandle } from '@petepetrash/munari'
-
-function CapturedPlane({ capture }: { capture: CaptureHandle }) {
-  const frame = useCaptureFrame(capture)
-  const mesh = useRef<Mesh>(null)
-  const material = useRef<MeshBasicMaterial>(null)
-  useFrame(() => {
-    const current = frame.get()
-    if (!current || !mesh.current || !material.current) return
-    if (material.current.map !== current.texture) {
-      material.current.map = current.texture
-      material.current.needsUpdate = true
-    }
-    mesh.current.scale.x = current.width / current.height
-    mesh.current.visible = true
-  })
-  return (
-    <mesh ref={mesh} visible={false}>
-      <planeGeometry />
-      <meshBasicMaterial ref={material} />
-    </mesh>
-  )
-}
-
-export function Page() {
-  const capture = useCaptureHandle()
-  return (
-    <>
-      <CaptureContent capture={capture} size={[240, 80]}><p>Authored in React</p></CaptureContent>
-      <div style={{ position: 'relative', height: 400 }}>
-        <SurfaceCanvas><CapturedPlane capture={capture} /></SurfaceCanvas>
-      </div>
-    </>
-  )
-}
-```
-
-The plane is one unit high, and `width / height` gives its aspect. The texture
-is premultiplied, so this stock material draws opaque content correctly and
-translucent pixels too dark. See [Materials on a SurfaceCanvas](#materials-on-a-surfacecanvas).
+`useElementCapture` draws a copy of a page element in a scene while the
+element stays in place, and `CaptureContent` captures separately authored
+React children. [Element capture](https://github.com/petekp/munari/blob/v0.4.1/docs/element-capture.md)
+shows both.
 
 ## Sharpness by default
 
@@ -508,7 +476,7 @@ remain available when you choose a rendering budget; large textures still obey t
 | `isTransitioning` | The handoff is progressing or awaiting preparation |
 | `supported`, `reason` | Capability/content support and an unavailable reason |
 | `engine` | `'html-in-canvas'` or `'snapdom'`; `null` when no engine can run |
-| `useFreezeSurface()` | Non-live content is frozen for the scene; stop your own clocks |
+| `useFreezeSurface()` | Content is frozen for the scene (any part without `live`, and every part on snapDOM); stop your own clocks |
 | `useSurfaceProgress().get()` | Raw 0..1 motion, identical to driver input |
 | `useSurfaceProgress().eased()` | The explicitly eased version of that motion |
 
@@ -677,54 +645,6 @@ then open its URL in Chrome 157 or later.
   `readSurfaceFrameState`, and capture inspection. These are for custom renderers.
 - The tracked [Munari skill](https://github.com/petekp/munari/blob/v0.4.1/.agents/skills/munari/SKILL.md) teaches this API to agents.
 
-## Repo shape
-
-| path | what it is |
-| --- | --- |
-| `packages/core` | the renderer-agnostic core; no dependencies, bundled into the package |
-| `packages/react` | the `@petepetrash/munari` package: React/three components over core |
-| `registry/` | source you copy into your project (nothing published) |
-| `apps/lab` | the demo and development app |
-| `instruments/` | browser probes and CI gates |
-| `tests/conformance/` | the test suites that define core's behavior |
-
-Dependencies point one way: apps depend on `packages/react`, which
-depends on `packages/core`. `tests/boundary.test.ts` checks the actual
-imports.
-
-See [AGENTS.md](https://github.com/petekp/munari/blob/v0.4.1/AGENTS.md) for the working rules, [docs/decisions.md](https://github.com/petekp/munari/blob/v0.4.1/docs/decisions.md)
-for the numbered design decisions, [docs/platform.md](https://github.com/petekp/munari/blob/v0.4.1/docs/platform.md) for what
-the platform is measured to do, [docs/authoring.md](https://github.com/petekp/munari/blob/v0.4.1/docs/authoring.md) for how
-to write markup a Surface can draw, and [docs/focus.md](https://github.com/petekp/munari/blob/v0.4.1/docs/focus.md) for the
-focus and spatial-navigation contract.
-
 ## Development
 
-```sh
-npm ci
-npm run lab              # Vite + a compatible local Chrome
-npm run dev              # Vite only
-npm run typecheck
-npm test
-npm run lint
-npm run gate:idle-zero   # browser gate: idle Surfaces cost 0 paints/s
-```
-
-[package.json](https://github.com/petekp/munari/blob/v0.4.1/package.json) lists available gate commands;
-[the CI workflow](https://github.com/petekp/munari/blob/v0.4.1/.github/workflows/ci.yml) selects the gates run on each push.
-[The instrument guide](https://github.com/petekp/munari/blob/v0.4.1/instruments/README.md) gives each check's scope and
-limits. Run GPU gates in series. A capability skip is not a passing behavior
-check; use `STRICT_CAPABILITY=1` where HTML-in-canvas must be present.
-
-`npm run build` stages the package with core bundled in and peers left
-external. The staged package includes the canonical root README, license,
-changelog, `llms.txt`, and Munari skill. To use a checkout's API in another
-project, run the build and install the staged `packages/react/dist` directory
-in that project. To publish, inspect the staged package, then publish from its
-directory:
-
-```sh
-npm run build
-npm pack --dry-run packages/react/dist
-npm publish packages/react/dist
-```
+The repo layout and the check commands are in `docs/development.md`.

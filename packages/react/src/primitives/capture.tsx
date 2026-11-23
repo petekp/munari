@@ -72,7 +72,7 @@ export function setCaptureUnavailable(handle: CaptureHandle, status: 'waiting' |
 // Both attached-element capture and authored React content publish through this owner.
 export function connectCapture(handle: CaptureHandle, element: HTMLElement, size: SurfaceSize, options: {
   resolution?: SurfaceResolution
-  /** See `SurfaceHTMLProps.live`. */
+  /** See `ElementCaptureOptions.live`. */
   live?: boolean
   onError?: (error: Error) => void
 } = {}): CaptureConnection {

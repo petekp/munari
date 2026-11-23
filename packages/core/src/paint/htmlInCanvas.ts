@@ -115,7 +115,7 @@ function createHtmlInCanvasSource(
   let owed = true
   // A bitmap the user is looking at is never allowed to be stale, so a painted
   // host outranks `live` — page-owned preparation shows this bitmap through
-  // the native input rig (decisions.md #42, #63).
+  // the native input rig (decisions.md #63, #64).
   let hostPainted = false
   // Has a paint been declined since the last one taken? Only then is the
   // bitmap behind the live DOM, and only then is showing the host worth a
@@ -300,6 +300,7 @@ function createHtmlInCanvasSource(
 export const htmlInCanvasEngine: CaptureEngine = {
   name: 'html-in-canvas',
   native: true,
+  honorsSurfaceLive: true,
   available: () => detectHtmlInCanvas().drawElementImage,
   createSource: createHtmlInCanvasSource,
   refusal:

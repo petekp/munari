@@ -1,6 +1,6 @@
 # WebGPU integration diagnostic
 
-This is an S0 diagnostic from the WebGPU renderer cutover ([Decision #69](../../docs/decisions.md#69); pre-cutover spec archived in Git history at `de77a1e`). It investigates native command observation and renderer cleanup. It is not a production observer or migration acceptance check. No Surface handoff is mounted.
+This is an S0 diagnostic from the WebGPU renderer cutover ([Decision #69](../../docs/decisions/renderer.md#69); pre-cutover spec archived in Git history at `de77a1e`). It investigates native command observation and renderer cleanup. It is not a production observer or migration acceptance check. No Surface handoff is mounted.
 
 Run it serially with other GPU work:
 

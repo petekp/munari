@@ -84,6 +84,8 @@ import {
 } from './surfaceContext'
 import { configureSurfaceMaterial } from './surfaceMaterials'
 import { beginSurfacePass, drawnByOverride, type SurfaceObservedPass } from './surfacePass'
+import { useSurfaceCompiled } from './surfaceCompile'
+import { meshOutOfView } from './surfaceCulling'
 import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 import {
   applyPassWrites,
@@ -225,21 +227,6 @@ const _surfPos = new THREE.Vector3()
 const _surfScale = new THREE.Vector3()
 const _drawingSize = new THREE.Vector2()
 const _viewport = new THREE.Vector4()
-const _viewProjection = new THREE.Matrix4()
-const _viewFrustum = new THREE.Frustum()
-
-/**
- * Would the renderer cull this mesh for `camera`? The same frustum test
- * Three runs before a draw. A hidden or layer-masked mesh is not out of view:
- * it is skipped for a reason the author controls.
- */
-function meshOutOfView(mesh: THREE.Mesh, camera: THREE.Camera): boolean {
-  if (!mesh.frustumCulled || !camera.layers.test(mesh.layers)) return false
-  for (let node: THREE.Object3D | null = mesh; node; node = node.parent) if (!node.visible) return false
-  _viewProjection.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
-  _viewFrustum.setFromProjectionMatrix(_viewProjection, camera.coordinateSystem, camera.reversedDepth)
-  return !_viewFrustum.intersectsObject(mesh)
-}
 
 /**
  * One presentation of a Surface.
@@ -350,6 +337,7 @@ function SurfacePresenter({
   onPointerMove,
   onPointerOut,
   raycast: authoredRaycast,
+  visible,
   ...meshProps
 }: PresenterProps) {
   const camera = useThree((s) => s.camera)
@@ -372,6 +360,9 @@ function SurfacePresenter({
   // it during its own render — before either commit — is the case the cast
   // covers over, and there is no earlier moment a mesh could exist.
   useImperativeHandle(ref, () => mountedMesh as THREE.Mesh, [mountedMesh])
+  // Out of three's render path until its pipelines are built, so its first
+  // draw blocks no frame. The page copy holds meanwhile: nothing has proved.
+  const compiled = useSurfaceCompiled(mountedMesh)
   const materialRef = useRef<MeshBasicNodeMaterial>(null)
   const pressedRef = useRef<ForwardPointerSample | null>(null)
   const resumeControls = useRef<(() => void) | null>(null)
@@ -1349,6 +1340,7 @@ function SurfacePresenter({
         onPointerCancel={handleCancel}
         onPointerMove={handleMove}
         onPointerOut={handleOut}
+        visible={compiled && visible !== false}
         onBeforeRender={handleBeforeRender}
         onAfterRender={handleAfterRender}
       >

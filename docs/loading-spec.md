@@ -244,7 +244,7 @@ The boundary stores which entries exist, not what state they are in.
 | Exclusive, `inScene={false}` | Controlling `SurfaceRoot` | `shown` page after the page commit and one animation frame | Never |
 | Exclusive, scene requested | Controlling `SurfaceRoot` | `shown` scene, as described below. The page copy shown during lifting never counts | Ruled out: `shown` page with `reason`. Ambiguous host: `error` |
 | Twin | The capture owner | The native element is page content and adds no entry. The capture entry follows the Source-only row | As Source-only |
-| Resident, `SceneSurface` | Controlling `SurfaceRoot` | `shown` scene, as described below | Ruled out: `unavailable` with `reason`. There is no page to fall back to ([Decision #69](decisions.md#69)) |
+| Resident, `SceneSurface` | Controlling `SurfaceRoot` | `shown` scene, as described below | Ruled out: `unavailable` with `reason`. There is no page to fall back to ([Decision #43](decisions.md#43)) |
 | Source-only, `useElementCapture` or `CaptureContent` | The capture owner | `captured`: the first published frame whose paint has `readWhileFontsLoading` false | Engine missing or content unsupported: `unavailable`. `CaptureStatus` `'error'`: `error`, which recovers if a later paint succeeds (`capture.tsx:97`, `:113`) |
 | Frame source, `FrameSurface` | The component, inside a SurfaceCanvas only | `shown` scene at the first pass of an uploaded frame routed `now`, or `tail` once the host closes it | `error`, through an error path this spec adds. Today oversize and taint failures only log a development `console.error` and withhold receipts (`FrameSurface.tsx:148-180`) |
 | `SurfaceCanvas` | The component | `shown` scene once the renderer is `ready` and the first host frame after the scene children's commit has finished | `error` or final `context-lost`: `unavailable` |
@@ -372,7 +372,7 @@ state (`:613-620`). The bridge will move that decision ahead of the store
 notification. It then publishes `context-lost`
 and, when a replacement is scheduled, `starting` in the same task. Entries
 read the snapshot at the next page frame, so a resting `context-lost` means
-no automatic replacement remains ([Decision #69](decisions.md#69)): after that, recovery
+no automatic replacement remains ([Decision #73](decisions.md#73)): after that, recovery
 is an explicit remount.
 
 **Startup failure is observable today.** Installed Fiber 9.8.1 catches the
@@ -390,7 +390,7 @@ While it is loading, the boundary runs one check per page animation frame and
 adds that frame to its frame time. The per-frame loop stops at the later of
 `late.afterMs` and 10 s of frame time. That matches the existing 10 s
 development-warning delay (`surfaceValidation.ts:9`), which is wall-clock
-(decision #40). After that, it checks only on the frame after an
+(decision #42). After that, it checks only on the frame after an
 entry joins, leaves, or changes, plus the recheck frame that follows a passing
 check, and its frame time stops growing. A stalled boundary therefore does no
 recurring work once its notices have fired.
@@ -455,7 +455,7 @@ below checks whether this clamp is right.
 | Activity hidden, or a committed subtree re-suspends | React runs layout-effect cleanups, so those entries leave. A boundary inside the hidden subtree pauses |
 | Strict Mode | Entries are counted. The boundary keeps its state across the simulated remount and pauses during it. `onLoaded` fires once per component instance |
 | Source replacement before the load | The lifetime changes, the set of counted presenters clears, and the entry waits again |
-| Context loss before the load, replacement scheduled | `context-lost` then `starting` in one task. Entries wait on `renderer`; Exclusive Surfaces show the page meanwhile ([Decision #69](decisions.md#69)) |
+| Context loss before the load, replacement scheduled | `context-lost` then `starting` in one task. Entries wait on `renderer`; Exclusive Surfaces show the page meanwhile ([Decision #73](decisions.md#73)) |
 | Context loss before the load, no replacement left | Exclusive: `shown` page with the loss reason. Resident and canvas: `unavailable` |
 | Context loss after the load | The report stays frozen. Live status, `onRendererLost`, and `onError` report it |
 | Renderer startup error | Exclusive: `shown` page. Resident and canvas: `unavailable`. Needs the `componentDidCatch` write above; until then it waits on `renderer` |
@@ -466,7 +466,7 @@ below checks whether this clamp is right.
 | Error inside an app renderer | Invisible to the library. The app sets its wait to the Error |
 | Several canvases | Each is its own entry. Each Surface reads its own host's renderer status |
 | Callback timing | `onLoaded` and `onLate` run from a page animation frame. Store notifications never run app code inside `gl.render` |
-| `compileAsync` adopted later | Three fires `onAfterRender` while it skips a draw whose pipeline is not ready. `noteShown` would then need a pipeline-ready check. three 0.186.1 compiles synchronously today |
+| Pipelines built asynchronously | A presenter waits on the page until its pipelines exist ([#76](decisions.md#76)). If one fails, three may skip a draw yet fire `onAfterRender`; `surfacePass.ts` refuses it |
 
 ## Ownership
 
@@ -492,7 +492,7 @@ loading finishes.
 
 ## Lab adoption
 
-This is a separate lab decision. It narrows #57, #58, and #75 to app policy
+This is a separate lab decision. It narrows #57 and #75 to app policy
 over the new signal.
 
 The page shell keeps its bar visible and covers only the demo area with the

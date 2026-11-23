@@ -1518,7 +1518,7 @@ export function FlightApp() {
   // planeScale(camZ, LIFT_Z), so the same content needs that many more
   // texels to stay 1 : 1 with the display. Pinning the ALTITUDE density for
   // the whole flight was measured to be the grab-moment blur itself: the
-  // texture is born 11% too dense for the page, and the #46 hard cut swaps
+  // texture is born 11% too dense for the page, and the hard cut swaps
   // crisp DOM for that texture minified into the resting rect — mush, one
   // frame after perfect, precisely when the eye is looking at it.
   //

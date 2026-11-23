@@ -388,7 +388,7 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
       renderer.setSize(width, height, false)
       const gl = renderer.getContext()
       // Chrome can clamp a large drawing buffer without changing canvas.width.
-      // Reduce the offscreen band, retaining density and viewport coverage (#53).
+      // Reduce the offscreen band, retaining density and viewport coverage (#51).
       // Only the WebGL 2 fallback has a drawing buffer to read.
       if (gl instanceof WebGL2RenderingContext && (gl.drawingBufferWidth < canvas.width || gl.drawingBufferHeight < canvas.height)) {
         const pixels = gl.drawingBufferWidth * gl.drawingBufferHeight

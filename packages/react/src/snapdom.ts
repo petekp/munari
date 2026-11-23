@@ -311,6 +311,9 @@ export const snapdomCaptureEngine: CaptureEngine = {
   // a flat quad would have been, with the panel still drawing correctly from
   // its texture and no error anywhere.
   native: false,
+  // Each capture is a full raster, so a Surface part following its content
+  // would re-rasterize about four times a second (decisions.md #64).
+  honorsSurfaceLive: false,
   // snapDOM reads computed styles off a live document, so there is no
   // server-side answer — and asking for one must not throw. `in globalThis`
   // for the same reason the trial probe uses it: a Node process has no DOM

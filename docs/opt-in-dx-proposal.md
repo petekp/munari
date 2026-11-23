@@ -24,7 +24,7 @@ Fixing that payload naively — by shattering `@petepetrash/munari` into seven m
 Using deep-module design criteria (*interface*, *depth*, *seam*, *adapter*, *leverage*, *locality*):
 
 1. **Organize entry points around authoring posture, not internal subsystems.** Callers know *how they are building* ("DOM + shader on a React page" vs. "3D world in React Three Fiber" vs. "zero-Three micro-transition"), not which internal kernel helpers run underneath.
-2. **Tree-shaking is the bundler's job; registration seams are only for environment adapters.** Feature modules (`FocusScene`, `Dial`, `deformSurfaceGeometry`, `useElementCapture`, `encodedOutput`) opt in automatically when imported and vanish when omitted. Global `enableX()` seams are reserved strictly for environment-wide adapters that swap behavior underneath an unchanged component interface — specifically `@petepetrash/munari/snapdom` ([decisions.md #60](decisions.md#60)).
+2. **Tree-shaking is the bundler's job; registration seams are only for environment adapters.** Feature modules (`FocusScene`, `Dial`, `deformSurfaceGeometry`, `useElementCapture`, `encodedOutput`) opt in automatically when imported and vanish when omitted. Global `enableX()` seams are reserved strictly for environment-wide adapters that swap behavior underneath an unchanged component interface — specifically `@petepetrash/munari/snapdom` ([decisions.md #60](decisions/capture.md#60)).
 3. **Preserve compound `<Surface.*>` ergonomics.** Keeping `Root`, `HTML`, `Scene`, `Mesh`, `Anchor`, and `LitMaterial` together on `Surface` costs only `~3.0 kB` gzip of Munari code (`MeshStandardNodeMaterial` is already inside `WebGPURenderer`). Shattering `Surface.*` saves almost nothing while breaking every existing scene and guide.
 4. **Zero-cliff graduation.** Authoring rules ([authoring.md](authoring.md)), TSL output helpers (`premultipliedOutput`, `encodedOutput`, `surfaceRadiusMask`), `deformSurfaceGeometry`, and `enableSnapdomCapture()` stay identical across tiers. Moving from a lightweight stage to a full R3F `<SurfaceCanvas>` changes the outer host wrapper, never the card's HTML, CSS, or shader math.
 5. **Never turn a TypeScript pass into a runtime crash.** Any host that omits R3F's wildcard `extend(THREE)` must carry a distinct name (`<BareSurfaceCanvas>`) and an explicit `catalogue` prop, with actionable development diagnostics.
@@ -33,7 +33,7 @@ Using deep-module design criteria (*interface*, *depth*, *seam*, *adapter*, *lev
 
 ## 3. Three caller postures, one coherent package
 
-All entries remain inside the single published package `@petepetrash/munari` ([decisions.md #1](decisions.md#1)), with `@react-three/fiber` promoted to an **optional** peer dependency in `peerDependenciesMeta` alongside `@zumer/snapdom`.
+All entries remain inside the single published package `@petepetrash/munari` ([decisions.md #1](decisions/project.md#1)), with `@react-three/fiber` promoted to an **optional** peer dependency in `peerDependenciesMeta` alongside `@zumer/snapdom`.
 
 | Caller posture | Proposed entry | Peers installed | Total app gzip (net over React) | When to choose it |
 |---|---|---|---:|---|
@@ -50,7 +50,7 @@ All entries remain inside the single published package `@petepetrash/munari` ([d
 
 Today, lifting a single HTML card into lit 3D requires installing `@react-three/fiber`, wiring `useId()` + `useSurfaceSupport()`, configuring six overlay props on `<SurfaceCanvas>` (`pointerMode="surfaces"`, `frameloop="demand"`, `gl={{ alpha: true }}`, `onCreated={({ gl }) => gl.setClearAlpha(0)}`, `style={{ position: 'absolute', inset: 0 }}`), and shipping `519.6 kB` gzip. Five scenes in `apps/lab` (`Light`, `Lamp`, `Rain`, `Wordmark`, `Gravity` fallback) already bypass R3F by hand to avoid this overhead.
 
-`@petepetrash/munari/stage` turns that hand-rolled pattern into a deep module backed directly by `three/webgpu` (`WebGPURenderer` + `DirectRenderPipeline`, [decisions.md #69, #72, #73](decisions.md#69)):
+`@petepetrash/munari/stage` turns that hand-rolled pattern into a deep module backed directly by `three/webgpu` (`WebGPURenderer` + `DirectRenderPipeline`, [decisions.md #69, #72, #73](decisions/renderer.md#69)):
 
 ```tsx
 import { useState } from 'react'
@@ -116,11 +116,11 @@ Instead, three behind-the-seam improvements cut payload automatically while pres
 
 Today, `@petepetrash/munari/advanced` mixes `export * from '@munari/core'` with `FrameSurface` and `passMaterial` (`three/webgpu` + `@react-three/fiber`), so a developer cannot consume Munari's zero-dependency DOM/capture kernel without pulling Three and R3F into the bundle.
 
-Adding `@petepetrash/munari/kernel` (re-exporting only `@munari/core` + pure React lifecycle hooks like `useSurfaceSupport` with **zero** imports from `three` or `@react-three/fiber`) paired with a copyable `registry/shader-quad` recipe (`~120` lines of raw WebGL 2 / WebGPU single-quad boilerplate, following the `registry/focus-orbit` precedent in [decisions.md #6](decisions.md#6)) gives design-system authors:
+Adding `@petepetrash/munari/kernel` (re-exporting only `@munari/core` + pure React lifecycle hooks like `useSurfaceSupport` with **zero** imports from `three` or `@react-three/fiber`) paired with a copyable `registry/shader-quad` recipe (`~120` lines of raw WebGL 2 / WebGPU single-quad boilerplate, following the `registry/focus-orbit` precedent in [decisions.md #6](decisions/project.md#6)) gives design-system authors:
 - Zero-flash handoff coordination (`createSurfaceCoordinator`),
 - `Element.moveBefore` + Safari focus/selection/scroll preservation (`relocatePreservingState`),
 - `<canvas content="drawable">` + `drawElementImage` + `storeForBox` hysteresis + `chooseCaptureMemory` software-GPU protection (`createDomTextureSource`),
-- **`~75 kB` gzip total app (`+18 kB` net over React)** — while keeping `@petepetrash/munari` completely free of non-Three renderer abstractions ([decisions.md #1](decisions.md#1)).
+- **`~75 kB` gzip total app (`+18 kB` net over React)** — while keeping `@petepetrash/munari` completely free of non-Three renderer abstractions ([decisions.md #1](decisions/project.md#1)).
 
 ### 4.4 Zero-ceremony cross-browser fallback (`@petepetrash/munari/snapdom`)
 
@@ -149,7 +149,7 @@ Two small refinements make this cleaner and `10.3 kB` gzip lighter:
 | **Add `enableNativePointerRoute()`, `enableFocusScene()`, `enableAnchors()`** | Violates locality: callers already declare intent via imports (`FocusScene`) or props. Global `enableX()` calls create silent "forgot to register in `main.tsx`" bugs. |
 | **Silently remove `extend(THREE)` inside existing `<SurfaceCanvas>`** | Causes `<ambientLight />` and `<boxGeometry />` to typecheck cleanly in TypeScript and throw at runtime. Explicit `<BareSurfaceCanvas catalogue={...}>` makes the contract honest. |
 | **Import `three/src/renderers/webgpu/WebGPURenderer.nodes.js` inside Munari** | Mixes `three/src/*` with consumer `three/webgpu` (`three/build/*`), duplicating `Object3D`/`NodeMaterial` classes, breaking `instanceof` checks, and inflating bundles to `1.40 MB` min. |
-| **Publish separate `@munari/core` or `@munari/stage` npm packages** | Violates [decisions.md #1](decisions.md#1) and [#11](decisions.md#11): multiple versioned npm packages invite duplicate kernel/registry state (`captureEngine` singleton split-brain). Subpaths in `@petepetrash/munari` share one private `dist/_core/*` graph. |
+| **Publish separate `@munari/core` or `@munari/stage` npm packages** | Violates [decisions.md #1](decisions/project.md#1) and [#11](decisions/project.md#11): multiple versioned npm packages invite duplicate kernel/registry state (`captureEngine` singleton split-brain). Subpaths in `@petepetrash/munari` share one private `dist/_core/*` graph. |
 
 ---
 

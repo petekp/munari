@@ -284,7 +284,7 @@ enableSnapdomCapture({
 - **Bundle weight:** `three/webgpu` adds roughly `550–640 kB` gzipped. Lazy-load routes that mount `SurfaceCanvas` so initial page loads stay small.
 - **TSL node materials only:** `SurfaceCanvas` uses `WebGPURenderer` (with WebGL 2 fallback), which rejects GLSL `ShaderMaterial`, `onBeforeCompile`, and GLSL-based Drei helpers such as `Text`. Custom shaders use `three/tsl`.
 - **Captured CSS rules:** Pair `:hover` and `:active` selectors with `[data-hover]` and `[data-active]` for bent or non-Chrome surfaces. Avoid `mask-image` inside captured subtrees ([platform.md #7](platform.md)), and keep `<iframe>`, `<video>`, `<audio>`, custom elements, and Shadow DOM outside `Surface` ([authoring.md](authoring.md)).
-- **`snapDOM` vs. Chrome 157+ ceiling:** Chrome 157+ updates textures in `~12 ms` with live carets and fractional borders. On Safari and Firefox, `snapDOM` takes `~37 ms` on quiet input, caps `live` animations around `4 fps`, omits the blinking caret in 3D, and restarts running CSS animations on Safari handoff.
+- **`snapDOM` vs. Chrome 157+ ceiling:** Chrome 157+ updates textures in `~12 ms` with live carets and fractional borders. On Safari and Firefox, `snapDOM` takes `~37 ms` on quiet input, holds `live` Surface content still in the scene, omits the blinking caret in 3D, and restarts running CSS animations on Safari handoff.
 
 ## Comparison at a glance
 

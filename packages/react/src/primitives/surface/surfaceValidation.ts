@@ -1,12 +1,12 @@
 // Surface validation — diagnose omissions after the owning renderer is ready.
-// A missing host is a wait, not a missing declaration. Decision #40 assigns
+// A missing host is a wait, not a missing declaration. Decision #42 assigns
 // ten-second development warnings to waits without forcing a handoff.
 // The root owns this subscription; the host owns the frame that validates it.
 import type { SurfaceStore } from './surfaceHandle'
 import type { SurfaceHost } from './surfaceHostRegistry'
 import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 
-const WAIT_WARNING_MS = 10_000 // Diagnostic deadline, decision #40; never a readiness budget.
+const WAIT_WARNING_MS = 10_000 // Diagnostic deadline, decision #42; never a readiness budget.
 
 export function watchSurfaceValidation(store: SurfaceStore, host: SurfaceHost | null, development = isDevelopmentRuntime()): () => void {
   let live = true

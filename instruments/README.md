@@ -141,7 +141,7 @@ recorded without the pixel check.
 Neither page may request another demo's code. This checks recorded compositor
 frames, not a network-independent speed budget. Use `HEADED=1` for visible
 Chrome, `STARTUP_OUTPUT` for artifacts, and `STARTUP_CASES` for a
-comma-separated subset. See [decision #57](../docs/decisions.md#57).
+comma-separated subset. See [decision #57](../docs/decisions/lab.md#57).
 
 `node instruments/light-opening/profile.mjs` times how the framed production
 Light page reaches readiness, without network delays or a screencast. It runs
@@ -165,7 +165,7 @@ with both DOM Canvas2D and OffscreenCanvas. Light checks that an unchanged
 headline reuses its mask and that a same-width text change replaces it.
 `MASK_OUTPUT` chooses the evidence directory. The frozen `maskReference.mjs` is
 an independent test oracle. The readiness and mask checks bound each browser to
-30 seconds and close it afterward. See [decision #58](../docs/decisions.md#58)
+30 seconds and close it afterward. See [decision #57](../docs/decisions/lab.md#57)
 for the exactness requirements.
 
 `npm run probe:light-headline` checks Light's headline: monospace HTML,
@@ -176,7 +176,7 @@ render must lose contrast. It also checks that the light controls fit on the
 first screen on desktop and on a phone, reduced motion, 3x parent zoom,
 no-capture rendering and the native fallback without a GPU renderer. Use `HEADED=1` for
 visible Chrome and `HEADLINE_OUTPUT` for its evidence directory. Decision
-[#56](../docs/decisions.md#56) records scope and limits.
+[#56](../docs/decisions/lab.md#56) records scope and limits.
 
 `npm run probe:heading-edges` checks the shadow-mask fringe around Light's
 native heading in a 3x zoomed iframe. It compares the current receiver
@@ -187,7 +187,7 @@ least 99% of conspicuous fringe pixels, and preserve the opaque ink core. The
 selected case positions the light over the letter so its shadow overlaps that
 footprint. `HEADED=1` uses native display density; `TEST_DPR` can reproduce
 another density, and `LIGHT_PROOF_OUTPUT` chooses the artifact directory.
-Decision [#55](../docs/decisions.md#55) records the clearance and limits.
+Decision [#50](../docs/decisions/lab.md#50) states the clearance.
 
 `npm run probe:light` first renders the lighting shader against known geometry.
 It checks separated shadows from thin silhouettes, one visibility result for
@@ -199,7 +199,7 @@ point-light control must keep the higher edge sharp. These profiles read the
 shader's visibility before tint and exposure. At the default heights, another
 pair moves the bulb across the page. The rounded bulb must broaden the distant
 edge beyond a control whose emitter is parallel to the page. Decision
-[#50](../docs/decisions.md#50) records the model.
+[#50](../docs/decisions/lab.md#50) records the model.
 
 On Light, the same run selects "Unified." with the shortcut and checks that
 only that line is raised. It double-clicks native heading text, drags the light
@@ -239,7 +239,7 @@ before the lamp's passes, so that backend reports GPU time as unmeasured. Lamp m
 `HEADED=1` keeps native display density; use `STRICT_CAPABILITY=1` to require
 the enhanced path. `LAMP_OUTPUT` selects an evidence directory outside Git.
 The observer and optical controls are injected into the served copy only.
-Decision [#52](../docs/decisions.md#52) records the optical and cord limits.
+Decision [#52](../docs/decisions/lab.md#52) records the optical and cord limits.
 
 `npm run probe:lamp-quality` checks a 3x pinch-zoomed parent containing the
 framed Light demo in an offset iframe. The lamp must use display density times
@@ -249,8 +249,8 @@ be below 65% of the stretched-bitmap control against a supersampled reference.
 Separate pixel checks require light across the glass and outside its
 silhouette. Both capture-enabled and no-flag Chrome run through the same zoom
 test. `HEADED=1` retains native display density, and `LAMP_OUTPUT` chooses an
-evidence directory outside Git. Decision [#54](../docs/decisions.md#54) records
-the zoom and emission corrections.
+evidence directory outside Git. Decision [#52](../docs/decisions/lab.md#52) states
+the zoom rule.
 
 ## Flexible postcard
 
@@ -264,7 +264,7 @@ offscreen margin shrinks to fit the browser's buffer limit. `HEADED=1` preserves
 native density for the main comparison; `PAPER_OUTPUT` selects the evidence folder.
 `EDGE_BASELINE_ONLY=1` saves a before image without asserting the new contract.
 All pose and density controls affect only the served copy. Decision
-[#53](../docs/decisions.md#53) records the rendering change and measured result.
+[#51](../docs/decisions/lab.md#51) states the rendering rule.
 
 `npm run probe:postcard-paper` checks the real paper mesh, its rendered outline,
 corner response, stamp impulse, native field input and exact return. A flat
@@ -284,7 +284,7 @@ parts of its own surface. Removing only the shadow-depth texture is the control;
 the flat sheet must remain free of self-shadow acne. This check renders on
 WebGPU by default and does not need HTML capture. With `MUNARI_BACKEND=webgl2`
 it needs `EXT_color_buffer_float` for the half-float shadow map. These are local
-commands; CI membership is unchanged. Decision [#51](../docs/decisions.md#51)
+commands; CI membership is unchanged. Decision [#51](../docs/decisions/lab.md#51)
 records the model and its bounds.
 
 ## Detail issue regressions
@@ -316,8 +316,8 @@ They do not change CI membership.
   blob-count override and Crystal's held key. The field observer exists only
   in the instrument's served copy. `API_PROOF_OUTPUT` selects output.
 
-Decision [#48](../docs/decisions.md#48) records the corrected contracts and
-the distinction between numerical, browser-input, and pixel evidence.
+Decision [#48](../docs/decisions/capture.md#48) states the capture, lighting and
+release-velocity rules these checks protect.
 
 ## capture-origin
 
@@ -391,7 +391,7 @@ This gate runs them once per engine in a browser and judges:
   - `rest` — whole-number density, no floor. 0 of 3000 blocks differ; 88
     differ (worst 222) when the faces are read once per document and a
     cross-origin sheet is skipped, which is the regression that shipped
-    ([decisions #62](../docs/decisions.md)).
+    ([decisions #62](../docs/decisions/capture.md#62)).
   - `carried` — 2.4× across and 0.957× down after a resize the density band
     absorbs, so every glyph edge falls between samples and the law is on
     the block mean: 0.19 today.
@@ -535,6 +535,12 @@ watchdog and pixel thresholds. The throttle is lifted after the screencast
 stops because the remaining work decodes evidence rather than exercising the
 scene; each screenshot is read back once. A full soak takes about 115 seconds.
 
+## genie-first-flight
+
+Measures what Genie's first flights after a page load spend, and where.
+`npm run probe:genie-first-flight`. Its [guide](genie-first-flight/README.md)
+lists the modes, outputs and limits.
+
 ## genie duplicate drag
 
 Checks that a restored window does not leave its final scene image
@@ -590,7 +596,7 @@ CSS pose and scene geometry are fixed to isolate capture correctness. Every
 recorded scene image must match in both directions within a one-device-pixel
 neighborhood: at most 2% may differ by more than 40 summed RGB levels.
 Correct circle frames measure 1.13% and stale-pose controls 4.8% or more
-(decision #2, amended 2026-10-23). The five
+(decision #2). The five
 projected figure points must stay within 0.25 CSS pixels of the native rectangle.
 
 The first actual scene draw must be recorded. Its framebuffer is held for 40 ms
@@ -829,39 +835,7 @@ frame earns a qualifying presentation receipt.
 ## shader-compile
 
 Checks that the lab's shaders compile and link. `npm run gate:shaders`.
-Three generates each shader from its node graph only in a browser, so
-nothing else in CI can tell a working one from a broken one: typecheck,
-lint, and the unit suites see the node calls, never the WGSL or GLSL
-they produce. This gate hooks
-shader compiles and program links from inside the page, walks the logo
-scene through the states that build materials (page, scene, extruded,
-mesh body, back to page), and prints every error against its own source
-lines.
-
-On WebGPU, each `createShaderModule` call counts as a compile and each
-render pipeline as a link. Errors come from each module's
-`getCompilationInfo()` and from the device's uncaptured errors. On the
-WebGL 2 fallback (`MUNARI_BACKEND=webgl2`), the gate hooks
-`compileShader` and `linkProgram`. Either way it fails on any error, or
-when it sees no compile or link at all. A planted WGSL error failed it on
-both backends (2026-10-08).
-
-The walk covers only the programs its states construct. A new material
-needs a new state here. The states read the letter material's uniforms
-through a wrapper the gate adds around `createLetterMaterial` when it
-serves the lab.
-
-Each step waits up to 30 seconds for its state and prints how long it took.
-The check does not judge that time. A hosted runner took 7.65 seconds to
-return to the page, in one run on 2026-09-29.
-
-It exists because a shared GLSL block once dropped two sampler
-declarations: used in both stages, declared in neither. The unit suite
-guarding that block passed, because it checked that no uniform was
-declared twice, never that each was declared at all. The failure
-surfaced two commands later as a phase-wait timeout inside the
-crossing-flash gate (2026-08-14, since removed). This is the cheapest
-gate in the repo and the one the others assume.
+Its [guide](shader-compile/README.md) says what it hooks and what it covers.
 
 ## lifting-pointer
 
@@ -949,7 +923,7 @@ cursor the fixed-point row takes both hover and click while the
 amplitude is engaged. That last clause drives a deliberately coarse
 event stream (~50px per event over 22px rows): each event raycasts the
 pose of the frame it arrived in, so before the presenter's re-route
-(decisions.md #33, amended 2026-08-20) the settled hover sat more than
+(decisions.md #33) the settled hover sat more than
 a row stale and never corrected — the clause is the browser proof that
 routing now follows the presented pose after the hand stops. A
 vertex-shader warp — geometry flat, pixels bent — fails every

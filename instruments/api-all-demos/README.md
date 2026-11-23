@@ -56,7 +56,9 @@ screencast acknowledgement or Chrome teardown. A nonzero exit remains a failed
 run. Inspect the individual result files to distinguish an observer shutdown
 failure from a failed motion or pixel assertion, then rerun the affected command.
 
-Decision [#41](../../docs/decisions.md#41) records these experimental budgets.
+The 0.5 channel limit allows rounding below one channel level and rejects the
+measured duplicate or missing shadow. The 1.5 px scroll limit covers
+pixel-center rounding and rejects the measured 12 px lag.
 
 ## Routes and gestures
 
@@ -154,8 +156,8 @@ hides the mesh to prove native HTML is not concealing a failed draw. Run
 `probe:postcard` separately to check motion, companion pixels, scrolling, and input.
 Start `probe:api-lab` and set `API_PROOF_URL` to its printed URL first.
 These stationary comparisons do not measure perspective filtering during motion
-or every shader. Decision [#44](../../docs/decisions.md#44) records the default
-density and pixel-grid policy and its measured limits.
+or every shader. Decision [#44](../../docs/decisions/capture.md#44) states the default
+density and pixel-grid policy and its edge-energy bounds.
 
 `npm run probe:scene-sharpness` compares a `SceneSurface` label with the same native
 HTML at its displayed size. `npm run probe:display-density` uses the running
@@ -183,8 +185,8 @@ Whole-image mean is diagnostic. Visible input must work,
 clipped input must not fire, and the preparation clip must be removed at scene
 handoff. The resize sweep stays inside the backing-store band and allows at most
 1 CSS px of anchor difference from the latest paint while moving, then requires
-exact agreement after settling. Decision [#45](../../docs/decisions.md#45) records
-the failing measurements and these bounds.
+exact agreement after settling. Decision [#45](../../docs/decisions/surface.md#45) states
+the clipping and anchor rules these bounds check.
 
 Set `HEADED=1` for visible Chrome at native DPR, `API_CASES` for a comma-separated
 subset, and `API_SOURCE_ROOT` for a saved source revision. The runner writes its

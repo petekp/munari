@@ -104,6 +104,14 @@ export interface SurfaceMaterialValue {
 
 export const SurfaceMaterialContext = createContext<SurfaceMaterialValue | null>(null)
 
+/**
+ * The stand-in texture inside `<Surface.Prewarm>`, which has no Surface to
+ * read one from. A pipeline depends on the shader, not on which texture is
+ * bound, so a material built around it builds the pipeline the presenter's
+ * material will need.
+ */
+export const SurfacePrewarmContext = createContext<THREE.Texture | null>(null)
+
 export const SurfaceRootContext = createContext<SurfaceRootValue | null>(null)
 export const SurfaceHandleContext = createContext<SurfaceHandleValue | null>(null)
 export const SurfacePartContext = createContext<SurfacePartValue | null>(null)
@@ -159,7 +167,9 @@ export function useSurfaceTexture(): THREE.Texture {
 
 /** `useSurfaceTexture` for a hook or component that builds on it and must name itself in the error. */
 export function useSurfaceTextureFor(caller: string): THREE.Texture {
+  const prewarm = use(SurfacePrewarmContext)
   const part = use(SurfacePartContext)
+  if (prewarm) return prewarm
   if (!part) {
     throw new Error(
       `munari: ${caller} must be used inside the component passed as the \`material\` ` +

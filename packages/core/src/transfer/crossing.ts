@@ -26,7 +26,7 @@
 //
 // - The page releases on EVIDENCE, never on hope: every incoming
 //   presenter has completed stage-one proof (`readinessProve` from an
-//   eligible `warm-up` or screen-reaching color draw, decisions.md #45 —
+//   eligible `warm-up` or screen-reaching color draw, decisions.md #25 —
 //   not merely an upload queued), while stage-two presentation requires a
 //   color-writing draw, and the pixels it will show carry
 //   content no older than the lift itself (decisions.md #65). Nothing

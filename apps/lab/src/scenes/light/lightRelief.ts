@@ -236,7 +236,7 @@ export function paintRelief(plan: ReliefPlan, create: PainterFactory): Mask | nu
     context.restore()
     // Keep the original raster grid. Beyond this padded bound the packed field
     // saturates to +256 CSS px, so an exact transform there cannot change a byte.
-    // One extra pixel includes the antialiased contour (decision #58).
+    // One extra pixel includes the antialiased contour (decision #57).
     const padding = Math.ceil(SHADOW_DISTANCE_RANGE * RELIEF_RATIO) + 1
     const left = Math.max(0, Math.floor(Math.min(...boxes.map(box => box.x)) * RELIEF_RATIO) - padding)
     const top = Math.max(0, Math.floor(Math.min(...boxes.map(box => box.y)) * RELIEF_RATIO) - padding)

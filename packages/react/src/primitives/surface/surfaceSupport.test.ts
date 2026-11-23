@@ -70,6 +70,7 @@ describe('supportsSurfaces', () => {
     const anywhere: CaptureEngine = {
       name: 'anywhere',
       native: false,
+      honorsSurfaceLive: false,
       available: () => true,
       createSource: () => {
         throw new Error('this test never builds a source')

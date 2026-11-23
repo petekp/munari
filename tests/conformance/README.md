@@ -36,5 +36,5 @@ idle source paints; it does not measure all renderer or GPU work.
 Kernel tests live here. Binding and lab tests live beside their modules.
 Registry tests verify actual copyable files. Measurement-helper tests live
 beside those helpers under `instruments/`. The [repository guide](../../AGENTS.md#where-tests-live)
-owns this layout. [Decision #2](../../docs/decisions.md#2--the-conformance-suite-is-the-specification-2026-08-02)
+owns this layout. [Decision #2](../../docs/decisions/project.md#2)
 records the test policy.

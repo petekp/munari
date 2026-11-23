@@ -1,6 +1,6 @@
 // Paper lighting — shade and cast shadows from the live card's bent grid.
 // The receiver draws at display density with real triangle coverage. A sampled
-// normal map followed by a 1x overlay made the curl visibly jagged (#53).
+// normal map followed by a 1x overlay made the curl visibly jagged (#51).
 // The masthead owns this renderer; the Surface publishes geometry before drawing.
 
 import * as THREE from 'three'

@@ -1,6 +1,6 @@
 // Lamp viewport — native pixels for the visible portion of a zoomed page.
 // An iframe reports visualViewport.scale=1 while its parent is pinch-zoomed.
-// Reading the enclosing viewport avoids stretching the lamp's bitmap (#54).
+// Reading the enclosing viewport avoids stretching the lamp's bitmap (#52).
 import type * as THREE from 'three'
 import type {WebGPURenderer} from 'three/webgpu'
 import {fitBulbCamera} from './lightBulb'

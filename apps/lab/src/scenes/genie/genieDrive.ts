@@ -189,3 +189,36 @@ export function driveGrabStep(s: DriveState, targetT: number, dt: number): Drive
   const alpha = 1 - Math.exp(-dt / GRAB_V_TAU)
   return { t, v: s.v + alpha * (raw - s.v) }
 }
+
+// ── the drive box: who owns t right now, shared by refs ─────────────────
+//
+// clock   an untouched flight, eased time
+// grab    a hand: t is wherever the hand says (driveGrabStep)
+// spring  after release: analytic spring to the committed wall
+// settle  after a landing at rest: the wobble consuming arrival momentum
+
+export interface DriveBox {
+  mode: 'clock' | 'grab' | 'spring' | 'settle'
+  t: number
+  v: number
+  /** Progress actually drawn. It only differs from t while catching up
+   *  after a hand moved during the hidden texture handoff. */
+  visibleT: number
+  grabT: number
+  target: 0 | 1
+  clockStart: number | null
+  settleTau: number
+  settleV: number
+}
+
+export const restingDrive = (): DriveBox => ({
+  mode: 'clock',
+  t: 0,
+  v: 0,
+  visibleT: 0,
+  grabT: 0,
+  target: 1,
+  clockStart: null,
+  settleTau: 0,
+  settleV: 0,
+})
