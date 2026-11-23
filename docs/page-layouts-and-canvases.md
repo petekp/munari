@@ -29,3 +29,25 @@ while page-owned preparation remains interactive.
 `Surface.Mesh` has no `onClick`, because the gate swallows the browser click after
 any press on a Surface. Use `onPointerUp`. `onDoubleClick` and `onContextMenu`
 fire under the relay route.
+
+## Meshes in front of a Surface
+
+The default does not block the pointer yet. In either pointer mode, a press on
+a scene mesh in front of a Surface reaches the Surface's HTML behind it. A mesh
+blocks only when its own handlers stop propagation:
+
+```tsx
+import type { ThreeEvent } from '@react-three/fiber'
+
+const stop = (event: ThreeEvent<PointerEvent | MouseEvent>) => event.stopPropagation()
+const blocksSurfaces = { onPointerDown: stop, onPointerUp: stop, onPointerMove: stop, onClick: stop }
+
+<mesh {...blocksSurfaces} geometry={spout} material={porcelain} />
+```
+
+This works only on the relay route, which is the default. With
+`pointerRoute="auto"`, the native route sends the pointer to a DOM layer above
+the canvas, and R3F's propagation never runs. Keep a Surface on relay when a
+mesh can cover it.
+[Review notes](https://github.com/petekp/munari/blob/main/apps/lab/src/scenes/review-notes/ReviewNotesTeapot.tsx)
+puts these handlers on the teapot in front of its notes.

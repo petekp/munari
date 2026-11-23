@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The page layouts guide explains that a mesh in front of a Surface does not
+  block the pointer by default, and shows the handlers that stop propagation
+  on the relay route.
 - `supportsCapture()` and `useCaptureSupport()` are the new names of the
   capability check. It asks whether an installed capture engine can run in
   this browser, which the old names did not say.
