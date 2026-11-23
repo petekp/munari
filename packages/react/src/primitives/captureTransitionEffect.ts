@@ -326,6 +326,10 @@ function createRunner<Options>(
  * `WebGPURenderer`'s draw counters, which a plain `WebGLRenderer` counts
  * differently, so under another canvas every run times out and applies its
  * update with no effect.
+ *
+ * Pass the same `transition` handle on every render. The hook binds the first
+ * handle it receives and ignores later ones, so create it once, in a component
+ * that outlives the effect, with `useCaptureTransition()`.
  */
 export function useCaptureTransitionEffect<Options>(
   transition: CaptureTransition<Options>,

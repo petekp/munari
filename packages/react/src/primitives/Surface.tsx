@@ -354,10 +354,9 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
         const held = snapshot(liveRoot, unsupported)
         if (!force && held.key === heldKey.current) return
         heldKey.current = held.key
-        // Installing the copy is a mutation of the source's own element, so
-        // the source hears it and decides for itself whether to capture:
-        // the compositor always does, a rasterizing engine only when the
-        // content is live or the user just acted on it.
+        // A source that is not `live` declines a paint unless one is owed
+        // (htmlInCanvas.ts onpaint), so installing the copy does not
+        // capture it; useSurfaceRefresh() or input does.
         captureRoot.replaceChildren(held.node)
         applyCopyScrolls(held.scrolls)
         matchMotion(liveRoot, held.node)

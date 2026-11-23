@@ -169,7 +169,9 @@ update through its cover.
 
 `@petepetrash/munari/advanced` exports `useCaptureTransitionEffect`, documented as
 provisional: its shape may change in any release. An effect component inside the
-canvas calls it with the handle and two callbacks.
+canvas calls it with the handle and two callbacks. The handle must be the same
+object on every render: the hook binds the first one it receives and ignores later
+ones.
 
 ```tsx
 const { cover } = useCaptureTransitionEffect(transition, {

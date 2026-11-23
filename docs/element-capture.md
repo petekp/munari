@@ -104,7 +104,8 @@ target an opaque background. Every wait is bounded at 1 s (decision #77).
 
 The effect component calls `useCaptureTransitionEffect` from
 `@petepetrash/munari/advanced` inside a `SurfaceCanvas`. It is provisional and may
-change in any release. It returns the `cover` props that the effect's mesh spreads.
+change in any release. It returns the `cover` props that the effect's mesh spreads. Pass it the same
+transition handle on every render, because it binds the first handle it receives.
 [Capture transitions](transition-api.md) describes the effect side, and
 [Postcard](../apps/lab/src/scenes/postcard/PostcardStamp.tsx) and
 [Distortion Wave](../apps/lab/src/scenes/distortion-wave/distortionWaveEffect.tsx)

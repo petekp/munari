@@ -1338,7 +1338,7 @@ an eager rasterizer import adds 7.4 kB to `snapdomDefault`. Both faults were
 run on 2026-11-22 and the check failed on the named entry each time.
 
 The sizes are gzip over the tsdown output staged by `stage-manifest.mjs`, with
-Vite 8.2.0, `three` 0.186.1, `@react-three/fiber` 9.8.1 and snapDOM 3.3.3 from
+Vite 8.2.0, `three` 0.186.1, `@react-three/fiber` 9.8.1 and snapDOM 3.8.2 from
 the lockfile. After a dependency upgrade or an intended change of imports,
 re-measure and update `budgets.json` in the same commit. The check has no
 browser, so it says nothing about whether a page behaves. CI runs it as the
