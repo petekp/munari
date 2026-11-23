@@ -24,7 +24,7 @@ import {
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { foldPoint } from './tearPlannerFoldLaw'
-import { HOLE_PITCH_PX, createSheetMaterial, createSheetUniforms, type SheetUniforms } from './tearPlannerNodes'
+import { HOLE_PITCH_PX, createDropShadow, createSheetMaterial, createSheetUniforms, type SheetUniforms } from './tearPlannerNodes'
 import { createSheetMotion, type SheetMotion, type SheetReading } from './tearPlannerMotion'
 import { PAD_CITY, sheetFor } from './tearPlannerAlmanac'
 import { EMPTY_SLOTS, SEED, carryInto, countDone, writeOnBlankLine, type Days, type Slots, type Task } from './tearPlannerTasks'
@@ -87,6 +87,9 @@ function SheetRig({ index, motion, slotRef }: { readonly index: 0 | 1; readonly 
   const geoRef = useRef<THREE.PlaneGeometry>(null)
   const uniforms = useMemo(createSheetUniforms, [])
   const drawn = useRef({ version: -1, top: false })
+  const shadowRef = useRef<THREE.Mesh>(null)
+  const shadow = useMemo(createDropShadow, [])
+  useEffect(() => () => shadow.material.dispose(), [shadow])
 
   useEffect(() => {
     uniforms.size.value.set(SHEET_WIDTH, SHEET_HEIGHT)
@@ -113,6 +116,21 @@ function SheetRig({ index, motion, slotRef }: { readonly index: 0 | 1; readonly 
     )
     group.rotation.set(0, 0, 0)
     const fall = top ? m.fall : null
+    const shadowMesh = shadowRef.current
+    if (shadowMesh) {
+      shadowMesh.visible = fall !== null
+      if (fall) {
+        // Light from the upper left: the shadow lands down and to the right,
+        // further and softer the longer the sheet has been off the pad.
+        const away = Math.min(1, fall.age * 2.5)
+        shadowMesh.position.set(group.position.x + fall.x + 10 + 16 * away, group.position.y - fall.y - 14 - 22 * away, 1)
+        shadowMesh.rotation.set(0, 0, fall.spin)
+        shadow.uniforms.blur.value = 10 + 34 * away
+        // The sheet is still rolled as it leaves; its flat shadow arrives as it opens out.
+        const opened = THREE.MathUtils.smoothstep(fall.age, 0.12, 0.55)
+        shadow.uniforms.strength.value = 0.18 * opened * (1 - 0.3 * away)
+      }
+    }
     if (fall) {
       group.position.x += fall.x
       group.position.y -= fall.y
@@ -130,7 +148,9 @@ function SheetRig({ index, motion, slotRef }: { readonly index: 0 | 1; readonly 
       uniforms.tearFront.value = top ? m.tearFront : SHEET_WIDTH
       const over = top ? null : m.fold
       if (over) uniforms.over.value.set(over.nx, over.ny, over.s0, over.r)
-      uniforms.overOn.value = over && !m.fall ? 1 : 0
+      // The roll's own shadow hands over to the drop shadow in the first moments of the fall.
+      const rollShadowLeft = m.fall ? Math.max(0, 1 - m.fall.age / 0.3) : 1
+      uniforms.overOn.value = over ? rollShadowLeft : 0
     }
     if (moving) invalidate()
   })
@@ -161,6 +181,10 @@ function SheetRig({ index, motion, slotRef }: { readonly index: 0 | 1; readonly 
   }
 
   return (
+    <>
+    <mesh ref={shadowRef} visible={false} renderOrder={-1} material={shadow.material}>
+      <planeGeometry args={[SHEET_WIDTH, SHEET_HEIGHT]} />
+    </mesh>
     <group ref={groupRef}>
       <Surface.Mesh
         placement="manual"
@@ -173,6 +197,7 @@ function SheetRig({ index, motion, slotRef }: { readonly index: 0 | 1; readonly 
         onPointerOut={onPointerOut}
       />
     </group>
+    </>
   )
 }
 
@@ -309,7 +334,9 @@ export function TearPlannerApp() {
     }
   })
 
-  const done = countDone(todaySlots)
+  // Once the perforation has gone the day is over, though the sheet is still falling.
+  const torn = reading.mode === 'fall'
+  const done = countDone(torn ? tomorrowSlots : todaySlots)
   const carrying = tomorrowSlots.filter((t) => t && todayIds.has(t.id)).length
   const status = useSurfaceStatus(handles[0])
   const engine = status.engine === null ? 'none' : status.engine
@@ -318,7 +345,7 @@ export function TearPlannerApp() {
     <div className="tp-stage">
       <header className="tp-caption">
         <p className="tp-caption-title">Tear-off planner</p>
-        <p>Lift the bottom corner. Let go and it falls back; pull through the perforation to tear the day off.</p>
+        <p>Lift the bottom corner. Pull through the perforation to tear the day off.</p>
         <p className="tp-caption-engine">{engineNote(supported ? engine : 'none')}</p>
       </header>
 
@@ -353,7 +380,7 @@ export function TearPlannerApp() {
 
       <footer className="tp-readout">
         <p className="tp-statement">
-          {today.weekday} · {done.done} of {done.total} done
+          {(torn ? tomorrow : today).weekday} · {done.done} of {done.total} done
         </p>
         <p className="tp-readout-line">
           {readingLine(reading, carrying, tomorrow.weekday, today.daysLeft)}
@@ -394,7 +421,7 @@ const STUB_EDGE = (() => {
   const points = ['0 0', '100% 0']
   for (let x = SHEET_WIDTH; x >= 0; x -= 1.1) {
     const fibre = fract(Math.sin(Math.floor(x * 0.9) * 12.9898) * 43758.5453)
-    points.push(`${x.toFixed(1)}px ${(3.6 + fibre * 2.8).toFixed(2)}px`)
+    points.push(`${x.toFixed(1)}px ${(3.2 + fibre * 3.6).toFixed(2)}px`)
   }
   return `polygon(${points.join(', ')})`
 })()

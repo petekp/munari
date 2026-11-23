@@ -146,7 +146,7 @@
   bottom: -1px;
   height: 8px;
   overflow: hidden;
-  filter: drop-shadow(0 1px 0.5px rgba(40, 32, 22, 0.45));
+  filter: drop-shadow(0 1px 0.6px rgba(40, 32, 22, 0.55));
 }
 .tp-stub > span {
   position: absolute;
@@ -154,7 +154,7 @@
   top: 0;
   width: 420px;
   height: 8px;
-  background: linear-gradient(180deg, #f4f1e9 0, #ebe5d8 70%, #d6cebd 100%);
+  background: linear-gradient(180deg, #f7f5ef 0, #fbfaf6 55%, #e9e3d6 100%);
 }
 
 .tp-block {
@@ -171,10 +171,15 @@
   z-index: 1;
 }
 .tp-layer[data-top] { z-index: 2; }
+/* The sheets beneath, seen edge-on: 0.1 mm each, slightly out of true. */
 .tp-stack-edge {
   width: 420px;
-  background: repeating-linear-gradient(180deg, #e9e5dc 0, #e9e5dc 1px, #cfc8bb 1px, #cfc8bb 2px);
+  background: repeating-linear-gradient(180deg, #ece8df 0, #ece8df 1px, #cdc6b8 1px, #cdc6b8 2px);
   border-radius: 0 0 2px 2px;
+  box-shadow:
+    1px 1px 0 -0.5px #d9d2c4,
+    -1px 2px 0 -0.5px #e3ddd1,
+    0 3px 2px rgba(52, 44, 34, 0.18);
 }
 
 /* ── one sheet ───── */

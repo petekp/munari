@@ -30,6 +30,12 @@ export interface SheetReading {
   readonly holesTotal: number
 }
 
+/**
+ * Where the Tear off button's hand ends, as fractions of the sheet: up and
+ * to the left, far enough to tear the whole perforation while the sheet
+ * stays below the top of a 900 px viewport.
+ */
+const AUTO_HAND_END = { x: -0.5, y: -0.2 }
 /** How long the Tear off button's hand takes to pull the corner up past the binding. */
 const AUTO_TEAR_MS = 1150
 /** Gravity on a falling sheet, in px/s². */
@@ -194,8 +200,8 @@ export function createSheetMotion(width: number, height: number) {
       const t = Math.min(1, ((m.clock - m.autoStart) * 1000) / AUTO_TEAR_MS)
       const ease = t * t * (3 - 2 * t)
       m.hand = {
-        x: corner.x + (-0.32 * width - corner.x) * ease,
-        y: corner.y + (-0.62 * height - corner.y) * Math.pow(ease, 0.8),
+        x: corner.x + (AUTO_HAND_END.x * width - corner.x) * ease,
+        y: corner.y + (AUTO_HAND_END.y * height - corner.y) * Math.pow(ease, 0.8),
       }
       return m.hand
     }

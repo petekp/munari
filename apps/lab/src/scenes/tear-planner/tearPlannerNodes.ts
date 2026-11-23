@@ -55,6 +55,24 @@ export function createSheetUniforms() {
 
 export type SheetUniforms = ReturnType<typeof createSheetUniforms>
 
+/**
+ * The soft shadow a falling sheet throws on the pad and the wall: a
+ * rectangle the sheet's size whose edge blurs over `blur` px. Black, so
+ * premultiplied and straight alpha blend the same.
+ */
+export function createDropShadow() {
+  const u = { size: uniform(new THREE.Vector2(420, 594)), blur: uniform(24), strength: uniform(0) }
+  const material = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false })
+  material.outputNode = Fn(() => {
+    const st = uv()
+    const px = vec2(st.x.mul(u.size.x), st.y.mul(u.size.y))
+    const edge = min(min(px.x, u.size.x.sub(px.x)), min(px.y, u.size.y.sub(px.y)))
+    const alpha = smoothstep(float(0), u.blur, edge).mul(u.strength)
+    return vec4(0, 0, 0, alpha)
+  })()
+  return { material, uniforms: u }
+}
+
 export function createSheetMaterial(surface: SurfaceNodes, u: SheetUniforms): MeshBasicNodeMaterial {
   const material = new MeshBasicNodeMaterial({ side: THREE.DoubleSide, depthTest: true, depthWrite: true })
   material.outputNode = Fn(() => {
@@ -75,21 +93,28 @@ export function createSheetMaterial(surface: SurfaceNodes, u: SheetUniforms): Me
     const a = clamp(d.div(r), float(0), float(Math.PI)).mul(u.foldOn)
     const lightAlongFold = u.fold.x.mul(LIGHT.x).add(u.fold.y.mul(LIGHT.y))
     const facing = sin(a).negate().mul(lightAlongFold).add(cos(a).mul(LIGHT.z))
+    // 1 where the paper faces the light as squarely as the flat page does.
     const lit = frontFacing.select(facing, facing.negate()).div(LIGHT.z)
-    const rollShade = clamp(float(0.6).add(lit.mul(0.42)), float(0.5), float(1.08))
-    const creaseShadow = smoothstep(r.mul(-3).sub(28), float(0), d)
+    const frontShade = clamp(float(1).add(lit.sub(1).mul(0.5)), float(0.55), float(1.05))
+    // The back is the same stock, seen through the roll's own shade.
+    const backShade = clamp(float(0.86).add(lit.mul(0.16)), float(0.74), float(1))
+    const rollShade = frontFacing.select(frontShade, backShade)
+    // A thin contact shade where the flat page meets the roll.
+    const creaseShadow = smoothstep(float(-8), float(0), d)
       .mul(d.lessThanEqual(0).select(float(1), float(0)))
-      .mul(0.16)
+      .mul(0.07)
       .mul(u.foldOn)
 
     // ── shadow of the sheet on top ─────
     const ro = max(u.over.w, float(0.5))
     const dOver = px.x.mul(u.over.x).add(px.y.mul(u.over.y)).sub(u.over.z)
-    const overShadow = float(1)
-      .sub(smoothstep(ro.mul(0.15), ro.mul(1.3).add(26), dOver))
-      .mul(dOver.greaterThan(0).select(float(1), float(0)))
-      .mul(0.26)
-      .mul(u.overOn)
+    // The roll stands 2r off this page and the light comes from the upper
+    // left, so its shadow falls past the roll's edge (d = r) on the side
+    // away from the crease: a dark core at the roll, then a long soft edge.
+    const lifted = dOver.greaterThan(0).select(float(1), float(0))
+    const shadowCore = float(1).sub(smoothstep(ro.mul(0.9), ro.mul(1.5).add(6), dOver)).mul(0.14)
+    const shadowSoft = float(1).sub(smoothstep(ro.mul(0.6), ro.mul(2.6).add(56), dOver)).mul(0.3)
+    const overShadow = shadowCore.add(shadowSoft).mul(lifted).mul(u.overOn)
 
     // ── paper ─────
     const sample = surface.map.sample(st)
