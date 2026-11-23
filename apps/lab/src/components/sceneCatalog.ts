@@ -66,6 +66,16 @@ export const DEMOS = [
     headline: 'Letters that move between page and 3D',
     instruction: 'Switch between HTML and 3D, then try the shape and motion controls.',
   },
+  {
+    id: 'review-notes', title: 'Review notes',
+    headline: 'Notes that stick to a 3D model',
+    instruction: 'Drag your note onto the teapot by its header. Turn the wheel, then tick Resolved to peel a note off.',
+  },
+  {
+    id: 'tear-planner', title: 'Tear-off planner',
+    headline: 'A planner you tear a day from',
+    instruction: 'Lift the bottom corner of today’s page. Pull through the perforation to tear the day off.',
+  },
 ] as const satisfies readonly Demo[]
 
 export type DemoId = (typeof DEMOS)[number]['id']

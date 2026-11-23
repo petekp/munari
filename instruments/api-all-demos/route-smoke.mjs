@@ -27,6 +27,7 @@ const markers = {
   rain: '.rain-page', 'distortion-wave': '.wave-page', wordmark: '.wordmark-page', style: '.style-page .m-display', why: '.why-page .m-display', 'polymer-prototype': '.poly-page', 'frontier-prototype': '.frontier-page', 'beyond-prototype': '.beyond-page', 'signature-prototype': '.sig-page',
   light: '.light-page[data-page-ready="true"] .light-masthead-title',
   postcard: '.light-page[data-page-ready="true"] .postcard-hero-holder',
+  'review-notes': '.rn-page', 'tear-planner': '.tp-stage',
 }
 for (const scene of routes) assert.ok(markers[scene], `Add an actual-content marker for new route ${scene}`)
 

@@ -21,9 +21,11 @@ const outDir = path.join(labRoot, 'public', 'thumbs')
 // `selection` is missing on purpose: its bead only exists while a drag is
 // held, and a scene loaded and left alone shows a bare paragraph. Its
 // thumb is a hand-picked frame — re-take it by hand, not by adding it here.
-const SCENES = ['flight', 'genie', 'knobs', 'logo', 'marble-hand', 'plume']
+const SCENES = ['flight', 'genie', 'knobs', 'logo', 'marble-hand', 'plume', 'review-notes', 'tear-planner']
 // 1280×720 keeps the example cards sharp on dense displays, and the
 // capture itself crops nothing (the scenes are viewport-sized pages).
+// Review notes' seed notes land on the teapot after the scene arrives.
+const SETTLE_MS = { 'review-notes': 4_500 }
 const WIDTH = 1280
 const HEIGHT = 720
 
@@ -65,7 +67,7 @@ try {
     else await page.waitForSelector('canvas[data-engine]', { timeout: 20_000 })
     // Let the scene finish arriving: fonts, environment maps, and the first
     // settled frames — a capture at `load` shows an empty bench.
-    await new Promise((resolve) => setTimeout(resolve, 2_000))
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MS[scene] ?? 2_000))
     const file = path.join(outDir, `${scene}.jpg`)
     await page.screenshot({ path: file, type: 'jpeg', quality: 85 })
     console.log(`captured ${path.relative(labRoot, file)}`)

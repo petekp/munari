@@ -44,8 +44,6 @@ const PolymerPrototypeApp = lazy(() => import('./scenes/polymer-prototype/Polyme
 const FrontierPrototypeApp = lazy(() => import('./scenes/frontier-prototype/FrontierPrototype').then(m => ({ default: m.FrontierPrototypeApp })))
 const BeyondPrototypeApp = lazy(() => import('./scenes/beyond-prototype/BeyondPrototype').then(m => ({ default: m.BeyondPrototypeApp })))
 const SignaturePrototypeApp = lazy(() => import('./scenes/signature-prototype/SignaturePrototype').then(m => ({ default: m.SignaturePrototypeApp })))
-const ReviewNotesApp = lazy(() => import('./scenes/review-notes/ReviewNotes').then(m => ({ default: m.ReviewNotesApp })))
-const TearPlannerApp = lazy(() => import('./scenes/tear-planner/TearPlanner').then(m => ({ default: m.TearPlannerApp })))
 const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
 
 // Each advertised demo's page, keyed by its catalog id. The `satisfies`
@@ -60,6 +58,8 @@ const DEMO_PAGES = {
   knobs: lazy(() => import('./scenes/knobs/Knobs').then(m => ({ default: m.KnobsApp }))),
   postcard: lazy(() => import('./scenes/postcard/Postcard').then(m => ({ default: m.PostcardApp }))),
   logo: lazy(() => import('./scenes/logo/Logo').then(m => ({ default: m.LogoApp }))),
+  'review-notes': lazy(() => import('./scenes/review-notes/ReviewNotes').then(m => ({ default: m.ReviewNotesApp }))),
+  'tear-planner': lazy(() => import('./scenes/tear-planner/TearPlanner').then(m => ({ default: m.TearPlannerApp }))),
 } satisfies Record<DemoId, LazyExoticComponent<ComponentType>>
 
 // The promoted scene roster is decisions.md #75. URL-only studies stay beside
@@ -92,8 +92,6 @@ const LAB_SCENES = [
   'frontier-prototype',
   'beyond-prototype',
   'signature-prototype',
-  'review-notes',
-  'tear-planner',
 ] as const
 
 type SceneId = 'home' | DemoId | (typeof LAB_SCENES)[number]
@@ -155,8 +153,6 @@ const PAGE_SCENES = {
   'frontier-prototype': FrontierPrototypeApp,
   'beyond-prototype': BeyondPrototypeApp,
   'signature-prototype': SignaturePrototypeApp,
-  'review-notes': ReviewNotesApp,
-  'tear-planner': TearPlannerApp,
   candidates: CandidatesApp,
   gravity: GravityApp,
   lamp: LampApp,
