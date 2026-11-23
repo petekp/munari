@@ -76,7 +76,7 @@ export function Page() {
 
 The plane is one unit high, and `width / height` gives its aspect. The texture
 is premultiplied, so this stock material draws opaque content correctly and
-translucent pixels too dark. See [Materials on a SurfaceCanvas](../README.md#materials-on-a-surfacecanvas).
+translucent pixels too dark. See [Materials on a SurfaceCanvas](scene-content.md#materials-on-a-surfacecanvas).
 
 ## Run an update behind a capture
 

@@ -10,6 +10,16 @@ output. Preserve both distinctions when resolving a conflict.
 | Make payload opt-in by effect class | [Payload optimization research](payload-optimization-research.md) | Measured bundle breakdown and proposed opt-in tiers; unbuilt |
 | Design opt-in payload | [Opt-in payload proposal](opt-in-dx-proposal.md) | Per-module build and budget check (built); R3F 10 migration, lazy canvas recipe, and rollout (unbuilt) |
 | Set up and use the package | [Root README](../README.md), public entry types | Current usage |
+| Choose a capture engine or enable snapDOM | [Capture engines](capture-engines.md) | Current usage |
+| Add custom scene content, materials and prewarming | [Custom scene content](scene-content.md) | Current usage |
+| Draw Surfaces through a custom compositor | [Custom compositor output](compositor-output.md) | Current usage |
+| Put HTML in a scene with no page slot | [HTML that belongs in a scene](scene-surface.md) | Current usage |
+| Check capture sharpness and density | [Sharpness](sharpness.md) | Current usage |
+| Read Surface status, progress and drivers | [Observe and animate a Surface](observing-a-surface.md) | Current usage |
+| Return content to different page layouts or use several canvases | [Page layouts and canvases](page-layouts-and-canvases.md) | Current usage |
+| Handle a browser with no capture engine | [When enhanced rendering is unavailable](native-fallback.md) | Current usage |
+| Use Munari with Next.js or server rendering | [Next.js and server rendering](nextjs.md) | Current usage |
+| Test Surface content or read console output | [Testing and troubleshooting](testing-and-troubleshooting.md) | Current usage |
 | Capture a page element that stays native | [Element capture](element-capture.md) | Current usage |
 | Animate an app update behind a capture | [Element capture](element-capture.md#run-an-update-behind-a-capture), [capture transitions](transition-api.md), [decision #77](decisions/handoff.md#77) | Built; the effect hook is provisional |
 | Find the owner, control and relevant check | [Agent operating guide](agent-workflow.md) | Current workflow |

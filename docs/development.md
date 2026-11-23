@@ -39,6 +39,13 @@ npm run gate:idle-zero   # browser gate: idle Surfaces cost 0 paints/s
 limits. Run GPU gates in series. A capability skip is not a passing behavior
 check; use `STRICT_CAPABILITY=1` where HTML-in-canvas must be present.
 
+The repo uses Node 24 and npm 11. The local launcher (`npm run lab`) starts Vite, opens an
+isolated Chrome, and stops the server when you close that Chrome window.
+Set `CHROME_PATH` if Chrome is installed somewhere unusual. The launcher still
+passes `--enable-features=CanvasDrawElement`; Chrome 157 and later do not need
+that flag. To use your existing browser, run `npm run dev` to start only Vite,
+then open its URL in Chrome 157 or later.
+
 `npm run build` stages the package with core bundled in and peers left
 external. The staged package includes the canonical root README, license,
 changelog, `llms.txt`, and Munari skill. To use a checkout's API in another
