@@ -29,7 +29,7 @@ small focus and antialiasing changes. This is an effect-presence check, not proo
 of every animation frame or precise visual parity with the reference CodePen.
 
 The pixel pass also checks that waves stay within their target bounds,
-allowing a one-CSS-pixel antialiasing fringe. the Like pill, file tile, invitation pass, collection,
+allowing a one-CSS-pixel antialiasing fringe. The Like pill, file tile, invitation pass, collection,
 checklist row, and player body are separate cases. Before, during, later and
 native images are retained.
 
@@ -49,8 +49,8 @@ page-only theme wave against simultaneous page/Color waves in both click orders.
 The Color region must retain an additional visible pulse.
 
 A separate real-time sequence uses Normal duration and 12 clicks spaced at least
-60 ms apart. Every Like toggle must commit in order. Captures now belong to each
-transition; the runner observes source hosts and verifies their eventual cleanup.
+60 ms apart. Every Like toggle must commit in order. Each transition owns its
+captures; the runner observes source hosts and verifies their eventual cleanup.
 Pending capture interruption, page overlap, and reduced motion are also exercised.
 Callback gaps and click-to-DOM-commit times describe this local run, not presented
 frame rate or end-to-end input latency.

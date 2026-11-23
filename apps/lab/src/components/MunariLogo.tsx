@@ -9,13 +9,11 @@ import "./munariLogo.css";
 interface MunariLogoProps {
   className?: string;
   options?: WordmarkOptions;
-  ground?: "dark" | "light";
 }
 
 export function MunariLogo({
   className,
   options = WORDMARK_DEFAULTS,
-  ground = "dark",
 }: MunariLogoProps) {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<WordmarkScene | null>(null);
@@ -58,7 +56,6 @@ export function MunariLogo({
       ref={host}
       className={className ? `munari-logo ${className}` : "munari-logo"}
       data-ready={ready || undefined}
-      data-ground={ground}
       role="img"
       aria-label="Munari"
     >

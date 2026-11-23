@@ -62,7 +62,6 @@ export function DistortionWaveApp() {
       buildupDuration: Number(target?.dataset.waveBuildupDuration ?? 0),
       buildupDisplacement: Number(target?.dataset.waveBuildupDisplacement ?? 0),
       local: target === source,
-      boxless: target?.hasAttribute('data-wave-boxless') ?? false,
       intensity: 1,
       x:
         (pointer ? native.clientX : rect.left + rect.width / 2) -

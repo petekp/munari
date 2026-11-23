@@ -34,9 +34,10 @@ function App() {
     if (!holder || !target) return
     container.id = 'live-content'
     holder.append(container)
-    // Both opt-in names, as the html-in-canvas engine sets them (platform.md #32).
+    // Both opt-in names and the drawable root, as the html-in-canvas engine sets them (platform.md #32).
     target.setAttribute('content', 'drawable')
     Object.assign(target, { layoutSubtree: true })
+    container.setAttribute('drawable', '')
     // SAFETY: the probe only requests capture when Chrome exposes drawElementImage.
     const ctx = target.getContext('2d') as TrialContext | null
     Object.assign(target, { onpaint: () => {

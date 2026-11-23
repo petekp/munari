@@ -27,7 +27,7 @@ export function SceneNav({ active, onSelect }: SceneNavProps) {
 
   return (
     <Bar
-      lead={<a href={sceneUrl('home')} className="site-bar-logo" aria-label="Munari home"><span aria-hidden><MunariLogo ground="light" /></span></a>}
+      lead={<a href={sceneUrl('home')} className="site-bar-logo" aria-label="Munari home"><span aria-hidden><MunariLogo /></span></a>}
       title={demo?.title ?? active}
       titleTag="h1"
       instruction={demo?.instruction}

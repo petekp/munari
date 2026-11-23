@@ -49,8 +49,8 @@ nothing to wait for loads after its first commit and one recheck frame.
 
 Time never turns waiting into an error. `late` is a notice. It counts only
 frame time the page actually ran, so a demo loaded in a background tab does
-not downgrade itself. The current four-second limit does downgrade it
-(`apps/lab/src/scenes/light/lightOpening.ts:20`).
+not downgrade itself. The lab's four-second graphics deadline pauses while the
+page is hidden (`apps/lab/src/scenes/light/lightOpening.ts`, decision #57).
 
 | Situation | Required behavior |
 |---|---|
@@ -537,8 +537,7 @@ swap feels worse than a short pause.
 - **Genie.** A film wait, set from the film controller through a `useState`
   setter, which stays stable under Strict Mode. FrameSurface flights mount
   after the load and do not join it.
-- **Flight.** A fonts wait that includes Courier Prime 700, which
-  `apps/lab/index.html:47-51` does not preload.
+- **Flight.** A fonts wait that includes Courier Prime 700.
 - **Page shell.** The shell reveals on the demo's message instead of the
   iframe's `load` event (#75).
 

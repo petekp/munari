@@ -2,7 +2,6 @@
 // its presentation before the word changes renderers. The page and scene
 // share letter state and an animation clock, so an in-flight letter change
 // or idle movement does not restart at the handoff.
-//
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'

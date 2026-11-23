@@ -855,7 +855,7 @@ export function GlassSdfCompositor({
       dst = dst === pingA ? pingB : pingA
     }
 
-    // 3 — out of linear light, once.
+    // Out of linear light, once.
     blit.src.value = src.texture
     gl.setRenderTarget(null)
     const drawFinal = () => gl.render(blitScene, quadCam)

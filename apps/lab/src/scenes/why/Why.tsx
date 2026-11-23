@@ -267,7 +267,7 @@ export function WhyApp({ onReady }: WhyProps) {
       <header className="why-header">
         <a href={sceneUrl('home')} className="why-logo" aria-label="Munari home">
           <span aria-hidden>
-            <MunariLogo ground="light" />
+            <MunariLogo />
           </span>
         </a>
         <nav aria-label="Project" className="m-ui">

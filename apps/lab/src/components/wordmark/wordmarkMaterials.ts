@@ -1,3 +1,6 @@
+// Wordmark materials — the letter finishes and colors, and their interpolation onto a physical material.
+// wordmarkScene.ts owns the letter meshes and applies a finish to each.
+
 import { Color, MathUtils, MeshPhysicalMaterial } from "three";
 
 const FINISH_DEFAULTS = {

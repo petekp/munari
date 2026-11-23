@@ -10,7 +10,6 @@
 // dwell removed: the page released 55-75 ms after a press with a hop 300-408 ms
 // into its ease, and the swap frame changed up to 1.8 points more of the word
 // than a crossing at rest (decisions.md #68).
-//
 
 import { springStep, type LetterPose } from './logoLaw'
 

@@ -1,3 +1,6 @@
+// Wordmark animation — each letter's morph clock, rest period and fixed slot, plus the spring that moves it.
+// wordmarkScene.ts owns the renderer and reads these values every frame.
+
 export interface WordmarkOptions {
   morphMs: number;
   restMs: number;

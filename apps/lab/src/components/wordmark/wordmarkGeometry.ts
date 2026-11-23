@@ -1,4 +1,4 @@
-// Font contours — coordinates use the 224-pixel raster grid, with y pointing down.
+// Wordmark geometry — repairs, pairs and extrudes the baked font outlines; coordinates use the 224-pixel raster grid, with y pointing down.
 // Consumers own each returned geometry and must dispose it after replacement.
 import {
   Shape,
@@ -20,12 +20,6 @@ export interface GlyphRing {
   area: number;
   parent: number;
   depth: number;
-}
-export interface GlyphFont {
-  family: string;
-  weight: number;
-  style?: string;
-  label?: string;
 }
 export interface CurvePair {
   left: Point[];
@@ -49,62 +43,6 @@ export interface WordmarkGlyph {
 }
 
 export const GRID = 224;
-let cachedContext: CanvasRenderingContext2D | null = null;
-
-function glyphContext() {
-  if (cachedContext) return cachedContext;
-  const canvas = document.createElement("canvas");
-  canvas.width = canvas.height = GRID;
-  cachedContext = canvas.getContext("2d", { willReadFrequently: true });
-  if (!cachedContext) throw new Error("Canvas text rendering is unavailable");
-  return cachedContext;
-}
-
-export async function rasterGlyph(character: string, font: GlyphFont) {
-  const context = glyphContext();
-  const specification = `${font.style ?? "normal"} ${font.weight} 100px "${font.family}"`;
-  const loaded = await document.fonts.load(specification, character);
-  if (!loaded.length) throw new Error(`Typeface did not load: ${font.family}`);
-  context.font = specification;
-  let size =
-    (100 * (GRID * 0.43)) /
-    Math.max(context.measureText("x").actualBoundingBoxAscent, 1);
-  context.font = `${font.style ?? "normal"} ${font.weight} ${size}px "${font.family}"`;
-  const first = context.measureText(character);
-  const baseline = GRID * 0.77;
-  const padding = 12;
-  const inkWidth = first.actualBoundingBoxLeft + first.actualBoundingBoxRight;
-  const fitting = Math.min(
-    1,
-    (GRID - padding * 2) / Math.max(inkWidth, 1),
-    (baseline - padding) / Math.max(first.actualBoundingBoxAscent, 1),
-    (GRID - baseline - padding) / Math.max(first.actualBoundingBoxDescent, 1),
-  );
-  size *= fitting;
-  context.font = `${font.style ?? "normal"} ${font.weight} ${size}px "${font.family}"`;
-  const metrics = context.measureText(character);
-  context.clearRect(0, 0, GRID, GRID);
-  context.fillStyle = "#fff";
-  context.textBaseline = "alphabetic";
-  const x =
-    (GRID + metrics.actualBoundingBoxLeft - metrics.actualBoundingBoxRight) / 2;
-  context.fillText(character, x, baseline);
-  const pixels = context.getImageData(0, 0, GRID, GRID).data;
-  const field = new Float32Array(GRID * GRID);
-  let ink = 0;
-  for (let i = 0; i < field.length; i++) {
-    const alpha = pixels[i * 4 + 3] / 255;
-    field[i] = 0.5 - alpha;
-    ink += alpha;
-  }
-  return {
-    field,
-    advance: (metrics.width * 2) / GRID,
-    em: (size * 2) / GRID,
-    ink,
-    font: font.label ?? font.family,
-  };
-}
 
 function squaredDistanceToSegment(point: Point, a: Point, b: Point) {
   const dx = b[0] - a[0],
@@ -118,28 +56,6 @@ function squaredDistanceToSegment(point: Point, a: Point, b: Point) {
     ),
   );
   return (point[0] - a[0] - t * dx) ** 2 + (point[1] - a[1] - t * dy) ** 2;
-}
-
-function simplify(points: Point[]): Point[] {
-  if (points.length < 4) return points;
-  let greatest = 0.16,
-    split = 0;
-  for (let i = 1; i < points.length - 1; i++) {
-    const d = squaredDistanceToSegment(
-      points[i],
-      points[0],
-      points[points.length - 1],
-    );
-    if (d > greatest) {
-      greatest = d;
-      split = i;
-    }
-  }
-  if (!split) return [points[0], points[points.length - 1]];
-  return [
-    ...simplify(points.slice(0, split + 1)).slice(0, -1),
-    ...simplify(points.slice(split)),
-  ];
 }
 
 function ringArea(ring: Point[]) {
@@ -164,116 +80,6 @@ function contains(ring: Point[], point: Point) {
       inside = !inside;
   }
   return inside;
-}
-
-function contourEdges(field: Float32Array) {
-  const vertices = new Map<number, Point>(),
-    neighbors = new Map<number, number[]>();
-  const link = (a: number, b: number) => {
-    if (!neighbors.has(a)) neighbors.set(a, []);
-    if (!neighbors.has(b)) neighbors.set(b, []);
-    neighbors.get(a)?.push(b);
-    neighbors.get(b)?.push(a);
-  };
-  const edge = (x: number, y: number, axis: number) => {
-    const id = (y * GRID + x) * 2 + axis;
-    if (!vertices.has(id)) {
-      const next = y * GRID + x + (axis ? GRID : 1);
-      const a = field[y * GRID + x],
-        b = field[next];
-      const t = a / (a - b);
-      vertices.set(id, [x + (axis ? 0 : t), y + (axis ? t : 0)]);
-    }
-    return id;
-  };
-  for (let y = 0; y < GRID - 1; y++)
-    for (let x = 0; x < GRID - 1; x++) {
-      const offset = y * GRID + x;
-      const values = [
-        field[offset],
-        field[offset + 1],
-        field[offset + GRID + 1],
-        field[offset + GRID],
-      ];
-      const code = values.reduce(
-        (bits, value, i) => bits | (value < 0 ? 1 << i : 0),
-        0,
-      );
-      if (code === 0 || code === 15) continue;
-      const edges = [];
-      if (values[0] < 0 !== values[1] < 0) edges.push(edge(x, y, 0));
-      if (values[1] < 0 !== values[2] < 0) edges.push(edge(x + 1, y, 1));
-      if (values[3] < 0 !== values[2] < 0) edges.push(edge(x, y + 1, 0));
-      if (values[0] < 0 !== values[3] < 0) edges.push(edge(x, y, 1));
-      if (edges.length === 2) link(edges[0], edges[1]);
-      else {
-        const centerInside = values.reduce((a, b) => a + b, 0) < 0;
-        if ((code === 5) === centerInside) {
-          link(edges[0], edges[1]);
-          link(edges[2], edges[3]);
-        } else {
-          link(edges[0], edges[3]);
-          link(edges[1], edges[2]);
-        }
-      }
-    }
-  return { vertices, neighbors };
-}
-
-export function contours(field: Float32Array) {
-  const { vertices, neighbors } = contourEdges(field);
-  const visited = new Set<number>(),
-    rings: GlyphRing[] = [];
-  for (const start of neighbors.keys()) {
-    if (visited.has(start)) continue;
-    const ring: Point[] = [];
-    let current = start,
-      previous = -1;
-    do {
-      if (visited.has(current)) break;
-      visited.add(current);
-      const point = vertices.get(current);
-      if (!point) throw new Error("Missing contour point");
-      ring.push(point);
-      const adjacent = neighbors.get(current);
-      if (!adjacent || adjacent.length !== 2)
-        throw new Error("An open glyph contour reached the raster boundary");
-      const next = adjacent[0] === previous ? adjacent[1] : adjacent[0];
-      previous = current;
-      current = next;
-    } while (current !== start);
-    if (ring.length < 4 || Math.abs(ringArea(ring)) < 0.5) continue;
-    let opposite = 1,
-      farthest = 0;
-    for (let i = 1; i < ring.length; i++) {
-      const d = (ring[i][0] - ring[0][0]) ** 2 + (ring[i][1] - ring[0][1]) ** 2;
-      if (d > farthest) {
-        farthest = d;
-        opposite = i;
-      }
-    }
-    const reduced = [
-      ...simplify(ring.slice(0, opposite + 1)).slice(0, -1),
-      ...simplify([...ring.slice(opposite), ring[0]]).slice(0, -1),
-    ];
-    if (reduced.length >= 3)
-      rings.push({
-        points: reduced,
-        area: Math.abs(ringArea(reduced)),
-        parent: -1,
-        depth: 0,
-      });
-  }
-  rings.sort((a, b) => b.area - a.area);
-  for (let i = 0; i < rings.length; i++)
-    for (let j = i - 1; j >= 0; j--) {
-      if (contains(rings[j].points, rings[i].points[0])) {
-        rings[i].parent = j;
-        rings[i].depth = rings[j].depth + 1;
-        break;
-      }
-    }
-  return rings;
 }
 
 export function dottedIParts(rings: GlyphRing[]) {

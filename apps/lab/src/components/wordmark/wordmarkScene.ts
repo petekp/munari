@@ -1,3 +1,6 @@
+// Wordmark scene — the WebGL renderer, lights and letter meshes behind MunariLogo.
+// Timing is in wordmarkAnimation.ts, finishes in wordmarkMaterials.ts and outlines in wordmarkGeometry.ts.
+
 import {
   BufferGeometry,
   DirectionalLight,

@@ -38,7 +38,6 @@ import { createWaveMotion, type WaveTiming } from './distortionWaveLaw'
 export interface WaveOptions extends WaveTiming {
   source: DOMRect
   local: boolean
-  boxless: boolean
   x: number
   y: number
   intensity: number
@@ -129,7 +128,6 @@ function writeWave(
     wave.background.b,
   )
   p.radius.values[index] = wave.radius
-  p.boxless.values[index] = wave.request.options.boxless ? 1 : 0
   p.visibility.values[index] = !content && wave.overlapping ? 0.65 : 1
   p.content.values[index] = content ? 1 : 0
   p.light.values[index] = content ? 0 : 1
@@ -257,7 +255,6 @@ export function DistortionWaveEffect({ transition }: WaveEffectProps) {
       0
     const paired =
       radius > 0 &&
-      !request.options.boxless &&
       request.options.buildupDuration > 0 &&
       request.options.buildupDisplacement > 0
     const bend = active.current.find(
@@ -357,10 +354,9 @@ export function DistortionWaveEffect({ transition }: WaveEffectProps) {
     for (const [bend, pull] of sharedPulls) bend.pull = pull
     for (const wave of active.current) {
       const { phase, bend } = wave
-      const needsInk = wave.request.options.boxless && phase.glow > 0
       const needsIncoming =
         wave.paired && bend.latest === wave.order && bend.pull > 0
-      if (phase.revealed && !needsIncoming && !needsInk) releaseSnapshot(wave)
+      if (phase.revealed && !needsIncoming) releaseSnapshot(wave)
     }
   }
 

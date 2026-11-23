@@ -43,7 +43,7 @@ export function HomeApp({ onReady }: HomeProps) {
     <div className="home-page" data-page-ready={ready || undefined}>
       <header className="home-header">
         <a href={sceneUrl('home')} className="home-logo" aria-label="Munari">
-          <span aria-hidden><MunariLogo ground="light" /></span>
+          <span aria-hidden><MunariLogo /></span>
         </a>
         <nav aria-label="Project">
           <a href={sceneUrl('why')}>Why Munari</a>

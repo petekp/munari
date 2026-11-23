@@ -149,7 +149,6 @@ function createWaveParameters() {
     rimSoftness: waveNumber(200),
     seam: waveNumber(48),
     radius: waveNumber(0),
-    boxless: waveNumber(0),
     visibility: waveNumber(0),
     content: waveNumber(0),
     sampled: waveNumber(0),
@@ -209,7 +208,6 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
   const rimSoftness = parameters.rimSoftness.node
   const seam = parameters.seam.node
   const radius = parameters.radius.node
-  const boxless = parameters.boxless.node
   const visibility = parameters.visibility.node
   const content = parameters.content.node
   const paired = parameters.paired.node
@@ -272,7 +270,7 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
     const pullDistance = length(fromPull)
     const pullWidth = max(lensWidth.mul(2.2), 28)
     const edgeHold = smoothstep(0, min(half.x, half.y).mul(0.5), sd.negate())
-    const flexEdge = radius.greaterThan(0).select(float(1).sub(boxless), 0)
+    const flexEdge = radius.greaterThan(0).select(1, 0)
     const pullOffset = fromPull
       .div(max(pullDistance, pullWidth.mul(0.25)))
       .mul(
@@ -384,12 +382,6 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
       .mul(waveCover)
       .add(mix(incomingColor, background, backdrop).mul(incomingCover))
       .add(background.mul(gapCover))
-    const ink = sampled.greaterThan(0).select(
-      clamp(length(originalColor.rgb.sub(background)), 0, 1)
-        .mul(6)
-        .clamp(0, 1),
-      0.45,
-    )
     const inset = max(bentEdge.negate(), 0)
     const lobes = sin(angle.mul(2).add(time.mul(1.4)))
       .mul(cos(angle.sub(time.mul(0.6)).add(0.8)))
@@ -421,7 +413,6 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
       .mul(reached)
       .mul(kept)
       .mul(rim)
-      .mul(float(1).sub(boxless))
     const hair = float(1)
       .sub(smoothstep(0.75, 1.55, inset))
       .mul(reached)
@@ -434,7 +425,6 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
       )
       .mul(rim)
       .mul(0.85)
-      .mul(float(1).sub(boxless))
       .mul(bentMask)
       .mul(light)
     const alpha = clamp(
@@ -442,7 +432,6 @@ export function createDistortionWaveMaterial(snapshots: Texture[]) {
       0,
       0.94,
     )
-      .mul(mix(1, ink, boxless))
       .mul(bentMask)
       .mul(light)
     const flow = angle

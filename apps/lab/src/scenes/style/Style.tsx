@@ -68,7 +68,7 @@ export function StyleApp({ onReady }: StyleProps) {
     <div className="style-page">
       <header className="style-header">
         <a href={sceneUrl('home')} className="style-logo" aria-label="Munari home">
-          <span aria-hidden><MunariLogo ground="light" /></span>
+          <span aria-hidden><MunariLogo /></span>
         </a>
         <nav aria-label="Project" className="m-ui">
           <a className="m-link m-link--nav" href={sceneUrl('home')}>Demos</a>
@@ -192,7 +192,7 @@ export function StyleApp({ onReady }: StyleProps) {
             <tbody>
               <tr><td className="m-readout">0ms</td><td>Hover, press, toggle. Controls switch like hardware.</td></tr>
               <tr><td className="m-readout">120ms</td><td>A slider thumb widening, a chevron turning.</td></tr>
-              <tr><td className="m-readout">200ms</td><td>A demo fading in over its poster.</td></tr>
+              <tr><td className="m-readout">200ms</td><td>A demo fading in over its stage color.</td></tr>
               <tr><td className="m-readout">320ms</td><td>A panel opening.</td></tr>
             </tbody>
           </table>
