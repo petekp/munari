@@ -3,8 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { SceneSurface, useSurfaceTexture } from '@petepetrash/munari'
 import { GlassOutput } from './GlassOutput'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { usePressSpring } from './glassPress'
 import {
   GLASS_DEFAULTS,
   MAX_BLOBS,
@@ -21,7 +20,6 @@ import {
   type GlassRipple,
 } from './glassSdf'
 import { glassTuning } from './glassTuning'
-import { animate, motionValue } from 'motion'
 
 // The glass scene — a live sign-in form under screen-space glass, over a live
 // DOM wall.
@@ -349,6 +347,16 @@ function OrbDrift({
 
 // ---- DOM content --------------------------------------------------------
 
+const LABEL_CLASS =
+  'flex items-center gap-2 text-[13px] font-semibold tracking-wider text-white/90 uppercase select-none'
+
+// A DARK fill, not a light one. white/10 over a bright refracted background
+// is barely a field at all — it reads as a slightly paler patch of whatever is
+// behind it, which is exactly what made the inputs vanish when an orb passed
+// under them.
+const FIELD_CLASS =
+  'h-9 w-full min-w-0 rounded-md border border-white/30 bg-black/45 px-3 py-1 text-base font-medium text-white shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground placeholder:text-white/45 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm dark:bg-input/30'
+
 function SignInForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -388,38 +396,34 @@ function SignInForm() {
         <span className="text-sm font-medium text-white/75">Sign in to continue</span>
       </div>
       <div className="flex flex-col gap-2">
-        <Label
+        <label
           htmlFor="l12-email"
-          className="text-[13px] font-semibold uppercase tracking-wider text-white/90"
+          className={LABEL_CLASS}
         >
           Email
-        </Label>
-        <Input
+        </label>
+        <input
           id="l12-email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@lab.dev"
-          // A DARK fill, not a light one. white/10 over a bright refracted
-          // background is barely a field at all — it reads as a slightly
-          // paler patch of whatever is behind it, which is exactly what made
-          // the inputs vanish when an orb passed under them.
-          className="border-white/30 bg-black/45 font-medium text-white placeholder:text-white/45"
+          className={FIELD_CLASS}
         />
       </div>
       <div className="flex flex-col gap-2">
-        <Label
+        <label
           htmlFor="l12-password"
-          className="text-[13px] font-semibold uppercase tracking-wider text-white/90"
+          className={LABEL_CLASS}
         >
           Password
-        </Label>
-        <Input
+        </label>
+        <input
           id="l12-password"
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="••••••••"
-          className="border-white/30 bg-black/45 font-medium text-white placeholder:text-white/45"
+          className={FIELD_CLASS}
         />
       </div>
     </div>
@@ -472,37 +476,6 @@ function CtaChip({
       </button>
     </div>
   )
-}
-
-/**
- * The press: how far down the CTA is, from 0 (resting) to 1 (fully sunk).
- *
- * One motion value drives everything the press does — the panel's depth toward
- * the form, the liquid bulge raised under the finger, and the weight of the
- * strike's spill. Deriving them all from a single spring is what keeps them
- * from disagreeing: three independently animated properties would arrive at
- * slightly different times and the button would look like it was assembled
- * from separate effects rather than pushed.
- *
- * The spring is imperative (`animate` on a plain motion value) rather than
- * `useSpring`, and that is deliberate: the stiffness and damping live in the
- * tweak knobs, which by design never re-render anything. A declarative hook
- * would capture whatever config existed at mount and quietly ignore the
- * sliders; reading them at the moment of the press is what makes them live.
- */
-function usePressSpring() {
-  const press = useMemo(() => motionValue(0), [])
-  const set = useCallback(
-    (to: number) => {
-      animate(press, to, {
-        type: 'spring',
-        stiffness: glassTuning.pressStiffness,
-        damping: glassTuning.pressDamping,
-      })
-    },
-    [press],
-  )
-  return { press, set }
 }
 
 // The refraction target: one enormous black glyph on a neon field, live DOM.

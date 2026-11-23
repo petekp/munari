@@ -6,8 +6,8 @@
  * — the theme, the typography, and the deviations from shadcn's generated
  * globals.css needed by captured HTML.
  *
- * Components in src/components/ui/ are byte-verbatim from the shadcn
- * registry (new-york-v4). The deviations:
+ * The tokens and base rules follow shadcn's new-york-v4 globals.css. The
+ * deviations:
  *
  *  1. shadcn's `body { bg-background text-foreground }` base rule is
  *     scoped to `.ui-root` instead: the host page owns <body>; every
