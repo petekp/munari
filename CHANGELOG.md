@@ -1,32 +1,55 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 — 2026-11-23
 
-- Breaking: `detectHtmlInCanvas()` reports `texElementSubImage2D` instead of
-  `texElementImage2D`. Chrome 158 has only the 5-argument
-  `texElementSubImage2D`, so the old field was always `false` there. Munari's
-  capture path uses neither.
-- Breaking: `CaptureFrame.anchors` can be `null`, which means the anchors could
-  not be matched to the captured snapshot. An empty map still means the
-  snapshot has no named anchors. No engine publishes `null` yet, but code that
-  reads `frame.anchors` must now handle it.
-- In development, `useCaptureTransitionEffect` warns once when its canvas does
-  not render with `WebGPURenderer`. Under another renderer every transition
-  waits 1 s and then applies its update with no effect.
-- The page layouts guide explains that a mesh in front of a Surface does not
-  block the pointer by default, and shows the handlers that stop propagation
-  on the relay route.
-- `supportsCapture()` and `useCaptureSupport()` are the new names of the
-  capability check. It asks whether an installed capture engine can run in
-  this browser, which the old names did not say.
-- Deprecated: `supportsSurfaces` and `useSurfaceSupport` remain as aliases
-  of the new names and will be removed in the next minor release.
-- Breaking: `SurfaceAnchorBox` no longer has `width` and `height`. They were
+Upgrading from 0.4.x: a `Surface.Mesh` no longer freezes the canvas on its
+first draw. If you use snapDOM, install `@zumer/snapdom` ^3.8.2. On snapDOM a
+Surface now ignores `live`; call `useSurfaceRefresh()` to send a change to
+the scene. `supportsSurfaces` and `useSurfaceSupport` are renamed
+`supportsCapture` and `useCaptureSupport`, and the old names still work in
+this release.
+
+### Breaking
+
+- `@zumer/snapdom` is now `^3.8.2` (was `^3.3.3`), both as the optional peer
+  dependency and in the lockfile. The `snapdomDefault` entry grows from 96.2
+  to 124.2 kB gzip, all of it snapDOM's own bundle (89.1 to 118.2 kB). Clipped
+  input-region captures read the wrapper's `zoom: initial` that 3.8.2 writes
+  on pages that do not lay out on the device grid.
+- On snapDOM, a Surface ignores `live`. Its content holds still while the
+  scene has it, as content without `live` does, and `useFreezeSurface()`
+  turns true. HTML-in-canvas still follows a live Surface every frame.
+  `useElementCapture` and `CaptureContent` keep `live` on both engines. Call
+  the `useSurfaceRefresh()` function when a change must reach the scene on
+  snapDOM. The new `CaptureEngine.honorsSurfaceLive` field says which engines
+  follow a live Surface, and a custom engine must set it.
+- `SurfaceAnchorBox` no longer has `width` and `height`. They were
   the box's share of the source size, which is a local size only on a 1×1
   plane, and during a resize they used the current source size against an
   older painted frame. On the default plane, use `uv.uMax - uv.uMin` and
   `uv.vMax - uv.vMin`. For a size in CSS pixels, use `cssWidth` and
   `cssHeight`.
+- `CaptureFrame.anchors` can be `null`, which means the anchors could
+  not be matched to the captured snapshot. An empty map still means the
+  snapshot has no named anchors. No engine publishes `null` yet, but code that
+  reads `frame.anchors` must now handle it.
+- `detectHtmlInCanvas()` reports `texElementSubImage2D` instead of
+  `texElementImage2D`. Chrome 158 has only the 5-argument
+  `texElementSubImage2D`, so the old field was always `false` there. Munari's
+  capture path uses neither.
+- `@petepetrash/munari/advanced` replaces `passIsWarmUp`, `passPresentsDirectly`
+  and `passNeedsHostTail` with `presentationRoute(pass, hasHost)`, which
+  returns `'empty'`, `'warm-up'`, `'color-off'`, `'now'`, `'tail'` or
+  `'no-host'`. `SurfacePassEvidence` gains a `drawable` field.
+- `@petepetrash/munari/advanced` retires six helpers that nothing called
+  (`hostTailPresents`, `poseMatrix3d`, `posePoint`, `projectSurfaceAnchor`,
+  `stampSurfaceAnchors` and `planeToScreen`) and the types `SurfaceHostTail`,
+  `SurfaceAnchorProjection` and `PosePoint`. They have no replacement export.
+  `Surface.Anchor`, `useSurfaceAnchorBox` and `useSurfaceAnchorRects` in the
+  root entry cover anchoring content to a Surface.
+
+### Added
+
 - `useCaptureTransition` runs an app update behind a capture of the content it
   changes. `start(target, update, options)` waits until an effect has drawn the
   outgoing capture on screen, then runs the update. Each update runs once, in
@@ -37,7 +60,52 @@
   side of a capture transition, with `CaptureTransitionEffect`,
   `CaptureTransitionRun`, `CaptureTransitionSnapshot`, `CaptureTransitionSide`,
   `CaptureTransitionControls` and `CaptureTransitionRequest`. It is provisional:
-  its shape may change in any release.
+  its shape may change in any release. In development it warns once when its
+  canvas does not render with `WebGPURenderer`. Under another renderer every
+  transition waits 1 s and then applies its update with no effect.
+- `supportsCapture()` and `useCaptureSupport()` are the new names of the
+  capability check. It asks whether an installed capture engine can run in
+  this browser, which the old names did not say.
+- `useSurfaceRefresh()` returns a function that requests fresh captures from
+  the enclosing Surface, or from a given handle. Call it when content changes
+  in a way the capture engine cannot see, such as drawing on a `<canvas>`.
+- `Surface.Prewarm` builds pipelines for presenters that mount later, so
+  their first draw waits for nothing. It takes meshes that wear those
+  presenters' materials, the `alpha` they use, and an `onReady` callback.
+  `SurfacePrewarmProps` is exported.
+- `enableSnapdomCapture` accepts `isolatedTextInputs`, a selector for text
+  fields whose edits change only pixels inside their own border box. snapDOM
+  then replaces just that field's region in the cached capture when its value
+  changes. The capture engines guide lists the rules such a field must follow.
+- `@petepetrash/munari/advanced` exports `useSurfaceOutput(targets)` and
+  `SurfaceOutputHandlers`. A compositor that draws Surfaces into render targets
+  attaches the handlers to its final mesh, so the page HTML stays until that
+  draw reaches the screen. A draw whose material triggers a nested shadow or
+  blur render counts; primitives drawn by the nested render do not.
+- `@petepetrash/munari/advanced` exports `restoreScroll(element, top, left)`.
+  It sets scroll offsets whose `scroll` event a capture does not take as user
+  input or as a reason to capture.
+- `@petepetrash/munari/advanced` exports `releasedSample(sample)`, which
+  returns a pointer sample with no buttons pressed. It also exports
+  `listenForRepaintSignals`, `captureContext`, `captureMemoryChosen`,
+  `hasRunningMotion` and the `PresentationRoute` type.
+- `@petepetrash/munari` narrows `useSurfaceStatus` to return `SurfaceStatus`
+  directly and exports referenced component prop, return, and callback types
+  (`CaptureContentProps`, `SurfaceLitMaterialProps`, `SurfaceChromeState`,
+  `FocusSceneProps`, `FocusGroupProps`, `Viewport`, `Dir`, `SurfacePartId`,
+  and `PointerRouteRequest`).
+- The page layouts guide explains that a mesh in front of a Surface does not
+  block the pointer by default, and shows the handlers that stop propagation
+  on the relay route.
+
+### Deprecated
+
+- `supportsSurfaces` and `useSurfaceSupport` remain as aliases of
+  `supportsCapture` and `useCaptureSupport`. They will be removed in the next
+  minor release.
+
+### Fixed
+
 - A `Surface.Mesh`, or a `FrameSurface` given a `presentation` requirement,
   no longer freezes the canvas on its first draw. three built each missing
   render pipeline at the draw with a blocking call. With shaders that no
@@ -45,26 +113,20 @@
   flight. Such a presenter now builds its pipelines asynchronously and first
   draws once they are ready. Until then the content stays where it was. A
   `FrameSurface` without a requirement still draws at once.
-- `Surface.Prewarm` builds pipelines for presenters that mount later, so
-  their first draw waits for nothing. It takes meshes that wear those
-  presenters' materials, the `alpha` they use, and an `onReady` callback.
-  `SurfacePrewarmProps` is exported.
 - `SurfaceCanvas` builds three's mipmap pass for both texture formats while
   the renderer starts. It used to be built at a Surface's first mipmapped
   upload, which froze the canvas for 85-114 ms.
-
-- On snapDOM, a Surface ignores `live`. Its content holds still while the
-  scene has it, as content without `live` does, and `useFreezeSurface()`
-  turns true. HTML-in-canvas still follows a live Surface every frame.
-  `useElementCapture` and `CaptureContent` keep `live` on both engines. Call
-  the `useSurfaceRefresh()` function when a change must reach the scene on
-  snapDOM. The new `CaptureEngine.honorsSurfaceLive` field says which engines
-  follow a live Surface, and a custom engine must set it.
-- `@zumer/snapdom` is now `^3.8.2` (was `^3.3.3`), both as the optional peer
-  dependency and in the lockfile. The `snapdomDefault` entry grows from 96.2
-  to 124.2 kB gzip, all of it snapDOM's own bundle (89.1 to 118.2 kB). Clipped
-  input-region captures read the wrapper's `zoom: initial` that 3.8.2 writes
-  on pages that do not lay out on the device grid.
+- Chrome 155 to 157 no longer crash the tab when a Surface sits inside an
+  absolutely positioned element with `container-type` and a font face loads
+  in the same task. Capture canvases now move with an insert, not
+  `moveBefore`, which triggered the crash.
+- With snapDOM capture, a text field could show no text after typing a
+  character from a font file the page had loaded but no earlier capture had
+  used, such as "ł" in a Latin Extended subset. The field stayed blank until
+  the next capture. A capture that uses such a font file now first decodes a
+  small image carrying it, once per font face per page.
+- With snapDOM capture, content whose only text is in form fields embeds the
+  fonts those fields use. It used to draw the fields in a fallback font.
 - The package now ships one module per source module, so an app that imports
   only some exports bundles only the modules they reach. An app importing
   only `encodedOutput` shrinks from 224.7 to 129.8 kB gzip. The minimal
@@ -79,6 +141,11 @@
   used to capture nothing until its content changed.
 - Under StrictMode, a Surface's page copy keeps the scroll offsets its
   content had at mount. StrictMode's second mount used to reset them to 0.
+- A canvas that switches from `pointerMode="surfaces"` back to the scene
+  receives pointer input again.
+- Input forwarded to a Surface in the scene skips disabled controls. Focus no
+  longer lands on a disabled field, and a forwarded `<select>` change skips
+  disabled options.
 - WebGPU no longer logs "CopyExternalImageToTexture(): Browser fails
   extracting valid resource from external image" when a Surface first
   appears. The capture texture copies nothing until the first paint.
@@ -92,34 +159,6 @@
 - In development, a `Surface.Mesh` outside the camera view no longer logs
   that it is still waiting for a usable source frame and preparation draw.
   A hidden mesh or a mesh with no source still logs it.
-- `@petepetrash/munari/advanced` exports `restoreScroll(element, top, left)`.
-  It sets scroll offsets whose `scroll` event a capture does not take as user
-  input or as a reason to capture.
-- `useSurfaceOutput` now counts a draw whose material triggers a nested
-  shadow or blur render. It used to reject any draw during which the
-  renderer's call count changed, so such an output mesh never closed its
-  frame tail. Primitives drawn by nested renders still do not count.
-- `@petepetrash/munari/advanced` exports `releasedSample(sample)`, which
-  returns a pointer sample with no buttons pressed.
-- `@petepetrash/munari/advanced` replaces `passIsWarmUp`, `passPresentsDirectly`
-  and `passNeedsHostTail` with `presentationRoute(pass, hasHost)`, which
-  returns `'empty'`, `'warm-up'`, `'color-off'`, `'now'`, `'tail'` or
-  `'no-host'`. `SurfacePassEvidence` gains a `drawable` field.
-- `@petepetrash/munari/advanced` retires six helpers that nothing called (`hostTailPresents`,
-  `poseMatrix3d`, `posePoint`, `projectSurfaceAnchor`, `stampSurfaceAnchors`,
-  and `planeToScreen`). They have no replacement export. `Surface.Anchor`,
-  `useSurfaceAnchorBox` and `useSurfaceAnchorRects` in the root entry cover
-  anchoring content to a Surface.
-- `@petepetrash/munari` narrows `useSurfaceStatus` to return `SurfaceStatus`
-  directly and exports referenced component prop, return, and callback types
-  (`CaptureContentProps`, `SurfaceLitMaterialProps`, `SurfaceChromeState`,
-  `FocusSceneProps`, `FocusGroupProps`, `Viewport`, `Dir`, `SurfacePartId`,
-  and `PointerRouteRequest`).
-- Fixed: with snapDOM capture, a text field could show no text after typing a
-  character from a font file the page had loaded but no earlier capture had
-  used, such as "ł" in a Latin Extended subset. The field stayed blank until
-  the next capture. A capture that uses such a font file now first decodes a
-  small image carrying it, once per font face per page.
 
 ## 0.4.1 — 2026-10-10
 
