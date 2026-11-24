@@ -115,6 +115,11 @@
   (`CaptureContentProps`, `SurfaceLitMaterialProps`, `SurfaceChromeState`,
   `FocusSceneProps`, `FocusGroupProps`, `Viewport`, `Dir`, `SurfacePartId`,
   and `PointerRouteRequest`).
+- Fixed: with snapDOM capture, a text field could show no text after typing a
+  character from a font file the page had loaded but no earlier capture had
+  used, such as "ł" in a Latin Extended subset. The field stayed blank until
+  the next capture. A capture that uses such a font file now first decodes a
+  small image carrying it, once per font face per page.
 
 ## 0.4.1 — 2026-10-10
 

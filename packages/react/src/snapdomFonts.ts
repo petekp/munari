@@ -42,12 +42,13 @@
 
 import type { SnapdomPlugin } from '@zumer/snapdom'
 import { encodeFace, type EncodedFace } from './snapdomFontEncoding'
+import { warmFaces, type EmbeddedFace } from './snapdomFontWarmup'
 
 /** Inclusive codepoint pairs, or null for a face that declares no range. */
 export type Ranges = readonly (readonly [number, number])[] | null
 
 /** One `@font-face` the document declares, with its bytes not yet fetched. */
-interface DeclaredFace {
+export interface DeclaredFace {
   family: string
   /** The descriptors to reproduce verbatim, minus `src`. */
   descriptors: string
@@ -409,33 +410,35 @@ export async function inputFontsEmbedded(field: HTMLInputElement, svg: XMLDocume
   }
 }
 
-/** Build the `@font-face` block this clone needs (empty when system fonts suffice). */
-async function fontCssFor(
+/** The faces this clone needs (none when system fonts suffice). */
+async function embeddedFacesFor(
   live: Element,
   clone: Element,
   doc: Document,
   onUnreadable?: (href: string) => void,
   clip?: FontClip | 'viewport' | null,
-): Promise<string> {
+): Promise<EmbeddedFace[]> {
   const all = await declaredFaces(doc, onUnreadable)
-  if (all.length === 0) return ''
+  if (all.length === 0) return []
   // Families from live styles; codepoints from the clone (earlier plugins may inject text).
   const families = usedFamilies(live, clip)
   const points = usedCodepoints(clone)
-  if (points.size === 0) return ''
+  if (points.size === 0) return []
   const wanted = chooseFaces(all, families, points)
-  if (wanted.length === 0) return ''
-  const blocks = await Promise.all(
+  const embedded = await Promise.all(
     wanted.map(async (face) => {
       const encoded = await encodeFace(face.url)
-      return encoded ? fontFaceCss(face, encoded) : ''
+      return encoded ? { face, css: fontFaceCss(face, encoded) } : null
     }),
   )
-  return blocks.join('')
+  return embedded.filter((entry): entry is EmbeddedFace => entry !== null)
 }
 
 // beforeRender follows snapDOM's fontsCSS initialization. A separate clone
 // stylesheet makes its style-interning pass parse the font payload again.
+// snapDOM awaits beforeRender before it serializes, so the warm-up finishes
+// before any decode of this capture: `rasterize`, the full-background split,
+// and the input SVG reuse, whose faces are a subset of an earlier capture's.
 export function fontEmbedPlugin(onUnreadable?: (href: string) => void): SnapdomPlugin {
   return {
     name: 'munari-font-embed',
@@ -445,7 +448,9 @@ export function fontEmbedPlugin(onUnreadable?: (href: string) => void): SnapdomP
       const live = context.element
       if (!(clone instanceof Element) || !(live instanceof Element)) return
       const doc = live.ownerDocument
-      context.fontsCSS = await fontCssFor(live, clone, doc, onUnreadable, context.clip)
+      const faces = await embeddedFacesFor(live, clone, doc, onUnreadable, context.clip)
+      context.fontsCSS = faces.map(({ css }) => css).join('')
+      if (faces.length > 0) await warmFaces(doc, faces)
     },
   }
 }
