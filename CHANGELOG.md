@@ -13,7 +13,7 @@ this release.
 
 - `@zumer/snapdom` is now `^3.8.2` (was `^3.3.3`), both as the optional peer
   dependency and in the lockfile. The `snapdomDefault` entry grows from 96.2
-  to 124.2 kB gzip, all of it snapDOM's own bundle (89.1 to 118.2 kB). Clipped
+  to 124.2 kB gzip. Clipped
   input-region captures read the wrapper's `zoom: initial` that 3.8.2 writes
   on pages that do not lay out on the device grid.
 - On snapDOM, a Surface ignores `live`. Its content holds still while the
@@ -109,7 +109,7 @@ this release.
 - A `Surface.Mesh`, or a `FrameSurface` given a `presentation` requirement,
   no longer freezes the canvas on its first draw. three built each missing
   render pipeline at the draw with a blocking call. With shaders that no
-  browser cache held, every frame froze for 150-270 ms, as on Genie's first
+  browser cache held, every frame froze for 183-250 ms, as on Genie's first
   flight. Such a presenter now builds its pipelines asynchronously and first
   draws once they are ready. Until then the content stays where it was. A
   `FrameSurface` without a requirement still draws at once.
