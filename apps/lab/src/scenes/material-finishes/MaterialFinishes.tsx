@@ -1,10 +1,12 @@
 // Material finishes prototype — five physical finishes on Surfaces holding
-// real UI cards, each with its text lit with the body or laid over it unlit
-// (?scene=material-finishes&finish=<id>&text=lit|unlit).
+// real UI cards, each with its text lit with the body or laid over it unlit,
+// under a choice of studio light rigs, flat or tilting toward the pointer
+// (?scene=material-finishes&finish=<id>&text=lit|unlit
+// &light=softbox|studio-point|room&tilt=none|pointer).
 //
 // This is shortlist item 1 of docs/materials-research.md §5. A flat card
 // under an orthographic view shows a coat, sheen or anisotropic highlight as
-// one even tint, so the light is a point light a few hundred CSS px over the
+// one even tint, so the key light stands a few hundred CSS px over the
 // cards, dragged or swept across them under a perspective camera.
 
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
@@ -15,24 +17,32 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { SurfaceCanvas, useCaptureSupport, type SurfaceCanvasId } from '@petepetrash/munari'
 import { Button, Status, Tag } from '../../components/system'
 import { sceneUrl } from '../../captureMode'
-import { FinishCard } from './MaterialFinishesSurface'
+import { FinishCard, pagePointer } from './MaterialFinishesSurface'
+import { createStudioLights, createStudioScene, lightsOf, type StudioLights } from './materialFinishesStudio'
 import { MaterialFinishesTweaks } from './MaterialFinishesTweaks'
 import {
   applyFinish,
+  applyRig,
   FINISH_ORDER,
   isFinishId,
+  isLightRig,
+  LIGHT_RIGS,
   liveFinish,
   notifyFinishTuning,
   studio,
   subscribeFinishTuning,
+  type CardTilt,
   type FinishId,
+  type LightRig,
   type TextLighting,
 } from './materialFinishesTuning'
 import './materialFinishes.css'
 
 // RoomEnvironment is the bench's environment (docs/materials-research.md
-// §2 method); 0.04 is the PMREM blur three's examples bake it with.
+// §2 method); 0.04 is the PMREM blur three's examples bake it with. The
+// studio bakes sharper, so a coat at roughness 0.02 shows its strips' edges.
 const ROOM_BLUR = 0.04
+const STUDIO_BLUR = 0.01
 // One sweep crosses the cards in this many ms, slow enough to watch a
 // highlight travel.
 const SWEEP_MS = 3600
@@ -51,26 +61,33 @@ function keyDelta(key: string): readonly [number, number] | null {
 interface SceneParams {
   readonly finish: FinishId
   readonly text: TextLighting
+  readonly light: LightRig
+  readonly tilt: CardTilt
 }
 
 function readParams(): SceneParams {
   const params = new URLSearchParams(window.location.search)
   const finish = params.get('finish')
+  const light = params.get('light')
   return {
     finish: isFinishId(finish) ? finish : 'lacquer',
     text: params.get('text') === 'lit' ? 'lit' : 'unlit',
+    light: isLightRig(light) ? light : 'softbox',
+    tilt: params.get('tilt') === 'pointer' ? 'pointer' : 'none',
   }
 }
 
-function writeParams(finish: FinishId, text: TextLighting): void {
+function writeParams({ finish, text, light, tilt }: SceneParams): void {
   const params = new URLSearchParams(window.location.search)
   params.set('scene', 'material-finishes')
   params.set('finish', finish)
   params.set('text', text)
+  params.set('light', light)
+  params.set('tilt', tilt)
   window.history.replaceState(null, '', `?${params.toString()}`)
 }
 
-function StudioEnvironment() {
+function StudioEnvironment({ rig }: { readonly rig: LightRig }) {
   const gl = useThree((state) => state.gl)
   const scene = useThree((state) => state.scene)
   const invalidate = useThree((state) => state.invalidate)
@@ -81,9 +98,15 @@ function StudioEnvironment() {
     void gl.init().then(() => {
       if (cancelled) return
       const generator = new PMREMGenerator(gl)
-      const room = new RoomEnvironment()
-      baked = generator.fromScene(room, ROOM_BLUR)
-      room.dispose()
+      if (rig === 'room') {
+        const room = new RoomEnvironment()
+        baked = generator.fromScene(room, ROOM_BLUR)
+        room.dispose()
+      } else {
+        const built = createStudioScene()
+        baked = generator.fromScene(built.scene, STUDIO_BLUR)
+        built.dispose()
+      }
       generator.dispose()
       scene.environment = baked.texture
       invalidate()
@@ -93,7 +116,7 @@ function StudioEnvironment() {
       scene.environment = null
       baked?.dispose()
     }
-  }, [gl, scene, invalidate])
+  }, [gl, scene, invalidate, rig])
   return null
 }
 
@@ -103,19 +126,44 @@ function TuningInvalidator() {
   return null
 }
 
+/** Track the pointer for tilting cards, and draw a frame whenever it moves. */
+function PointerTracker() {
+  const invalidate = useThree((state) => state.invalidate)
+  useEffect(() => {
+    const move = (event: globalThis.PointerEvent) => {
+      pagePointer.position = { x: event.clientX, y: event.clientY }
+      invalidate()
+    }
+    const leave = () => {
+      pagePointer.position = null
+      invalidate()
+    }
+    window.addEventListener('pointermove', move, { passive: true })
+    document.documentElement.addEventListener('pointerleave', leave)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      document.documentElement.removeEventListener('pointerleave', leave)
+      pagePointer.position = null
+    }
+  }, [invalidate])
+  return null
+}
+
 interface CardsProps {
   readonly canvasId: SurfaceCanvasId
   readonly inScene: boolean
+  readonly finish: FinishId
   readonly text: TextLighting
-  readonly light: THREE.PointLight
+  readonly tilt: CardTilt
+  readonly lights: StudioLights
 }
 
-function Cards({ canvasId, inScene, text, light }: CardsProps) {
+function Cards({ canvasId, inScene, finish, text, tilt, lights }: CardsProps) {
   const [bag, setBag] = useState(0)
   const [name, setName] = useState('Morning take, room 2')
   const [saved, setSaved] = useState<string | null>(null)
   const [gain, setGain] = useState<'low' | 'mid' | 'high'>('mid')
-  const card = { canvasId, inScene, text, light }
+  const card = { canvasId, inScene, finish, text, tilt, lights }
 
   return (
     <main className="mf-cards">
@@ -175,9 +223,11 @@ export function MaterialFinishesApp({ onReady }: { readonly onReady?: () => void
   const initial = useState(readParams)[0]
   const [finish, setFinish] = useState<FinishId>(initial.finish)
   const [text, setText] = useState<TextLighting>(initial.text)
+  const [rig, setRig] = useState<LightRig>(initial.light)
+  const [tilt, setTilt] = useState<CardTilt>(initial.tilt)
   const [inScene, setInScene] = useState(true)
   const [sweeping, setSweeping] = useState(false)
-  const [light] = useState(() => new THREE.PointLight('#fffaf2', 0, 0, 2))
+  const [lights] = useState(createStudioLights)
   const handleRef = useRef<HTMLButtonElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
 
@@ -191,7 +241,8 @@ export function MaterialFinishesApp({ onReady }: { readonly onReady?: () => void
 
   useEffect(() => {
     applyFinish(initial.finish)
-  }, [initial.finish])
+    applyRig(initial.light)
+  }, [initial.finish, initial.light])
 
   useEffect(() => {
     let alive = true
@@ -226,14 +277,24 @@ export function MaterialFinishesApp({ onReady }: { readonly onReady?: () => void
     return () => cancelAnimationFrame(frame)
   }, [sweeping, moveLight])
 
+  const current: SceneParams = { finish, text, light: rig, tilt }
   const selectFinish = (next: FinishId) => {
     setFinish(next)
     applyFinish(next)
-    writeParams(next, text)
+    writeParams({ ...current, finish: next })
   }
   const selectText = (next: TextLighting) => {
     setText(next)
-    writeParams(finish, next)
+    writeParams({ ...current, text: next })
+  }
+  const selectRig = (next: LightRig) => {
+    setRig(next)
+    applyRig(next)
+    writeParams({ ...current, light: next })
+  }
+  const selectTilt = (next: CardTilt) => {
+    setTilt(next)
+    writeParams({ ...current, tilt: next })
   }
 
   const onHandlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
@@ -266,9 +327,12 @@ export function MaterialFinishesApp({ onReady }: { readonly onReady?: () => void
           onCreated={({ gl }) => gl.setClearAlpha(0)}
           style={{ position: 'fixed', inset: 0, zIndex: 10 }}
         >
-          <StudioEnvironment />
+          <StudioEnvironment rig={rig} />
           <TuningInvalidator />
-          <primitive object={light} />
+          {tilt === 'pointer' && <PointerTracker />}
+          {lightsOf(rig, lights).map((light) => (
+            <primitive key={light.uuid} object={light} />
+          ))}
         </SurfaceCanvas>
       )}
 
@@ -297,9 +361,24 @@ export function MaterialFinishesApp({ onReady }: { readonly onReady?: () => void
             Lit text
           </Button>
         </div>
+        <div className="mf-pills" role="group" aria-label="Light">
+          {LIGHT_RIGS.map((item) => (
+            <Button key={item.id} compact variant={rig === item.id ? 'solid' : 'outline'} aria-pressed={rig === item.id} onClick={() => selectRig(item.id)}>
+              {item.label}
+            </Button>
+          ))}
+        </div>
+        <div className="mf-pills" role="group" aria-label="Tilt">
+          <Button compact variant={tilt === 'none' ? 'solid' : 'outline'} aria-pressed={tilt === 'none'} onClick={() => selectTilt('none')}>
+            Flat
+          </Button>
+          <Button compact variant={tilt === 'pointer' ? 'solid' : 'outline'} aria-pressed={tilt === 'pointer'} onClick={() => selectTilt('pointer')}>
+            Tilt to pointer
+          </Button>
+        </div>
       </header>
 
-      <Cards canvasId={canvasId} inScene={showsScene} text={text} light={light} />
+      <Cards canvasId={canvasId} inScene={showsScene} finish={finish} text={text} tilt={tilt} lights={lights} />
 
       {supported && (
         <button
@@ -327,7 +406,7 @@ export function MaterialFinishesApp({ onReady }: { readonly onReady?: () => void
         <Tag>Drag the light</Tag>
       </footer>
 
-      <MaterialFinishesTweaks finish={finish} />
+      <MaterialFinishesTweaks finish={finish} rig={rig} />
     </div>
   )
 }

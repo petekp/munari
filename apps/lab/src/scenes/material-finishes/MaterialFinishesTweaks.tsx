@@ -11,10 +11,12 @@ import {
   subscribeFinishTuning,
   type Finish,
   type FinishId,
+  type LightRig,
   type StudioTuning,
 } from './materialFinishesTuning'
 
-type FinishNumber = Exclude<keyof Finish, 'color' | 'sheenColor'>
+type FinishNumber = Exclude<keyof Finish, 'color' | 'sheenColor' | 'detail'>
+type StudioNumber = Exclude<keyof StudioTuning, 'lightX' | 'lightY'>
 type FinishColor = 'color' | 'sheenColor'
 
 interface Knob<Key> {
@@ -34,6 +36,15 @@ const GROUPS: readonly { readonly title: string; readonly knobs: readonly Knob<F
       { key: 'roughness', label: 'roughness', min: 0, max: 1, step: 0.01 },
       { key: 'metalness', label: 'metalness', min: 0, max: 1, step: 0.01 },
       { key: 'ior', label: 'ior', min: 1, max: 2.333, step: 0.01 },
+      { key: 'specularIntensity', label: 'base specular', min: 0, max: 1, step: 0.01 },
+    ],
+  },
+  {
+    title: 'edge and relief',
+    knobs: [
+      { key: 'edgeWidth', label: 'edge width (css px)', min: 0, max: 40, step: 0.5 },
+      { key: 'detailScale', label: 'relief size (css px)', min: 0.5, max: 160, step: 0.5 },
+      { key: 'detailDepth', label: 'relief slope', min: 0, max: 0.6, step: 0.005 },
     ],
   },
   {
@@ -67,11 +78,32 @@ const GROUPS: readonly { readonly title: string; readonly knobs: readonly Knob<F
   },
 ]
 
-const STUDIO_KNOBS: readonly Knob<Exclude<keyof StudioTuning, 'lightX' | 'lightY'>>[] = [
-  { key: 'lightHeight', label: 'light height (css px)', min: 40, max: 900, step: 10 },
-  { key: 'lightPower', label: 'light power', min: 0, max: 8, step: 0.1 },
+const KEY_KNOBS: readonly Knob<StudioNumber>[] = [
+  { key: 'lightHeight', label: 'key height (css px)', min: 40, max: 900, step: 10 },
+  { key: 'lightPower', label: 'key power', min: 0, max: 8, step: 0.1 },
+]
+const SOFTBOX_KNOBS: readonly Knob<StudioNumber>[] = [
+  { key: 'softboxWidth', label: 'softbox width (css px)', min: 20, max: 600, step: 10 },
+  { key: 'softboxHeight', label: 'softbox height (css px)', min: 20, max: 600, step: 10 },
+]
+const RIM_KNOBS: readonly Knob<StudioNumber>[] = [
+  { key: 'rimPower', label: 'rim power', min: 0, max: 6, step: 0.05 },
+  { key: 'rimElevation', label: 'rim elevation (deg)', min: 2, max: 60, step: 1 },
+]
+const ENVIRONMENT_KNOBS: readonly Knob<StudioNumber>[] = [
   { key: 'environmentIntensity', label: 'environment', min: 0, max: 2, step: 0.05 },
 ]
+
+function studioKnobs(rig: LightRig): readonly Knob<StudioNumber>[] {
+  switch (rig) {
+    case 'room':
+      return [...KEY_KNOBS, ...ENVIRONMENT_KNOBS]
+    case 'softbox':
+      return [...KEY_KNOBS, ...SOFTBOX_KNOBS, ...RIM_KNOBS, ...ENVIRONMENT_KNOBS]
+    case 'studio-point':
+      return [...KEY_KNOBS, ...RIM_KNOBS, ...ENVIRONMENT_KNOBS]
+  }
+}
 
 function ColorField({ name, label }: { readonly name: FinishColor; readonly label: string }) {
   const onChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -86,7 +118,7 @@ function ColorField({ name, label }: { readonly name: FinishColor; readonly labe
   )
 }
 
-export function MaterialFinishesTweaks({ finish }: { readonly finish: FinishId }) {
+export function MaterialFinishesTweaks({ finish, rig }: { readonly finish: FinishId; readonly rig: LightRig }) {
   const [, bump] = useState(0)
   useEffect(() => subscribeFinishTuning(() => bump((n) => n + 1)), [])
 
@@ -94,7 +126,7 @@ export function MaterialFinishesTweaks({ finish }: { readonly finish: FinishId }
     liveFinish[key] = value
     notifyFinishTuning()
   }, [])
-  const setStudioValue = useCallback((key: Exclude<keyof StudioTuning, 'lightX' | 'lightY'>, value: number) => {
+  const setStudioValue = useCallback((key: StudioNumber, value: number) => {
     studio[key] = value
     notifyFinishTuning()
   }, [])
@@ -127,7 +159,7 @@ export function MaterialFinishesTweaks({ finish }: { readonly finish: FinishId }
         </TuningGroup>
       ))}
       <TuningGroup title="light and environment" initialState="open">
-        {STUDIO_KNOBS.map((knob) => (
+        {studioKnobs(rig).map((knob) => (
           <TuningSlider
             key={knob.key}
             label={knob.label}
