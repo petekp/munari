@@ -11,6 +11,15 @@
 // re-encodes fragments and a bare output lands too dark where it is
 // translucent (decisions.md #72).
 //
+// SurfaceCanvas draws without tone mapping, so the page's colors land
+// exact. Lit bodies then clip: measured 2026-11-24 on m2 (Chrome for Testing
+// 156, 1440×900 at 2x), satin polymer clipped over 53% of the form card from
+// the room environment alone and 88% with the studio light at power 2.4,
+// which flattens the finish to white. The lit result goes through Khronos
+// PBR Neutral, which leaves colors under 0.76 as they are and rolls off the
+// highlights above them. Unlit text is laid over the tone-mapped body
+// untouched.
+//
 // Lit text is the albedo, so coat highlights, sheen and film land on the
 // text too. Unlit text keeps its page color under any light
 // (docs/materials-research.md §3).
@@ -20,13 +29,17 @@
 
 import * as THREE from 'three'
 import { MeshPhysicalNodeMaterial, type Node, type TextureNode, type UniformNode } from 'three/webgpu'
-import { Discard, float, Fn, output, sRGBTransferEOTF, sRGBTransferOETF, uv, vec4 } from 'three/tsl'
+import { Discard, float, Fn, neutralToneMapping, output, sRGBTransferEOTF, sRGBTransferOETF, uv, vec4 } from 'three/tsl'
 import { encodedOutput, premultipliedOutput } from '@petepetrash/munari'
 import type { Finish, TextLighting } from './materialFinishesTuning'
 
 // Below this coverage a fragment writes nothing visible; Surface.LitMaterial
 // discards at the same value.
 const DISCARD_ALPHA = 0.004
+
+// SAFETY: three declares neutralToneMapping's layout as vec3 to vec3; its
+// published types leave the result untyped.
+const rollOff = (color: Node<'vec3'>) => neutralToneMapping(color, float(1)) as Node<'vec3'>
 
 export interface FinishMaterialInputs {
   /** A raw (NoColorSpace) view of the capture: encoded, premultiplied. */
@@ -51,7 +64,7 @@ export function createFinishMaterial({ capture, cornerMask, body }: FinishMateri
     const albedo = sRGBTransferEOTF(page.rgb.add(bodyEncoded.mul(uncovered))) as Node<'vec3'>
     material.colorNode = vec4(albedo, 1)
     material.outputNode = Fn(() => {
-      const covered = output.mul(cornerMask)
+      const covered = vec4(rollOff(output.rgb), output.a).mul(cornerMask)
       Discard(covered.a.lessThan(DISCARD_ALPHA))
       return premultipliedOutput(covered)
     })()
@@ -60,10 +73,11 @@ export function createFinishMaterial({ capture, cornerMask, body }: FinishMateri
 
   material.colorNode = vec4(body, 1)
   material.outputNode = Fn(() => {
-    // The canvas stores 0..1, so a highlight clips before the composite
-    // rather than bleeding into the text's antialiased edge.
+    // The canvas stores 0..1, so what the roll-off leaves above 1 clips
+    // before the composite rather than bleeding into the text's antialiased
+    // edge.
     // SAFETY: as above, vec3 to vec3.
-    const litBody = sRGBTransferOETF(output.rgb.saturate()) as Node<'vec3'>
+    const litBody = sRGBTransferOETF(rollOff(output.rgb).saturate()) as Node<'vec3'>
     const covered = vec4(page.rgb.add(litBody.mul(uncovered)), 1).mul(cornerMask)
     Discard(covered.a.lessThan(DISCARD_ALPHA))
     return encodedOutput(covered)
