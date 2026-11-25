@@ -1,10 +1,10 @@
 {
   "advancedKernel": {
-    "gzipBytes": 3435,
+    "gzipBytes": 3437,
     "marginBytes": 1000
   },
   "elementCapture": {
-    "gzipBytes": 91765,
+    "gzipBytes": 92059,
     "marginBytes": 2000
   },
   "encodedOutput": {
@@ -12,15 +12,15 @@
     "marginBytes": 2000
   },
   "lazyCanvas": {
-    "gzipBytes": 189575,
+    "gzipBytes": 189772,
     "marginBytes": 2000
   },
   "snapdomDefault": {
-    "gzipBytes": 124248,
+    "gzipBytes": 124746,
     "marginBytes": 1000
   },
   "surface": {
-    "gzipBytes": 532610,
+    "gzipBytes": 535833,
     "marginBytes": 2000
   }
 }
