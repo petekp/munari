@@ -42,6 +42,7 @@ const RainApp = lazy(() => import('./scenes/rain/Rain').then(m => ({ default: m.
 const StyleApp = lazy(() => import('./scenes/style/Style').then(m => ({ default: m.StyleApp })))
 const WhyApp = lazy(() => import('./scenes/why/Why').then(m => ({ default: m.WhyApp })))
 const PolymerPrototypeApp = lazy(() => import('./scenes/polymer-prototype/PolymerPrototype').then(m => ({ default: m.PolymerPrototypeApp })))
+const MaterialFinishesApp = lazy(() => import('./scenes/material-finishes/MaterialFinishes').then(m => ({ default: m.MaterialFinishesApp })))
 const FrontierPrototypeApp = lazy(() => import('./scenes/frontier-prototype/FrontierPrototype').then(m => ({ default: m.FrontierPrototypeApp })))
 const BeyondPrototypeApp = lazy(() => import('./scenes/beyond-prototype/BeyondPrototype').then(m => ({ default: m.BeyondPrototypeApp })))
 const SignaturePrototypeApp = lazy(() => import('./scenes/signature-prototype/SignaturePrototype').then(m => ({ default: m.SignaturePrototypeApp })))
@@ -74,6 +75,7 @@ const LAB_SCENES = [
   'style',
   'why',
   'polymer-prototype',
+  'material-finishes',
   'frontier-prototype',
   'beyond-prototype',
   'signature-prototype',
@@ -135,6 +137,7 @@ const PAGE_SCENES = {
   style: StyleApp,
   why: WhyApp,
   'polymer-prototype': PolymerPrototypeApp,
+  'material-finishes': MaterialFinishesApp,
   'frontier-prototype': FrontierPrototypeApp,
   'beyond-prototype': BeyondPrototypeApp,
   'signature-prototype': SignaturePrototypeApp,
@@ -218,6 +221,7 @@ const SITE_TITLES = {
   style: 'Style guide · Munari',
   why: 'Why Munari · Munari',
   'polymer-prototype': 'Polymer prototype · Munari',
+  'material-finishes': 'Material finishes · Munari',
   'frontier-prototype': 'Frontier prototypes · Munari',
   'beyond-prototype': 'Beyond flat UI · Munari',
   'signature-prototype': 'Signature prototypes · Munari',
@@ -226,11 +230,12 @@ const SITE_LAZY_PAGES = {
   style: StyleApp,
   why: WhyApp,
   'polymer-prototype': PolymerPrototypeApp,
+  'material-finishes': MaterialFinishesApp,
   'frontier-prototype': FrontierPrototypeApp,
   'beyond-prototype': BeyondPrototypeApp,
   'signature-prototype': SignaturePrototypeApp,
 } as const
-const OMITS_NOTICE = new Set<SceneId>(['home', 'why', 'polymer-prototype', 'frontier-prototype', 'beyond-prototype', 'signature-prototype', 'marble-hand', 'plume', 'postcard'])
+const OMITS_NOTICE = new Set<SceneId>(['home', 'why', 'polymer-prototype', 'material-finishes', 'frontier-prototype', 'beyond-prototype', 'signature-prototype', 'marble-hand', 'plume', 'postcard'])
 
 function isSitePage(scene: SceneId): boolean {
   return scene in SITE_TITLES
