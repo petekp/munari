@@ -32,7 +32,12 @@ let loading: Promise<SurfaceSceneComponents> | null = null
 function useSurfaceSceneComponents(): SurfaceSceneComponents {
   const provided = use(SurfaceSceneComponentsContext)
   if (provided) return provided
-  loading ??= import('./surfaceSceneComponents').then(module => module.surfaceSceneComponents)
+  if (!loading) {
+    const load = import('./surfaceSceneComponents').then(module => module.surfaceSceneComponents)
+    // A failed load is not kept, so the next render retries it.
+    load.catch(() => { if (loading === load) loading = null })
+    loading = load
+  }
   return use(loading)
 }
 
