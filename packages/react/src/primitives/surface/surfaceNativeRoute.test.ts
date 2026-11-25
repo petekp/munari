@@ -427,19 +427,38 @@ describe('a scene mesh in front of the Surface', () => {
     route.release()
   })
 
-  it('gives the scene a cold press aimed through the mesh at the lifted HTML', () => {
+  it('gives the scene a cold tap aimed through the mesh at the lifted HTML', () => {
     const route = createSurfaceRoute()
     route.step(step({ pointer: BESIDE }), duties)
-    const heardByContent: Event[] = []
-    const heardByScene: Event[] = []
-    root.addEventListener('pointerdown', (event) => heardByContent.push(event))
-    glCanvas.addEventListener('pointerdown', (event) => heardByScene.push(event))
-    const press = trusted(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, buttons: 1, clientX: CENTER.x, clientY: CENTER.y }))
+    const heardByContent: string[] = []
+    const heardByScene: string[] = []
+    for (const type of ['pointerdown', 'pointerup', 'click']) {
+      root.addEventListener(type, (event) => heardByContent.push(event.type))
+      glCanvas.addEventListener(type, (event) => heardByScene.push(event.type))
+    }
+    const at = { bubbles: true, cancelable: true, pointerId: 7, clientX: CENTER.x, clientY: CENTER.y }
+    const press = trusted(new PointerEvent('pointerdown', { ...at, buttons: 1 }))
     root.dispatchEvent(press)
     expect(route.riding()).toBe(false)
+    root.dispatchEvent(trusted(new PointerEvent('pointerup', at)))
+    const click = trusted(new MouseEvent('click', at))
+    root.dispatchEvent(click)
     expect(press.defaultPrevented).toBe(true)
+    expect(click.defaultPrevented).toBe(true)
     expect(heardByContent).toEqual([])
-    expect(heardByScene).toHaveLength(1)
+    expect(heardByScene).toEqual(['pointerdown', 'pointerup'])
+    route.release()
+  })
+
+  it('leaves the next click alone once a press reached the content', () => {
+    const route = createSurfaceRoute()
+    route.step(step({ pointer: BESIDE }), duties)
+    root.dispatchEvent(trusted(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, buttons: 1, clientX: CENTER.x, clientY: CENTER.y })))
+    const heardByContent: string[] = []
+    root.addEventListener('click', (event) => heardByContent.push(event.type))
+    root.dispatchEvent(trusted(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, buttons: 1, clientX: BESIDE.x, clientY: BESIDE.y })))
+    root.dispatchEvent(trusted(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: BESIDE.x, clientY: BESIDE.y })))
+    expect(heardByContent).toEqual(['click'])
     route.release()
   })
 })

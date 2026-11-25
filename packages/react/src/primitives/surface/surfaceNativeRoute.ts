@@ -103,6 +103,8 @@ interface SurfacePlaneRecord {
   readonly count: number
 }
 const planes = new WeakMap<THREE.BufferGeometry, SurfacePlaneRecord>()
+
+const POINTER_TYPES = ['pointermove', 'pointerdown', 'pointerup', 'pointercancel'] as const
 function positionVersion(position: SurfacePlaneRecord['position']): number {
   return 'version' in position ? position.version : position.data.version
 }
@@ -221,6 +223,8 @@ export function createSurfaceRoute(): SurfaceRouteController {
   const raycaster = new THREE.Raycaster()
   let obstructed = false
   let listening = false
+  const pressesForScene = new Set<number>()
+  let swallowClick = false
   const token = Symbol()
   let route: PointerRoute = 'page'
   let rig: NativePointerRig | null = null
@@ -351,7 +355,12 @@ export function createSurfaceRoute(): SurfaceRouteController {
   // verdict is read from the event itself.
   const onPointer = (event: PointerEvent) => {
     if (!event.isTrusted || !latest) return
+    if (event.type === 'pointerup' || event.type === 'pointercancel') {
+      if (pressesForScene.delete(event.pointerId) && insideRig(event.target)) handToScene(event)
+      return
+    }
     const pressing = event.type === 'pointerdown'
+    if (pressing) swallowClick = false
     if (event.buttons !== 0 && !pressing) return
     const { input, duties } = latest
     const covered = coveredAt(input, raycaster, event.clientX, event.clientY)
@@ -360,27 +369,48 @@ export function createSurfaceRoute(): SurfaceRouteController {
     const host = rigHost
     obstructed = covered
     apply(input, duties, null)
-    const target = event.target
-    if (!pressing || !covered || !wasRiding || !(target instanceof Element) || !host?.contains(target)) return
+    if (!pressing || !covered || !wasRiding || !insideRig(event.target, host)) return
     // A contact with no move before it, such as a touch, was hit-tested
     // against the lifted canvas. The HTML behind the mesh must not see the
-    // press or its compatibility mouse events, so the scene gets it instead.
+    // press, its release, its compatibility mouse events or the click a tap
+    // makes from them, so the scene gets the press and its release instead.
+    pressesForScene.add(event.pointerId)
+    swallowClick = true
+    handToScene(event)
+  }
+
+  const insideRig = (target: EventTarget | null, host = rigHost): target is Element =>
+    target instanceof Element && host?.contains(target) === true
+
+  const handToScene = (event: PointerEvent) => {
+    if (!latest || !(event.target instanceof Element)) return
     event.preventDefault()
     event.stopImmediatePropagation()
-    if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
-    input.glCanvas.dispatchEvent(new PointerEvent(event.type, event))
+    if (event.target.hasPointerCapture(event.pointerId)) event.target.releasePointerCapture(event.pointerId)
+    latest.input.glCanvas.dispatchEvent(new PointerEvent(event.type, event))
+  }
+
+  // Preventing a touch press does not cancel the click its tap produces.
+  const onClick = (event: MouseEvent) => {
+    if (!event.isTrusted || !swallowClick) return
+    swallowClick = false
+    if (!insideRig(event.target)) return
+    event.preventDefault()
+    event.stopImmediatePropagation()
   }
 
   function listen(on: boolean) {
     if (on === listening) return
     listening = on
     if (on) {
-      window.addEventListener('pointermove', onPointer, true)
-      window.addEventListener('pointerdown', onPointer, true)
+      for (const type of POINTER_TYPES) window.addEventListener(type, onPointer, true)
+      window.addEventListener('click', onClick, true)
     } else {
-      window.removeEventListener('pointermove', onPointer, true)
-      window.removeEventListener('pointerdown', onPointer, true)
+      for (const type of POINTER_TYPES) window.removeEventListener(type, onPointer, true)
+      window.removeEventListener('click', onClick, true)
       obstructed = false
+      pressesForScene.clear()
+      swallowClick = false
     }
   }
 

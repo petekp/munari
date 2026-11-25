@@ -71,7 +71,7 @@ import { createSurfaceRasterAlignment } from './surfaceRasterAlignment'
 import { matchedSurfaceDensity } from './surfacePixelDensity'
 import { watchSurfacePlacement } from './surfacePlacement'
 import { registerSurfacePlane, createSurfaceRoute, type SurfaceRouteRelayDuties } from './surfaceNativeRoute'
-import { markSurfaceMesh } from './surfaceOcclusion'
+import { markSurfaceMesh, pointerIsWhereR3fHeardIt } from './surfaceOcclusion'
 import { surfaceHitRegion } from './surfaceHitRegion'
 import { suspendCameraControls } from '../cameraControls'
 import { useLatest } from '../useLatest'
@@ -290,6 +290,7 @@ export function SurfacePresenter({
   const frameChannel = useMemo(createSurfaceFrameChannel, [])
   const hasFrameListeners = useSyncExternalStore(frameChannel.subscribePresence, frameChannel.hasListeners, () => false)
   const events = useThree((s) => s.events)
+  const internal = useThree((s) => s.internal)
   const gl = useThree((s) => s.gl)
   const invalidate = useThree((s) => s.invalidate)
   // SAFETY: r3f's store types `controls` as a bare event target — whatever
@@ -612,20 +613,14 @@ export function SurfacePresenter({
    */
   const rerouteAfterDeform = (mesh: THREE.Mesh) => {
     // A position-attribute version bump is the deformation's own receipt
-    // (deformSurfaceGeometry sets it), and r3f's `events.update` re-raycasts
-    // the pointer's last position against the current pose — hover twins and
-    // coordinates catch up within a frame, whether the hand moved or only the
-    // mesh did.
+    // (deformSurfaceGeometry sets it); `events.update` re-raycasts the
+    // pointer's last position against the current pose.
     const position = mesh.geometry?.getAttribute('position')
     // An interleaved position carries its version on the shared buffer, and
     // no Surface geometry interleaves — the plain-attribute case is the law
     // deformSurfaceGeometry already enforces.
     if (position instanceof THREE.BufferAttribute) {
-      if (
-        rerouteRef.current !== null &&
-        rerouteRef.current !== position.version &&
-        store.canvasHearsPointer()
-      ) {
+      if (rerouteRef.current !== null && rerouteRef.current !== position.version && store.canvasHearsPointer() && pointerIsWhereR3fHeardIt(internal.lastEvent.current)) {
         events.update?.()
       }
       rerouteRef.current = position.version

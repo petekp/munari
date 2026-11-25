@@ -20,6 +20,7 @@ import {
   type SurfaceHandle,
 } from '@petepetrash/munari'
 import { detectHtmlInCanvas, type PointerRouteRequest } from '@munari/core'
+import * as THREE from 'three'
 
 const W = 320
 const H = 200
@@ -39,6 +40,12 @@ function parkedCanvas(): HTMLCanvasElement | null {
 }
 let rendering: import('@react-three/fiber').RootState | null = null
 let displayed: import('three').Mesh | null = null
+let occluder: import('three').Mesh | null = null
+// The covering box stands at this fraction of the camera-to-Surface distance:
+// clearly nearer than the Surface, and still small on screen.
+const OCCLUDER_DEPTH = 0.9
+// Its screen size in CSS pixels, well inside the 280 × 56 button.
+const OCCLUDER_PX = [60, 30] as const
 
 type PointerObservation = Pick<ReturnType<typeof useSurfaceStatus>, 'presentation' | 'isTransitioning' | 'sceneReady'>
 function initialState(): PointerObservation { return {presentation:null,isTransitioning:false,sceneReady:false} }
@@ -50,6 +57,28 @@ const probe = {
   setRenderIn: (_: SurfaceDestination) => {},
   setRoute: (_: PointerRouteRequest) => {},
   setTilt: (_: boolean) => {},
+  setPointerMode: (_: 'scene' | 'surfaces') => {},
+  /** Stand an opaque box in front of the Surface at viewport point (x, y), or remove it with null. */
+  coverAt(point: { x: number; y: number } | null) {
+    if (!occluder || !displayed || !rendering) throw new Error(`coverAt: occluder ${Boolean(occluder)}, displayed ${Boolean(displayed)}, rendering ${Boolean(rendering)}`)
+    occluder.visible = point !== null
+    if (!point) return true
+    const canvas = rendering.gl.domElement.getBoundingClientRect()
+    const ray = new THREE.Raycaster()
+    ray.setFromCamera(new THREE.Vector2(((point.x - canvas.left) / canvas.width) * 2 - 1, -((point.y - canvas.top) / canvas.height) * 2 + 1), rendering.camera)
+    const hits: THREE.Intersection[] = []
+    THREE.Mesh.prototype.raycast.call(displayed, ray, hits)
+    const surfaceHit = hits[0]
+    if (!surfaceHit) throw new Error(`coverAt: (${point.x}, ${point.y}) is not on the Surface`)
+    const depth = surfaceHit.distance * OCCLUDER_DEPTH
+    occluder.position.copy(ray.ray.at(depth, new THREE.Vector3()))
+    // SAFETY: the canvas camera is the fixture's own perspective camera (camera prop below).
+    const camera = rendering.camera as THREE.PerspectiveCamera
+    const worldPerPixel = (2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / canvas.height
+    occluder.scale.set(OCCLUDER_PX[0] * worldPerPixel, OCCLUDER_PX[1] * worldPerPixel, OCCLUDER_PX[1] * worldPerPixel)
+    occluder.updateMatrixWorld()
+    return true
+  },
   rig() {
     const c = parkedCanvas()
     if (!c) return null
@@ -147,11 +176,13 @@ function App() {
   const [view, setRenderIn] = useState<SurfaceDestination>('page')
   const [route, setRoute] = useState<PointerRouteRequest>('relay')
   const [tilt, setTilt] = useState(false)
+  const [pointerMode, setPointerMode] = useState<'scene' | 'surfaces'>('surfaces')
   const [value, setValue] = useState('')
   const st = useSurfaceStatus(surface)
   probe.setRenderIn = setRenderIn
   probe.setRoute = setRoute
   probe.setTilt = setTilt
+  probe.setPointerMode = setPointerMode
   probe.state = { presentation: st.presentation, isTransitioning: st.isTransitioning, sceneReady: st.sceneReady }
   useEffect(() => {
     probe.ready = true
@@ -177,7 +208,7 @@ function App() {
         </Surface.Root>
       </div>
       <SurfaceCanvas
-        pointerMode="surfaces"
+        pointerMode={pointerMode}
         style={{ position: 'fixed', inset: 0 }}
         gl={{ alpha: true }}
         // 'always', not 'demand': the route steps inside useFrame, and this
@@ -196,6 +227,10 @@ function App() {
           rotation={tilt ? [-0.21, 0.52, 0] : [0, 0, 0]}
           position={[0, 0, 0]}
         />
+        <mesh ref={mesh => { occluder = mesh }} visible={false}>
+          <boxGeometry args={[1, 1, 1]} />
+          <meshBasicMaterial color="#d03a2f" />
+        </mesh>
       </SurfaceCanvas>
     </>
   )

@@ -10,7 +10,10 @@
 // engages and the twin attribute follows it; a click focuses the real input
 // and typed keys land in it; a tilted pose moves the projected box and
 // still takes the trusted click; and asking for 'relay' parks — styles
-// restored, the synthetic relay hearing again.
+// restored, the synthetic relay hearing again. A visible mesh in front of the
+// button blocks the click on the relay in both pointer modes and parks the
+// rig on the native route, for a mouse click and for a touch tap that arrives
+// with no hover move (decisions.md #78).
 //
 // OS cursor appearance is not measured here. Use HEADED=1 to inspect it.
 // Click receipts establish which control received input.
@@ -136,6 +139,20 @@ try {
     }
   }
 
+  const blockedAt = async (label, point) => {
+    const before = await clickCount()
+    await page.mouse.click(point.x, point.y)
+    await sleep(120)
+    const count = await clickCount() - before
+    if (count !== 0) failures.push(`${label}: a click through the covering mesh reached the content ${count} time(s)`)
+    return { label, reached: count }
+  }
+  const cover = async (point) => {
+    if (!(await evalProbe((p) => window.__nativePointer.coverAt(p), point))) throw new Error('the covering mesh could not be placed')
+    await sleep(100)
+  }
+  const blocked = []
+
   const results = []
   const failures = []
   const expect = (cond, message) => {
@@ -149,6 +166,19 @@ try {
   await evalProbe(() => window.__nativePointer.setRenderIn('scene'))
   await waitForView('scene')
   results.push(await clickAt('gl, relay route', await rectOf('btn')))
+
+  // ── a mesh in front blocks the relay, in both pointer modes (decisions.md #78) ──
+  for (const mode of ['surfaces', 'scene']) {
+    await evalProbe((m) => window.__nativePointer.setPointerMode(m), mode)
+    await sleep(150)
+    const at = await rectOf('btn')
+    await cover(at)
+    blocked.push(await blockedAt(`relay, ${mode} mode, covered`, at))
+    await cover(null)
+    results.push(await clickAt(`relay, ${mode} mode, uncovered`, at))
+  }
+  await evalProbe(() => window.__nativePointer.setPointerMode('surfaces'))
+  await sleep(150)
 
   // ── ask for the native route: the rig dresses the parked canvas ───────
   await evalProbe(() => window.__nativePointer.setRoute('auto'))
@@ -180,6 +210,32 @@ try {
     value: window.__nativePointer.valueOf('field'),
     active: window.__nativePointer.activeId(),
   }))
+
+  // ── a mesh in front parks the rig, and the click does not reach the content ──
+  const coverPoint = await rectOf('btn')
+  await page.mouse.move(coverPoint.x, coverPoint.y, { steps: 3 })
+  await cover(coverPoint)
+  await page.waitForFunction(() => !window.__nativePointer.riding(), { timeout: 5_000 })
+    .catch(() => failures.push('native, covered: the rig kept riding under a covering mesh'))
+  blocked.push(await blockedAt('native, covered', coverPoint))
+  // A touch press arrives with no hover move first, so the window listener
+  // must stop it before the lifted content hears it.
+  await page.mouse.move(5, await page.evaluate(() => window.innerHeight - 5))
+  await cover(null)
+  await page.waitForFunction(() => window.__nativePointer.riding(), { timeout: 5_000 })
+  await evalProbe((p) => window.__nativePointer.coverAt(p), coverPoint)
+  await sleep(100)
+  const ridingBeforeTouch = await evalProbe(() => window.__nativePointer.riding())
+  const touchBefore = await clickCount()
+  await page.touchscreen.tap(coverPoint.x, coverPoint.y)
+  await sleep(200)
+  const touchReached = await clickCount() - touchBefore
+  if (touchReached !== 0) failures.push(`native, covered touch: the tap reached the content ${touchReached} time(s)`)
+  blocked.push({ label: 'native, covered touch', reached: touchReached, ridingBeforeTouch })
+  await cover(null)
+  await page.mouse.move(coverPoint.x, coverPoint.y, { steps: 3 })
+  await page.waitForFunction(() => window.__nativePointer.riding(), { timeout: 5_000 })
+  results.push(await clickAt('native, uncovered', await rectOf('btn')))
 
   // ── a tilted pose still rides, and still takes the trusted click ──────
   const flatTransform = rig.transform
@@ -224,6 +280,7 @@ try {
   console.log('\nnative-pointer gate — who heard the click, and how:')
   for (const r of results)
     console.log(`  ${r.label.padEnd(22)} → ${r.heardBy} ${r.id ?? ''} (trusted=${r.trusted})`)
+  for (const b of blocked) console.log(`  ${b.label.padEnd(30)} → reached the content ${b.reached} time(s)${'ridingBeforeTouch' in b ? ` (riding before the tap=${b.ridingBeforeTouch})` : ''}`)
   console.log(`\nhover on:  ${JSON.stringify(hoverOn)}`)
   console.log(`hover off: ${JSON.stringify(hoverOff)}`)
   console.log(`typed:     ${JSON.stringify(typed)}`)
@@ -251,7 +308,7 @@ try {
     throw new Error('native-pointer gate failed; see the recorded errors above')
   }
 
-  const native = [by('native, flat'), by('native, tilted')]
+  const native = [by('native, flat'), by('native, uncovered'), by('native, tilted')]
   for (const r of native) {
     expect(r?.heardBy === 'scene', `${r?.label}: heard by ${r?.heardBy}, not the source copy`)
     expect(r?.trusted === true, `${r?.label}: trusted=${r?.trusted} — the browser did not deliver it`)

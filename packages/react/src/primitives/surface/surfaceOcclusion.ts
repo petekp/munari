@@ -21,6 +21,7 @@
 // point. The scene owns which props opt out.
 
 import * as THREE from 'three'
+import { lastPointerPlace } from '@munari/core'
 
 const surfaces = new WeakSet<THREE.Object3D>()
 
@@ -112,6 +113,18 @@ function blockersAlong(raycaster: THREE.Raycaster, root: THREE.Object3D): readon
 function descendsFrom(object: THREE.Object3D, ancestor: THREE.Object3D): boolean {
   for (let node = object.parent; node; node = node.parent) if (node === ancestor) return true
   return false
+}
+
+/**
+ * Is the trusted pointer still where r3f last heard it? r3f's `events.update`
+ * replays that event, and once the gate clears the canvas it goes stale. A
+ * pointer that left a note over the spout kept hovering the note as the wheel
+ * turned the spout away, and the relayed moves spun the wheel (review-notes,
+ * 25 Nov 2026).
+ */
+export function pointerIsWhereR3fHeardIt(heard: { readonly clientX: number; readonly clientY: number } | null): boolean {
+  const place = lastPointerPlace()
+  return heard !== null && place !== null && heard.clientX === place.x && heard.clientY === place.y
 }
 
 /**
