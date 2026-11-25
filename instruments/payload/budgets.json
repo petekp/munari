@@ -12,7 +12,7 @@
     "marginBytes": 2000
   },
   "lazyCanvas": {
-    "gzipBytes": 189510,
+    "gzipBytes": 189532,
     "marginBytes": 2000
   },
   "snapdomDefault": {
@@ -20,7 +20,7 @@
     "marginBytes": 1000
   },
   "surface": {
-    "gzipBytes": 532529,
+    "gzipBytes": 532551,
     "marginBytes": 2000
   }
 }
