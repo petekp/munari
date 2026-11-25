@@ -48,7 +48,12 @@ function keyDelta(key: string): readonly [number, number] | null {
   }
 }
 
-function readParams(): { finish: FinishId; text: TextLighting } {
+interface SceneParams {
+  readonly finish: FinishId
+  readonly text: TextLighting
+}
+
+function readParams(): SceneParams {
   const params = new URLSearchParams(window.location.search)
   const finish = params.get('finish')
   return {
