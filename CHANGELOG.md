@@ -17,15 +17,22 @@ prop that should let the pointer through, such as a shadow plane, a no-op
 - A Surface no longer hears the pointer where a nearer visible mesh that is
   not a Surface covers it. This applies with `pointerMode="scene"` and
   `pointerMode="surfaces"`, and on the native route with
-  `pointerRoute="auto"`, where the lifted canvas parks before the press so
-  the browser's click goes to the scene. A touch or pen tap with no move
-  before it goes to the scene too. Hidden meshes, meshes whose material
-  has `visible: false`, the Surface's own descendants, coplanar meshes and
-  meshes with a no-op `raycast` never block (decisions.md #78). The R3F
-  handlers that stopped propagation are no longer needed to block.
-- Each pointer event over a Surface now raycasts every other visible mesh in
-  the scene. In review notes the 36,864-triangle teapot makes that about 4 ms per
-  ray. A heavy mesh that never needs to block can take a no-op `raycast`.
+  `pointerRoute="auto"`. On the native route the binding checks the pointer
+  each frame and on every move and press, and parks the lifted canvas before
+  the press so the browser's click goes to the scene. A touch or pen tap with
+  no move before it goes to the scene too, and its click is dropped. Only
+  meshes on the R3F raycaster's layers block. Hidden meshes, hits on a
+  material or material group with `visible: false`, the Surface's own
+  descendants, exactly coplanar meshes, meshes with a no-op `raycast`, and
+  `Points`, `Line` and `Sprite` objects never block (decisions.md #78). A
+  transparent mesh still blocks. The R3F handlers that stopped propagation are
+  no longer needed to block.
+- While the pointer is over a Surface, the scene is raycast out to the
+  Surface's distance once per pointer event. It is also raycast once per
+  frame in `pointerMode="surfaces"`, on the native route, and for a Surface
+  that deforms. In review notes the 36,864-triangle teapot costs 4.3 to 5.3
+  ms per raycast, an estimated 9 to 11 ms per frame while the pointer moves. A heavy mesh
+  that never needs to block can take a no-op `raycast`.
 
 ### Documentation
 
