@@ -25,7 +25,7 @@ code owns the business outcome of a gesture.
 | Current behavior | Evidence and limit | Planned response |
 |---|---|---|
 | Transported content inherits host context and loses declaration-local providers. | [Scene transport](../packages/react/src/primitives/Surface.tsx), [HTML transport](../packages/react/src/primitives/surface/surfaceSourceHost.tsx). React registry probes confirmed both directions, including the R3F bridge dependency. | Preserve local application context at both transports. |
-| Flat helpers hardcode relay input and opaque alpha. | [Helper composition](../packages/react/src/primitives/Surface.tsx), [mesh policy](../packages/react/src/primitives/surface/SurfaceMesh.tsx). Select cycling and blending policy are source-backed. The native rig has no scene-occlusion condition. | Expose narrow overrides, keep native routing opt-in, and verify source alpha before changing its default. |
+| Flat helpers hardcode relay input and opaque alpha. | [Helper composition](../packages/react/src/primitives/Surface.tsx), [mesh policy](../packages/react/src/primitives/surface/SurfaceMesh.tsx). Select cycling and blending policy are source-backed. The native rig parks under a nearer mesh (#78). | Expose narrow overrides, keep native routing opt-in, and verify source alpha before changing its default. |
 | Non-live sources intentionally hold unsolicited updates on both engines. | [Decision #64](decisions.md#64), [shared laws](../tests/conformance/paint/captureEngines.test.ts). A binding probe confirmed the policy. | Preserve the policy, correct its documentation, and add discrete refresh to captures and Surface sources. |
 | Asynchronous capture can attach current layout anchors to an older raster. | [Capture publication](../packages/react/src/primitives/capture.tsx), [snapDOM frame split](../packages/react/src/snapdom.ts). A deferred raster probe demonstrated ordering, not real snapDOM pixels. | Carry anchors from the captured snapshot. |
 | Anchor dimensions are source fractions but are described as geometry-local sizes. | [Anchor contract and calculation](../packages/react/src/primitives/surface/SurfaceAnchor.tsx). Default unit-plane callers work; custom geometry has a different unit scale. | Remove the redundant fields and use the existing UV rectangle. |
@@ -189,8 +189,8 @@ instance. Separately check relay under snapDOM and unsupported geometry. A relay
 fallback must not be described as native control parity.
 
 Characterize native routing with an interactive scene mesh covering half the
-panel. The native rig is above the canvas and currently lacks an occlusion
-condition, so trusted HTML delivery alone cannot prove correct target ownership.
+panel. The native rig is above the canvas and parks under a nearer mesh (#78),
+so trusted HTML delivery alone cannot prove correct target ownership.
 Check clicks, hover, and a stationary pointer while the foreground object moves.
 Verify the cursor visibly in a headed browser; the current automated gate does
 not observe its glyph.
@@ -198,7 +198,7 @@ not observe its glyph.
 This implementation keeps native input opt-in. The guide recommends it for
 eligible frontmost panels and explains the foreground-object limitation. Use
 relay when scene objects must own overlapping input. A future native-default
-change requires a separately reviewed, measured occlusion solution. This work
+change requires a separate review of #78's measured occlusion test. This work
 adds no speculative renderer or compositor to manufacture that guarantee.
 
 Source alpha requires a separate pixel comparison. Compare translucent panels,

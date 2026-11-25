@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+Upgrading from 0.5.x: a visible scene mesh in front of a Surface now takes the
+pointer, so a click on a prop no longer reaches the HTML behind it. Give a
+prop that should let the pointer through, such as a shadow plane, a no-op
+`raycast`.
+
 ### Breaking
 
 - In your own R3F `Canvas`, outside a `SurfaceCanvas`, `Surface.Mesh`,
@@ -9,6 +14,25 @@
   the first time they render, while Munari loads its scene code. Wrap that
   `Canvas` in a `Suspense` boundary. A failed load reaches the nearest error
   boundary. Inside a `SurfaceCanvas`, nothing changes.
+- A Surface no longer hears the pointer where a nearer visible mesh that is
+  not a Surface covers it. This applies with `pointerMode="scene"` and
+  `pointerMode="surfaces"`, and on the native route with
+  `pointerRoute="auto"`, where the lifted canvas parks before the press so
+  the browser's click goes to the scene. A touch or pen tap with no move
+  before it goes to the scene too. Hidden meshes, meshes whose material
+  has `visible: false`, the Surface's own descendants, coplanar meshes and
+  meshes with a no-op `raycast` never block (decisions.md #78). The R3F
+  handlers that stopped propagation are no longer needed to block.
+- Each pointer event over a Surface now raycasts every visible mesh in the
+  scene. In review notes the 36,864-triangle teapot makes that about 4 ms per
+  ray. A heavy mesh that never needs to block can take a no-op `raycast`.
+
+### Documentation
+
+- The page layouts guide describes which meshes block a Surface and how a
+  prop opts out.
+- The authoring rules say that `window` pointer listeners need
+  `capture: true` to hear the browser's own events while the canvas is armed.
 
 ## 0.5.0 — 2026-11-23
 
@@ -170,125 +194,4 @@ this release.
   that it is still waiting for a usable source frame and preparation draw.
   A hidden mesh or a mesh with no source still logs it.
 
-## 0.4.1 — 2026-10-10
-
-- A browser with no usable capture engine now says so. `useSurfaceStatus()`
-  reports `engine: null` and a `reason` that names the CanvasDrawElement flag,
-  the origin trial and `enableSnapdomCapture()`. In development, the first
-  Surface asked for the scene logs the same text once.
-- The entries that use React start with `'use client'`, so a Next.js server
-  component can import `Surface` and `SurfaceCanvas` directly.
-- `CaptureContent` with children inside a `SurfaceCanvas` throws an error
-  that says to render it in the page tree, instead of R3F's "Div is not part
-  of the THREE namespace". The `element` form still works there.
-- In development, `SurfaceCanvas` names any object on it whose material uses
-  GLSL (a `ShaderMaterial` or `onBeforeCompile`), such as drei's `Text`.
-  WebGPURenderer draws those black or unpatched, and Three's own log does not
-  say which object.
-- `useSurfaceNodes()` and `Surface.LitMaterial` outside a `Surface.Mesh`
-  material throw an error naming the hook that was called.
-- `Surface.Mesh` accepts a material instance as `material`, as well as an
-  element. Only an element can call `useSurfaceNodes()`.
-- `Surface.Mesh` no longer accepts `onClick`, which never fired. Use
-  `onPointerUp`. `onDoubleClick` and `onContextMenu` still fire.
-- The README covers custom node materials, reading status from the
-  component that owns a Surface, drawing captured content on a plane,
-  Next.js, the inert copy a handoff leaves in the DOM, known console output,
-  pinning `three`, and bundle size. The agent skill and `llms.txt` carry a
-  working starter.
-
-## 0.4.0 — 2026-10-10
-
-### Breaking
-
-- `SurfaceCanvas` renders with Three's `WebGPURenderer`, which falls back to
-  WebGL 2 where no WebGPU adapter exists. Neither backend accepts a GLSL
-  material (`ShaderMaterial` or `onBeforeCompile`). The `gl` prop takes
-  `WebGPURendererParameters`, such as `antialias`, `depth` and `forceWebGL`.
-  Renderer tone mapping stays off; tone-map a 3D material with
-  `material.outputNode = toneMapping(mode, exposure, output)`. The `flat` prop
-  is gone, and `shadows` no longer accepts `'soft'`.
-- Surface materials are TSL node materials. `useSurfaceNodes()` (type
-  `SurfaceNodes`) and `surfaceRadiusMask()` replace `useSurfaceUniforms()`
-  (type `SurfaceUniforms`) and `SURFACE_RADIUS_GLSL`. A custom `outputNode`
-  returns its color through `premultipliedOutput` or `encodedOutput`. A
-  translucent material on the canvas sets `premultipliedAlpha: true`.
-- `Surface` holds retained HTML instead of two declared copies.
-  `Surface.DOM`, `Surface.WebGL`, `Surface.Part` and the `view` prop are
-  replaced by the `inScene` prop and, for explicit composition,
-  `Surface.Root`, `Surface.HTML`, `Surface.Scene` and `Surface.Mesh`.
-- Root entry renames and removals:
-  - `useSurface` → `useSurfaceHandle`.
-  - `supportsDOMSurfaces` → `supportsSurfaces`, and `useSupportsDOMSurfaces`
-    → `useSurfaceSupport`.
-  - Removed `useSurfaceState`, `useSurfaceView` and `useSurfaceInstance`.
-    Read a Surface's status with `useSurfaceStatus`.
-  - Removed types: `SurfaceState`, `SurfaceView`, `SurfaceViewControls`,
-    `SurfaceInstance`, `SurfaceTiming`, `SurfaceContentOptions`,
-    `SurfaceContentProps`, `SurfaceDOMProps`, `SurfacePartProps` and
-    `SurfaceWebGLProps`. `SurfaceMeshProps` replaces `SurfaceWebGLProps`.
-  - Removed `surfaceFocusKey` and `surfaceFocusTarget`.
-- The canvas selector is named `canvasId`. `SurfaceCanvas` keeps its `id`.
-- `@petepetrash/munari/advanced` removes `CROSSING_DEFAULTS`,
-  `CrossingTiming`, `createStyleChannel`, `StyleChannel`,
-  `StyleChannelOptions`, `ensureChannelRegistered`, `filterPolicy`,
-  `FilterPolicy`, `endStops`, `stopsField`, `overCenterField`, `flipImpulse`,
-  `partSetComplete`, `partSetForget`, `partSetUnregister`, `rectEquals` and
-  `resolveFixedScale`.
-- `FrameSurface` drops its `width` and `height` props, which had no effect.
-  `SurfaceRenderFrame` types its draw target as Three's `RenderTarget`.
-- Peers: `three ~0.186.1`, `@react-three/fiber ^9.8.1`, and the optional
-  `@types/three ~0.186.0` and `@zumer/snapdom ^3.3.3`. Three r187 changes
-  `DirectRenderPipeline` output, so the range stops before it.
-
-### Added
-
-- snapDOM as a second capture engine, for browsers without HTML-in-canvas.
-  Import `enableSnapdomCapture` from `@petepetrash/munari/snapdom` and install
-  `@zumer/snapdom`.
-- A `live` prop on `Surface`, `Surface.HTML`, `SceneSurface`,
-  `SceneSurface.HTML` and `CaptureContent`. On snapDOM a Surface follows the
-  user's input on its content by default, and follows content that changes on
-  its own only when `live`. HTML-in-canvas follows everything and ignores it.
-  `useElementCapture` rebuilds its copy by the same rule on either engine, with
-  `live` and `refresh()` to request a new copy.
-- `SceneSurface`, element capture (`useElementCapture`, `CaptureContent`,
-  `useCaptureHandle`), page targets (`createPageTarget`, `usePageTarget`) and
-  `useSurfaceBeforeRender`.
-- `SurfaceCanvas` replaces a lost renderer. Surfaces return to the page, the
-  `fallback` shows, the new `onRendererLost` runs, and the Canvas remounts on
-  a new renderer. It does not remount when the lost renderer was itself a
-  replacement created less than 10 s earlier.
-- `@petepetrash/munari/advanced` adds the capture-engine API
-  (`captureEngine`, `setCaptureEngine`, `htmlInCanvasEngine`,
-  `captureAvailable`, `inspectCapture`, `createRasterizedSource`), the
-  motion-hold primitives (`holdMotion`, `releaseMotion`, `matchMotion`), and
-  `passMaterial`.
-
-### Fixed
-
-- The default Surface material no longer multiplies translucent HTML by its
-  alpha a second time. A pixel at alpha 0.5 draws at its page value. The
-  built-in `FrameSurface` materials blend premultiplied when `transparent`.
-- A snapDOM capture costs a third of the main-thread time it did. Fonts are
-  encoded once and shared, the clone and the serialize are split across a
-  frame, and a `live` Surface re-captures at most about four times a second.
-  A hover is captured once the pointer settles, so moving across a Surface no
-  longer captures.
-- A Surface inside a rotated or skewed element no longer draws off its page
-  position during a handoff.
-- The scene clock no longer restarts on every capture, so a scene posed from
-  `clock.elapsedTime` does not snap back while the user types in a Surface.
-- A copy of a Surface's content resumes its CSS animations at the original's
-  time when the original also has a running transition.
-- `SurfaceCanvas` falls back to WebGL 2 when the browser rejects its GPU
-  adapter request, instead of unmounting the page. With `gl={{ device }}` it
-  reads the texture limit from that device, so a source the device cannot hold
-  issues no receipts.
-- A draw that `scene.overrideMaterial` replaces, such as a shadow-map or
-  contact-shadow pass, no longer changes a Surface's write flags or issues its
-  receipts. Zero-instance geometry issues no receipts either.
-- Native text density, form state, focus and input survive a handoff.
-
-Release notes for 0.3.0 and earlier are in
-[docs/changelog-0.3-and-earlier.md](https://github.com/petekp/munari/blob/main/docs/changelog-0.3-and-earlier.md).
+Releases 0.4.1 and earlier are in [docs/changelog-0.4-and-earlier.md](https://github.com/petekp/munari/blob/main/docs/changelog-0.4-and-earlier.md).

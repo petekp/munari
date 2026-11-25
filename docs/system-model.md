@@ -143,7 +143,7 @@ the output; shader discard, depth, and occlusion still need scene evidence.
 The final output mesh stays outside `BundleGroup`. Cached bundle execution
 omits the mesh callbacks needed to confirm each presentation.
 
-Read [authoring: one paint generation](authoring.md#keep-texture-attachments-on-one-paint-generation)
+Read [one paint generation](paint-generation.md)
 and decisions #24–27 in [the ledger](decisions.md) before changing these seams.
 
 ## Agent control and evidence form one loop

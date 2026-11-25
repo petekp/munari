@@ -67,6 +67,7 @@
     "probe:api-instance-check": "node instruments/api-instance/run.mjs",
     "probe:api-lifecycle": "node instruments/api-instance/lifecycle.mjs",
     "probe:api-native-pointer": "node instruments/api-native-pointer/run.mjs",
+    "probe:review-notes-occlusion": "node instruments/review-notes-occlusion/run.mjs",
     "probe:api-render-passes": "node instruments/api-composition/render-passes.mjs",
     "probe:api-preparation": "node instruments/api-contracts/preparation.mjs",
     "probe:api-capture-cost": "node instruments/api-contracts/capture-cost.mjs",

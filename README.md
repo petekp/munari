@@ -129,7 +129,7 @@ while their HTML stays in different parts of the page.
 - [Element capture](https://github.com/petekp/munari/blob/v0.5.0/docs/element-capture.md) covers `useElementCapture`, `CaptureContent` and `useCaptureTransition`, which capture an element that stays native, detached React children, and the state an update replaces.
 - [Sharpness](https://github.com/petekp/munari/blob/v0.5.0/docs/sharpness.md) covers pixel ratio and capture density.
 - [Observe and animate a Surface](https://github.com/petekp/munari/blob/v0.5.0/docs/observing-a-surface.md) covers status, progress, drivers and `useSurfaceBeforeRender`.
-- [Page layouts and canvases](https://github.com/petekp/munari/blob/v0.5.0/docs/page-layouts-and-canvases.md) covers `usePageTarget()`, multiple canvases, pointer routing and meshes in front of a Surface.
+- [Page layouts and canvases](https://github.com/petekp/munari/blob/v0.5.0/docs/page-layouts-and-canvases.md) covers `usePageTarget()`, multiple canvases, pointer routing, and how a mesh in front of a Surface takes the pointer and how a prop lets it through.
 - [When enhanced rendering is unavailable](https://github.com/petekp/munari/blob/v0.5.0/docs/native-fallback.md) covers the native fallback.
 - [Next.js and server rendering](https://github.com/petekp/munari/blob/v0.5.0/docs/nextjs.md) covers client entries and `useCaptureSupport()` on the server.
 - [Testing and troubleshooting](https://github.com/petekp/munari/blob/v0.5.0/docs/testing-and-troubleshooting.md) covers the inert copy in the DOM and known console output.
