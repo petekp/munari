@@ -290,7 +290,7 @@ export function SurfacePresenter({
   const frameChannel = useMemo(createSurfaceFrameChannel, [])
   const hasFrameListeners = useSyncExternalStore(frameChannel.subscribePresence, frameChannel.hasListeners, () => false)
   const events = useThree((s) => s.events)
-  const internal = useThree((s) => s.internal)
+  const get = useThree((s) => s.get)
   const gl = useThree((s) => s.gl)
   const invalidate = useThree((s) => s.invalidate)
   // SAFETY: r3f's store types `controls` as a bare event target — whatever
@@ -460,8 +460,8 @@ export function SurfacePresenter({
   }, [presenterHost, mountedMesh])
   useLayoutEffect(() => {
     if (!mountedMesh) return
-    return markSurfaceMesh(mountedMesh)
-  }, [mountedMesh])
+    return markSurfaceMesh(mountedMesh, get)
+  }, [mountedMesh, get])
 
   // Document-level pointer machinery, reference-counted across every
   // Surface on the page — one set of listeners however many presenters.
@@ -529,7 +529,7 @@ export function SurfacePresenter({
         radii: () => radiiRef.current,
         size: () => [widthRef.current, heightRef.current],
       }),
-    // Stable identities — this memo never actually re-runs.
+    // Stable identities — this memo never re-runs.
     [storeRef, pointerEventsRef, widthRef, heightRef, authoredRaycastRef, routeCtl],
   )
 
@@ -620,7 +620,7 @@ export function SurfacePresenter({
     // no Surface geometry interleaves — the plain-attribute case is the law
     // deformSurfaceGeometry already enforces.
     if (position instanceof THREE.BufferAttribute) {
-      if (rerouteRef.current !== null && rerouteRef.current !== position.version && store.canvasHearsPointer() && pointerIsWhereR3fHeardIt(internal.lastEvent.current)) {
+      if (rerouteRef.current !== null && rerouteRef.current !== position.version && store.canvasHearsPointer() && pointerIsWhereR3fHeardIt(get().internal.lastEvent.current)) {
         events.update?.()
       }
       rerouteRef.current = position.version

@@ -14,8 +14,9 @@
 // a stale pointer replay left R3F hovering the note (25 Nov 2026).
 //
 // It also measures what the test costs: each visible mesh's plain raycast, the
-// note's hit region with occlusion, a CPU profile across 400 pointer moves, and
-// paired 1.5 s frame-interval blocks with the teapot body's raycast on and off.
+// note's hit region with occlusion, the teapot body's raycast calls and time per
+// pointer move and per frame at rest, and paired 1.5 s frame-interval blocks
+// with the body's raycast on and off.
 // Headless Chrome paces frames at 60 Hz, so the frame blocks cannot show a
 // 120 Hz budget.
 //
@@ -38,7 +39,8 @@ const output = await evidenceDirectory('review-notes-occlusion')
 const server = await fixtureServer('apps/lab', 'API_LAB_URL', output)
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 const ANGLES = [-132, -116, -124]
-const SAMPLE_MOVES = 400
+const SAMPLE_MOVES = 200
+const REST_FRAMES = 120
 
 const hook = () => {
   const roots = new Set()
@@ -77,6 +79,11 @@ const hook = () => {
     })
     return hits.sort((a, b) => a.distance - b.distance)
   }
+  const teapotBody = () => {
+    let body = null, most = 0
+    state().scene.traverse(o => { if (o.isMesh && o.geometry?.type === 'LatheGeometry' && o.geometry.index && o.geometry.index.count > most) { most = o.geometry.index.count; body = o } })
+    return body
+  }
   const project = (mesh, u, v) => {
     const s = state(), uv = mesh.geometry.attributes.uv, pos = mesh.geometry.attributes.position
     let best = 0, bestD = Infinity
@@ -98,10 +105,21 @@ const hook = () => {
       return true
     },
     restoreOptOut() { if (window.__occOptedOut) delete window.__occOptedOut.raycast },
+    meter(on) {
+      const body = teapotBody(), proto = meshProto()
+      window.__occMeter = { calls: 0, ms: 0 }
+      if (!on) { delete body.raycast; return }
+      body.raycast = function (raycaster, hits) {
+        const t = performance.now()
+        proto.raycast.call(this, raycaster, hits)
+        window.__occMeter.ms += performance.now() - t
+        window.__occMeter.calls++
+      }
+    },
+    meterRead() { const m = { ...window.__occMeter }; window.__occMeter = { calls: 0, ms: 0 }; return m },
+    renders: () => state().gl.info.render.calls,
     bodyOptOut(on) {
-      const s = state(), proto = meshProto()
-      let body = null, most = 0
-      s.scene.traverse(o => { if (o.isMesh && o.geometry?.type === 'LatheGeometry' && o.geometry.index && o.geometry.index.count > most) { most = o.geometry.index.count; body = o } })
+      const body = teapotBody(), proto = meshProto()
       if (on) body.raycast = () => {}
       else delete body.raycast
       return body.raycast === proto.raycast ? 'default' : 'no-op'
@@ -156,38 +174,33 @@ const hook = () => {
   }
 }
 
-// Inclusive CPU time per pointer move in the occlusion test, the hit region and
-// the canvas pointer gate's hit test, across moves over Mara's note at -132°.
-async function profileCost(page) {
-  const client = await page.createCDPSession()
-  await client.send('Profiler.enable')
-  await client.send('Profiler.setSamplingInterval', { interval: 50 })
-  const a = await page.evaluate(() => window.__occ.project(0.05, 0.5)), b = await page.evaluate(() => window.__occ.project(0.95, 0.5))
-  await client.send('Profiler.start')
-  const t0 = Date.now()
+// Calls to the teapot body's raycast, and their main-thread time, per pointer
+// move over Mara's uncovered note at -116° (one move per frame) and per frame
+// with the pointer at rest there. The body is the 36,864-triangle mesh whose
+// bounds enclose both notes, so every occlusion walk pays its triangle loop.
+async function meterCost(page, from, to) {
+  const frame = () => page.evaluate(() => new Promise(r => requestAnimationFrame(() => r())))
+  await page.mouse.move(from.x, from.y)
+  await frame()
+  await page.evaluate(() => { window.__occ.meter(true); window.__occTicks = 0; const tick = () => { window.__occTicks++; window.__occTick = requestAnimationFrame(tick) }; window.__occTick = requestAnimationFrame(tick) })
   for (let k = 0; k < SAMPLE_MOVES; k++) {
     const f = (k % 100) / 99
-    await page.mouse.move(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f)
+    await page.mouse.move(from.x + (to.x - from.x) * f, from.y + (to.y - from.y) * f)
+    await frame()
   }
-  const { profile } = await client.send('Profiler.stop')
-  const wall = Date.now() - t0
-  const byId = new Map(profile.nodes.map(n => [n.id, n]))
-  const parent = new Map()
-  for (const n of profile.nodes) for (const c of n.children ?? []) parent.set(c, n.id)
-  const named = (n, fn, file) => n.callFrame.functionName === fn && n.callFrame.url.includes(file)
-  const inclusive = { sceneMeshCovers: 0, hitRegion: 0, hitsTarget: 0 }
-  for (let s = 0; s < profile.samples.length; s++) {
-    const dt = profile.timeDeltas[s + 1] ?? 0
-    const seen = new Set()
-    for (let id = profile.samples[s]; id !== undefined; id = parent.get(id)) {
-      const n = byId.get(id)
-      if (named(n, 'sceneMeshCovers', 'surfaceOcclusion')) seen.add('sceneMeshCovers')
-      if (n.callFrame.url.includes('surfaceHitRegion')) seen.add('hitRegion')
-      if (named(n, 'hitsTarget', 'CanvasPointerGate')) seen.add('hitsTarget')
-    }
-    for (const k of seen) inclusive[k] += dt
+  const moving = await page.evaluate(() => { cancelAnimationFrame(window.__occTick); return { ...window.__occ.meterRead(), frames: window.__occTicks } })
+  const rest = await page.evaluate(async frames => {
+    window.__occ.meterRead()
+    const renders0 = window.__occ.renders()
+    for (let i = 0; i < frames; i++) await new Promise(r => requestAnimationFrame(() => r()))
+    return { frames, renders: window.__occ.renders() - renders0, ...window.__occ.meterRead() }
+  }, REST_FRAMES)
+  await page.evaluate(() => window.__occ.meter(false))
+  const round = n => Math.round(n * 100) / 100
+  return {
+    moving: { moves: SAMPLE_MOVES, framesPerMove: round(moving.frames / SAMPLE_MOVES), callsPerMove: round(moving.calls / SAMPLE_MOVES), msPerMove: round(moving.ms / SAMPLE_MOVES) },
+    rest: { frames: rest.frames, rendersPerFrame: round(rest.renders / rest.frames), callsPerFrame: round(rest.calls / rest.frames), msPerFrame: round(rest.ms / rest.frames) },
   }
-  return { moves: SAMPLE_MOVES, wallMs: wall, perMoveUs: Object.fromEntries(Object.entries(inclusive).map(([k, us]) => [k, Math.round(us / SAMPLE_MOVES * 10) / 10])), samplingIntervalUs: 50 }
 }
 
 async function run(engine) {
@@ -289,9 +302,7 @@ async function run(engine) {
       out.fps.push({ body: mode, ...(await page.evaluate(() => window.__occ.frames(1500))) })
     }
     await page.evaluate(() => window.__occ.bodyOptOut(false))
-    // Cost: sample the CPU profile across pointer moves over the notes and the teapot at -132°.
-    await turnTo(-132)
-    out.cost = await profileCost(page)
+    out.cost = await meterCost(page, await page.evaluate(() => window.__occ.project(0.2, 0.5)), await page.evaluate(() => window.__occ.project(0.8, 0.5)))
   } finally {
     await browser.close()
   }

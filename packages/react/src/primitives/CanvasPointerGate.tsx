@@ -75,8 +75,8 @@ export function CanvasPointerGate({ isTarget }: CanvasPointerGateProps) {
     // motionless follow-up click died on it (measured 2026-08-20). While
     // solid and unclaimed, re-ask the raycast each frame at the last armed
     // position. Runs only while the pointer is over a Surface hit region; one
-    // hit-region raycast per frame, which includes the scene occlusion test
-    // (decisions.md #78), and no paints, so gate:idle-zero holds.
+    // hit-region raycast per frame, whose scene occlusion walk repeats only
+    // in a new R3F frame (decisions.md #78), and no paints, so gate:idle-zero holds.
     const startRecheck = () => {
       if (recheckFrame) return
       recheckFrame = requestAnimationFrame(function step() {

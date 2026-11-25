@@ -392,7 +392,8 @@ describe('a scene mesh in front of the Surface', () => {
     prop.position.z = 100
     scene.add(mesh, prop)
     scene.updateMatrixWorld()
-    releaseMark = markSurfaceMesh(mesh)
+    const canvas = { clock: { elapsedTime: 1 }, raycaster: new THREE.Raycaster() }
+    releaseMark = markSurfaceMesh(mesh, () => canvas)
   })
 
   afterEach(() => releaseMark())
