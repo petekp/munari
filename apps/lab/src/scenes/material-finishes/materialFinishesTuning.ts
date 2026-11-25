@@ -129,11 +129,12 @@ export interface StudioTuning {
   environmentIntensity: number
 }
 
-// The light starts over the product and form cards at their mid-height: a
-// coat's highlight sits nearly under the light, so a light above the cards
-// (the first default, y 0.22) put lacquer's highlight off their top edge.
+// The light starts over the 40 px gap between the product and form cards at
+// their mid-height. A coat's highlight lands between the light and the
+// camera's axis, so this puts lacquer's highlight on the form card's left
+// side without the light handle covering the card's text.
 export const studio: StudioTuning = {
-  lightX: 0.42,
+  lightX: 0.382,
   lightY: 0.48,
   lightHeight: 320,
   lightPower: 2.4,
