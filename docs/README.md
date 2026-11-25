@@ -39,6 +39,7 @@ output. Preserve both distinctions when resolving a conflict.
 | Add automatic canvas refresh without idle polling | [Automatic canvas refresh spec](automatic-canvas-refresh-spec.md) | Proposed, unbuilt; browser and pixel-lifetime gates are explicit |
 | Report when components first show complete content on load | [Loading spec](loading-spec.md) | Proposed, unbuilt; names and policy settled |
 | Add snapDOM as a second capture engine | [Decision #60](decisions/capture.md#60) (with #61–#64) | Shipped 2026-09-10; completed plan archived in Git history |
+| Read release notes for 0.3.0 and earlier | [Earlier changelog](changelog-0.3-and-earlier.md) | Released history; later releases are in [CHANGELOG.md](../CHANGELOG.md) |
 | Understand an architectural choice | [Decisions](decisions.md) | Current rules by number, grouped by area |
 | Check a browser-specific claim | [Platform](platform.md), [instruments](../instruments/README.md) | Measurements under the recorded conditions |
 | Write captured HTML | [Authoring](authoring.md), [retained HTML](retained-html.md) | Current rules derived from measurements |
