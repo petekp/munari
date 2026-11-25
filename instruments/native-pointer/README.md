@@ -28,7 +28,10 @@ relayed click reaches the content 0 times in `pointerMode="surfaces"` and in
 `pointerMode="scene"`, and uncovered it reaches it once in each. On the native
 route, with the pointer resting on the button, a box placed in front of it must
 park the rig, and the click must not reach the content. A touch tap with no move before it, onto a point covered
-while the rig rides, must not reach the content either. Uncovered again, a
+while the rig rides, must not reach the content either. The next touch, beside
+the box but still on the button, arrives while the rig is parked. The button
+must hear exactly one press and one click from it, and the rig must ride again
+after it. Uncovered again, a
 trusted native click reaches the button.
 
 The input is controlled above the Surface. After typing through the native

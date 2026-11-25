@@ -7,8 +7,8 @@ import { readSurfaceFrameState } from '@petepetrash/munari/advanced'
 // record with `trusted: true` on the retained content proves native delivery.
 //
 // The run.mjs side drives real (trusted) input; nothing here dispatches
-// events. This page only records clicks and answers questions about the
-// parked canvas the rig dresses.
+// events. This page only records clicks and button presses and answers
+// questions about the parked canvas the rig dresses.
 import { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
@@ -33,6 +33,7 @@ interface ClickRecord {
 }
 
 const clicks: ClickRecord[] = []
+const presses: Array<{ id: string; trusted: boolean }> = []
 
 /** The retained source owns its canvas even when it is docked inside the page tree. */
 function parkedCanvas(): HTMLCanvasElement | null {
@@ -53,6 +54,7 @@ const probe = {
   capable: detectHtmlInCanvas().drawElementImage,
   ready: false,
   clicks,
+  presses,
   state: initialState(),
   setRenderIn: (_: SurfaceDestination) => {},
   setRoute: (_: PointerRouteRequest) => {},
@@ -156,6 +158,7 @@ function Card({ value, onChange, surface }: { value: string; onChange: (value: s
         id="btn"
         style={{ height: 56, fontSize: 17, cursor: 'pointer' }}
         onClick={record('btn')}
+        onPointerDown={(e) => presses.push({ id: 'btn', trusted: e.nativeEvent.isTrusted })}
       >
         target
       </button>

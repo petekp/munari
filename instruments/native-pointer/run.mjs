@@ -13,7 +13,9 @@
 // restored, the synthetic relay hearing again. A visible mesh in front of the
 // button blocks the click on the relay in both pointer modes and parks the
 // rig on the native route, for a mouse click and for a touch tap that arrives
-// with no hover move (decisions.md #78).
+// with no hover move. A touch beside the box right after a touch on it
+// reaches the button once, through the relay, and the rig rides again
+// (decisions.md #78).
 //
 // OS cursor appearance is not measured here. Use HEADED=1 to inspect it.
 // Click receipts establish which control received input.
@@ -232,6 +234,33 @@ try {
   const touchReached = await clickCount() - touchBefore
   if (touchReached !== 0) failures.push(`native, covered touch: the tap reached the content ${touchReached} time(s)`)
   blocked.push({ label: 'native, covered touch', reached: touchReached, ridingBeforeTouch })
+  // The next touch lands beside the box, still on the button, while the rig
+  // is parked. The browser aims it at the renderer canvas, so the relay must
+  // deliver it, and the rig rides again once the tap has ended. The mouse's
+  // last place is uncovered and would lift the rig on the next frame, so a
+  // touch off the Surface first clears it: a touch leaves no place once it
+  // lifts. The covered touch after it is then the last one the binding saw.
+  await page.touchscreen.tap(5, await page.evaluate(() => window.innerHeight - 5))
+  await sleep(150)
+  await page.touchscreen.tap(coverPoint.x, coverPoint.y)
+  await sleep(200)
+  const ridingBeforeBeside = await evalProbe(() => window.__nativePointer.riding())
+  if (ridingBeforeBeside) failures.push('APPARATUS: the rig rode again after the covered touch, so the touch beside the box did not test a parked rig')
+  const besidePoint = { x: coverPoint.x + 100, y: coverPoint.y }
+  const besideBefore = await clickCount()
+  const pressesBefore = await evalProbe(() => window.__nativePointer.presses.length)
+  await page.touchscreen.tap(besidePoint.x, besidePoint.y)
+  await sleep(200)
+  const besideReached = await clickCount() - besideBefore
+  const besideClick = besideReached > 0 ? await lastClick() : null
+  const besidePresses = await evalProbe(() => window.__nativePointer.presses.length) - pressesBefore
+  if (besideReached !== 1 || besideClick?.id !== 'btn')
+    failures.push(`native, touch beside the box after a covered touch: ${besideReached} click(s), last on ${besideClick?.id}; expected one on btn`)
+  if (besidePresses !== 1)
+    failures.push(`native, touch beside the box after a covered touch: the button heard ${besidePresses} press(es), expected 1`)
+  const ridingAfterTap = await page.waitForFunction(() => window.__nativePointer.riding(), { timeout: 5_000 }).then(() => true, () => false)
+  if (!ridingAfterTap) failures.push('native, touch beside the box: the rig did not ride again after the tap')
+  blocked.push({ label: 'native, touch beside the box', reached: besideReached, presses: besidePresses, trusted: besideClick?.trusted ?? null, ridingBeforeBeside, ridingAfterTap })
   await cover(null)
   await page.mouse.move(coverPoint.x, coverPoint.y, { steps: 3 })
   await page.waitForFunction(() => window.__nativePointer.riding(), { timeout: 5_000 })
@@ -280,7 +309,10 @@ try {
   console.log('\nnative-pointer gate — who heard the click, and how:')
   for (const r of results)
     console.log(`  ${r.label.padEnd(22)} → ${r.heardBy} ${r.id ?? ''} (trusted=${r.trusted})`)
-  for (const b of blocked) console.log(`  ${b.label.padEnd(30)} → reached the content ${b.reached} time(s)${'ridingBeforeTouch' in b ? ` (riding before the tap=${b.ridingBeforeTouch})` : ''}`)
+  for (const { label, reached, ...seen } of blocked) {
+    const notes = Object.entries(seen).map(([key, value]) => `${key}=${value}`).join(', ')
+    console.log(`  ${label.padEnd(30)} → reached the content ${reached} time(s)${notes ? ` (${notes})` : ''}`)
+  }
   console.log(`\nhover on:  ${JSON.stringify(hoverOn)}`)
   console.log(`hover off: ${JSON.stringify(hoverOff)}`)
   console.log(`typed:     ${JSON.stringify(typed)}`)
