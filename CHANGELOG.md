@@ -23,8 +23,8 @@ prop that should let the pointer through, such as a shadow plane, a no-op
   has `visible: false`, the Surface's own descendants, coplanar meshes and
   meshes with a no-op `raycast` never block (decisions.md #78). The R3F
   handlers that stopped propagation are no longer needed to block.
-- Each pointer event over a Surface now raycasts every visible mesh in the
-  scene. In review notes the 36,864-triangle teapot makes that about 4 ms per
+- Each pointer event over a Surface now raycasts every other visible mesh in
+  the scene. In review notes the 36,864-triangle teapot makes that about 4 ms per
   ray. A heavy mesh that never needs to block can take a no-op `raycast`.
 
 ### Documentation

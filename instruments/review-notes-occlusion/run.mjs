@@ -156,6 +156,40 @@ const hook = () => {
   }
 }
 
+// Inclusive CPU time per pointer move in the occlusion test, the hit region and
+// the canvas pointer gate's hit test, across moves over Mara's note at -132°.
+async function profileCost(page) {
+  const client = await page.createCDPSession()
+  await client.send('Profiler.enable')
+  await client.send('Profiler.setSamplingInterval', { interval: 50 })
+  const a = await page.evaluate(() => window.__occ.project(0.05, 0.5)), b = await page.evaluate(() => window.__occ.project(0.95, 0.5))
+  await client.send('Profiler.start')
+  const t0 = Date.now()
+  for (let k = 0; k < SAMPLE_MOVES; k++) {
+    const f = (k % 100) / 99
+    await page.mouse.move(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f)
+  }
+  const { profile } = await client.send('Profiler.stop')
+  const wall = Date.now() - t0
+  const byId = new Map(profile.nodes.map(n => [n.id, n]))
+  const parent = new Map()
+  for (const n of profile.nodes) for (const c of n.children ?? []) parent.set(c, n.id)
+  const named = (n, fn, file) => n.callFrame.functionName === fn && n.callFrame.url.includes(file)
+  const inclusive = { sceneMeshCovers: 0, hitRegion: 0, hitsTarget: 0 }
+  for (let s = 0; s < profile.samples.length; s++) {
+    const dt = profile.timeDeltas[s + 1] ?? 0
+    const seen = new Set()
+    for (let id = profile.samples[s]; id !== undefined; id = parent.get(id)) {
+      const n = byId.get(id)
+      if (named(n, 'sceneMeshCovers', 'surfaceOcclusion')) seen.add('sceneMeshCovers')
+      if (n.callFrame.url.includes('surfaceHitRegion')) seen.add('hitRegion')
+      if (named(n, 'hitsTarget', 'CanvasPointerGate')) seen.add('hitsTarget')
+    }
+    for (const k of seen) inclusive[k] += dt
+  }
+  return { moves: SAMPLE_MOVES, wallMs: wall, perMoveUs: Object.fromEntries(Object.entries(inclusive).map(([k, us]) => [k, Math.round(us / SAMPLE_MOVES * 10) / 10])), samplingIntervalUs: 50 }
+}
+
 async function run(engine) {
   const browser = await puppeteer.launch({ executablePath: chromePath, headless: true, defaultViewport: null, protocolTimeout: 60_000,
     args: [...WEBGPU_CHROME_ARGS, ...(engine === 'snapdom' ? [] : ['--enable-features=CanvasDrawElement']), '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'] })
@@ -257,35 +291,7 @@ async function run(engine) {
     await page.evaluate(() => window.__occ.bodyOptOut(false))
     // Cost: sample the CPU profile across pointer moves over the notes and the teapot at -132°.
     await turnTo(-132)
-    const client = await page.createCDPSession()
-    await client.send('Profiler.enable')
-    await client.send('Profiler.setSamplingInterval', { interval: 50 })
-    const a = await page.evaluate(() => window.__occ.project(0.05, 0.5)), b = await page.evaluate(() => window.__occ.project(0.95, 0.5))
-    await client.send('Profiler.start')
-    const t0 = Date.now()
-    for (let k = 0; k < SAMPLE_MOVES; k++) {
-      const f = (k % 100) / 99
-      await page.mouse.move(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f)
-    }
-    const { profile } = await client.send('Profiler.stop')
-    const wall = Date.now() - t0
-    const byId = new Map(profile.nodes.map(n => [n.id, n]))
-    const parent = new Map()
-    for (const n of profile.nodes) for (const c of n.children ?? []) parent.set(c, n.id)
-    const named = (n, fn, file) => n.callFrame.functionName === fn && n.callFrame.url.includes(file)
-    const inclusive = { sceneMeshCovers: 0, hitRegion: 0, hitsTarget: 0 }
-    for (let s = 0; s < profile.samples.length; s++) {
-      const dt = profile.timeDeltas[s + 1] ?? 0
-      const seen = new Set()
-      for (let id = profile.samples[s]; id !== undefined; id = parent.get(id)) {
-        const n = byId.get(id)
-        if (named(n, 'sceneMeshCovers', 'surfaceOcclusion')) seen.add('sceneMeshCovers')
-        if (n.callFrame.url.includes('surfaceHitRegion')) seen.add('hitRegion')
-        if (named(n, 'hitsTarget', 'CanvasPointerGate')) seen.add('hitsTarget')
-      }
-      for (const k of seen) inclusive[k] += dt
-    }
-    out.cost = { moves: SAMPLE_MOVES, wallMs: wall, perMoveUs: Object.fromEntries(Object.entries(inclusive).map(([k, us]) => [k, Math.round(us / SAMPLE_MOVES * 10) / 10])), samplingIntervalUs: 50 }
+    out.cost = await profileCost(page)
   } finally {
     await browser.close()
   }

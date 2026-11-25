@@ -1,7 +1,7 @@
 # native-pointer
 
-Local gate: the native pointer route (decisions.md #39), driven for the
-through the library. `npm run gate:native-pointer`.
+Local gate: the native pointer route (decisions.md #39), driven through the
+library. `npm run gate:native-pointer`.
 
 One exclusive Surface opts into `pointerRoute="auto"` in the gl phase.
 The gate's discriminator is `isTrusted`: the relay's synthetic dispatch
@@ -26,8 +26,8 @@ A box mesh stands in front of the button, sized to 60 × 30 CSS px at nine
 tenths of the camera's distance to the Surface (decisions.md #78). Covered, a
 relayed click reaches the content 0 times in `pointerMode="surfaces"` and in
 `pointerMode="scene"`, and uncovered it reaches it once in each. On the native
-route, a move onto the covered point must park the rig and the click must not
-reach the content. A touch tap with no move before it, onto a point covered
+route, with the pointer resting on the button, a box placed in front of it must
+park the rig, and the click must not reach the content. A touch tap with no move before it, onto a point covered
 while the rig rides, must not reach the content either. Uncovered again, a
 trusted native click reaches the button.
 

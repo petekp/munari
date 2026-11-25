@@ -58,8 +58,8 @@ const NO_HIT: THREE.Object3D['raycast'] = () => {}
 <mesh raycast={NO_HIT} geometry={shadowPlane} material={shadowMaterial} />
 ```
 
-The test raycasts every visible mesh in the scene for each pointer event that
-hits a Surface. In `surfaces` mode it also runs once a frame while the pointer
+The test raycasts every visible mesh on the raycaster's layers that is not a
+Surface, for each pointer event that hits a Surface. In `surfaces` mode it also runs once a frame while the pointer
 is over a Surface. Its cost grows with triangle count. In review notes, the
 36,864-triangle teapot body accounts for most of the 3.8 to 4.2 ms per ray,
 with no change in frame rate at 60 Hz.
