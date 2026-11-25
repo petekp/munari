@@ -23,11 +23,13 @@ import {
   type SurfaceCanvasId,
 } from '@petepetrash/munari'
 import {
+  createPhysicalPolymerBodyMaterial,
   createPolymerBodyMaterial,
   createPolymerBodyUniforms,
   createPolymerShadowMaterial,
   createPolymerShadowUniforms,
   SHADOW_PAD_PX,
+  STUDIO_LIGHT_BODY_HEIGHT,
   type PolymerBodyUniforms,
   type PolymerShadowUniforms,
 } from './polymerPrototypeNodes'
@@ -37,6 +39,7 @@ import {
   polymerTuning,
   subscribePolymerTuning,
 } from './polymerPrototypeTuning'
+import { placeStudioLight, usePolymerBody } from './PolymerPrototypeStudioLight'
 
 const noRaycast = () => {}
 
@@ -61,11 +64,36 @@ interface SlotMetrics {
   h: number
 }
 
-function PolymerMaterialSlot({ uniforms }: { readonly uniforms: PolymerBodyUniforms }) {
+function HandBuiltBodySlot({ uniforms }: { readonly uniforms: PolymerBodyUniforms }) {
   const surface = useSurfaceNodes()
   const material = useMemo(() => createPolymerBodyMaterial(surface, uniforms), [surface, uniforms])
   useEffect(() => () => material.dispose(), [material])
   return <primitive object={material} attach="material" />
+}
+
+function PhysicalBodySlot({ uniforms }: { readonly uniforms: PolymerBodyUniforms }) {
+  const surface = useSurfaceNodes()
+  const material = useMemo(() => createPhysicalPolymerBodyMaterial(surface, uniforms), [surface, uniforms])
+  useEffect(() => () => material.dispose(), [material])
+
+  useFrame(() => {
+    material.roughness = polymerTuning.roughness
+    material.ior = polymerTuning.ior
+    material.clearcoat = polymerTuning.clearcoat
+    material.clearcoatRoughness = polymerTuning.clearcoatRoughness
+    material.sheen = polymerTuning.sheen
+    material.sheenRoughness = polymerTuning.sheenRoughness
+    // Sheen tint starts at the square root of the base color (docs/materials-research-catalog.md §1, velvet row).
+    const base = uniforms.baseColor.value
+    material.sheenColor.setRGB(Math.sqrt(base.r), Math.sqrt(base.g), Math.sqrt(base.b))
+  })
+
+  return <primitive object={material} attach="material" />
+}
+
+function PolymerMaterialSlot({ uniforms }: { readonly uniforms: PolymerBodyUniforms }) {
+  const body = usePolymerBody()
+  return body === 'physical' ? <PhysicalBodySlot uniforms={uniforms} /> : <HandBuiltBodySlot uniforms={uniforms} />
 }
 
 function PolymerShadowSkirt({
@@ -103,6 +131,13 @@ function PolymerShadowSkirt({
   )
 }
 
+function studioLightCss() {
+  const stageEl = document.querySelector<HTMLElement>('.poly-stage-root')
+  const sw = Math.max(stageEl?.clientWidth ?? window.innerWidth, 1)
+  const sh = Math.max(stageEl?.clientHeight ?? window.innerHeight, 1)
+  return { x: polymerTuning.lightU * sw, y: polymerTuning.lightV * sh, z: polymerTuning.lightHeight }
+}
+
 function syncUniforms(
   bodyU: PolymerBodyUniforms,
   shadowU: PolymerShadowUniforms,
@@ -115,12 +150,7 @@ function syncUniforms(
     readonly recessed: boolean
   },
 ) {
-  const stageEl = document.querySelector<HTMLElement>('.poly-stage-root')
-  const sw = Math.max(stageEl?.clientWidth ?? window.innerWidth, 1)
-  const sh = Math.max(stageEl?.clientHeight ?? window.innerHeight, 1)
-  const lx = polymerTuning.lightU * sw
-  const ly = polymerTuning.lightV * sh
-  const lz = polymerTuning.lightHeight
+  const { x: lx, y: ly, z: lz } = studioLightCss()
   const radius = options.radiusPx ?? polymerTuning.cornerRadius
   const opacity = options.opacityOverride ?? polymerTuning.bodyOpacity
   const hex = options.tintHex ?? polymerTuning.baseHex
@@ -135,7 +165,7 @@ function syncUniforms(
   bodyU.bodyOpacity.value = opacity
   bodyU.subsurfaceWrap.value = polymerTuning.subsurfaceWrap
   bodyU.warmth.value = polymerTuning.warmth
-  bodyU.sheen.value = polymerTuning.sheen
+  bodyU.specular.value = polymerTuning.specular
   bodyU.shininess.value = Math.max(6, Math.round((1 - polymerTuning.roughness) * 48))
   bodyU.grain.value = polymerTuning.grain
   bodyU.seamInk.value = polymerTuning.seamInk
@@ -175,6 +205,7 @@ function PolymerMeshController({
   const pressed = useRef(false)
   const currentElev = useRef(polymerTuning.elevation * elevationScale)
   const reducedMotion = useRef(false)
+  const meshRef = useRef<THREE.Mesh>(null)
 
   const bodyUniforms = useMemo(
     () => createPolymerBodyUniforms(tintHex ?? polymerTuning.baseHex, recessed),
@@ -228,10 +259,21 @@ function PolymerMeshController({
       opacityOverride,
       recessed,
     })
+
+    const mesh = meshRef.current
+    if (mesh && polymerTuning.body === 'physical' && status.presentation === 'scene') {
+      const light = studioLightCss()
+      placeStudioLight(mesh, metricsRef.current, {
+        x: light.x,
+        y: light.y,
+        heightPx: light.z * STUDIO_LIGHT_BODY_HEIGHT,
+      })
+    }
   })
 
   return (
     <Surface.Mesh
+      ref={meshRef}
       placement="match-dom"
       renderOrder={1}
       material={<PolymerMaterialSlot uniforms={bodyUniforms} />}

@@ -6,11 +6,15 @@
 // the G1/G2 cushion normal on the polymer body and the ray-projected area-light
 // penumbra on the shadow skirt in a single pass with zero extra render targets.
 //
-// Ownership: this module builds TSL `MeshBasicNodeMaterial` instances and their
-// uniform bags. `PolymerPrototypeSurface` writes per-frame pose/light uniforms.
+// Ownership: this module builds the body materials (hand-built
+// `MeshBasicNodeMaterial` or `MeshPhysicalNodeMaterial`, sharing one bevel
+// shape), the shadow material, and their uniform bags.
+// `PolymerPrototypeSurface` writes per-frame pose/light uniforms and the
+// physical finish; `PolymerPrototypeStudioLight` owns the physical body's
+// scene light and environment.
 
 import * as THREE from 'three'
-import { MeshBasicNodeMaterial, type UniformNode } from 'three/webgpu'
+import { MeshBasicNodeMaterial, MeshPhysicalNodeMaterial, type Node, type UniformNode } from 'three/webgpu'
 import {
   abs,
   clamp,
@@ -22,9 +26,11 @@ import {
   min,
   mix,
   normalize,
+  output,
   pow,
   sin,
   smoothstep,
+  transformNormalToView,
   uniform,
   uv,
   vec2,
@@ -34,6 +40,14 @@ import {
 import { premultipliedOutput, type SurfaceNodes } from '@petepetrash/munari'
 
 export const SHADOW_PAD_PX = 96
+
+/**
+ * The hand-built body lights itself from 0.62 of the studio light's height
+ * (less the card's elevation), lower than the shadow skirt's light. The
+ * physical body's scene light stands at the same fraction, so both bodies
+ * are lit from one place.
+ */
+export const STUDIO_LIGHT_BODY_HEIGHT = 0.62
 
 export interface PolymerBodyUniforms {
   readonly baseColor: UniformNode<'color', THREE.Color>
@@ -47,7 +61,7 @@ export interface PolymerBodyUniforms {
   readonly bodyOpacity: UniformNode<'float', number>
   readonly subsurfaceWrap: UniformNode<'float', number>
   readonly warmth: UniformNode<'float', number>
-  readonly sheen: UniformNode<'float', number>
+  readonly specular: UniformNode<'float', number>
   readonly shininess: UniformNode<'float', number>
   readonly grain: UniformNode<'float', number>
   readonly seamInk: UniformNode<'float', number>
@@ -67,7 +81,7 @@ export function createPolymerBodyUniforms(tintHex = '#fbfbfa', isRecessed = fals
     bodyOpacity: uniform(1),
     subsurfaceWrap: uniform(0.48),
     warmth: uniform(0.22),
-    sheen: uniform(0.24),
+    specular: uniform(0.24),
     shininess: uniform(22),
     grain: uniform(0.012),
     seamInk: uniform(0.14),
@@ -75,16 +89,23 @@ export function createPolymerBodyUniforms(tintHex = '#fbfbfa', isRecessed = fals
   }
 }
 
-export function createPolymerBodyMaterial(
-  surface: SurfaceNodes,
-  u: PolymerBodyUniforms,
-): MeshBasicNodeMaterial {
-  const material = new MeshBasicNodeMaterial({
-    transparent: true,
-    depthWrite: false,
-  })
-  material.premultipliedAlpha = true
+// ── body shape shared by both lighting models ─────────────────────────
 
+interface PolymerBodyShape {
+  readonly texCoord: ReturnType<typeof uv>
+  readonly pCss: Node<'vec2'>
+  readonly silhouette: Node<'float'>
+  readonly rimFactor: Node<'float'>
+  /** Cushion normal in CSS axes: +x right, +y down, +z toward the viewer. */
+  readonly normalCss: Node<'vec3'>
+  /** Darkening at the outer edge lip (0 at the edge, 1 inside it), the seam band, and a recessed well's rim. */
+  readonly edgeLip: Node<'float'>
+  readonly seamDarken: Node<'float'>
+  readonly recessShadow: Node<'float'>
+  readonly grainOffset: Node<'float'>
+}
+
+function polymerBodyShape(surface: SurfaceNodes, u: PolymerBodyUniforms): PolymerBodyShape {
   const texCoord = uv()
   const size = surface.size
   // CSS pixel coordinates centered on card: +x right, +y down.
@@ -124,14 +145,60 @@ export function createPolymerBodyMaterial(
   // Gentle overall pillow dome across the face so broad containers catch directional light gradient.
   const dome = pCss.div(max(halfSize, vec2(1, 1))).mul(u.pillow).mul(signDir)
   const normalXY = grad.mul(slopeMag).add(dome)
-  const normal = normalize(vec3(normalXY.x, normalXY.y, float(1)))
+  const normalCss = normalize(vec3(normalXY.x, normalXY.y, float(1)))
+
+  // Subtle ambient-occlusion lip right at the outer 1.8 px edge + recessed cavity rim shading.
+  const edgeLip = smoothstep(float(0), float(2.0), sdf.negate())
+  const recessShadow = u.recessed.mul(rimFactor).mul(0.11)
+
+  // Architectural hairline seam just inside the bevel shoulder (modernist graphic discipline).
+  const seamBand = smoothstep(float(1.2), float(0), abs(sdf.negate().sub(bevel.mul(0.92))))
+  const seamDarken = seamBand.mul(u.seamInk).mul(0.08)
+
+  // Bead-blasted EDM mold micro-grain in CSS pixel coordinates.
+  const hash = fract(sin(dot(pCss, vec2(12.9898, 78.233))).mul(43758.5453)).sub(0.5)
+  const grainOffset = hash.mul(u.grain)
+
+  return { texCoord, pCss, silhouette, rimFactor, normalCss, edgeLip, seamDarken, recessShadow, grainOffset }
+}
+
+/**
+ * Lays the premultiplied HTML capture (buttons, inputs, typography) unlit
+ * over the lit body, so text keeps its page color under either lighting model.
+ */
+function compositeCaptureOverBody(
+  surface: SurfaceNodes,
+  shape: PolymerBodyShape,
+  bodyPremultiplied: Node<'vec4'>,
+): Node<'vec4'> {
+  const domSample = surface.map.sample(shape.texCoord)
+  const domA = domSample.a.mul(shape.silhouette)
+  const outA = domA.add(bodyPremultiplied.a.mul(float(1).sub(domA)))
+  const outPremulRgb = domSample.rgb.mul(shape.silhouette).add(bodyPremultiplied.rgb.mul(float(1).sub(domA)))
+  return premultipliedOutput(vec4(outPremulRgb, outA))
+}
+
+// ── hand-built body ───────────────────────────────────────────────────
+
+export function createPolymerBodyMaterial(
+  surface: SurfaceNodes,
+  u: PolymerBodyUniforms,
+): MeshBasicNodeMaterial {
+  const material = new MeshBasicNodeMaterial({
+    transparent: true,
+    depthWrite: false,
+  })
+  material.premultipliedAlpha = true
+
+  const shape = polymerBodyShape(surface, u)
+  const normal = shape.normalCss
 
   // 3D vector from this pixel on the elevated container to the global studio light.
-  const worldXY = u.cardCenterCss.add(pCss)
+  const worldXY = u.cardCenterCss.add(shape.pCss)
   const toLight = vec3(
     u.lightPosCss.x.sub(worldXY.x),
     u.lightPosCss.y.sub(worldXY.y),
-    max(u.lightPosCss.z.mul(0.62).sub(u.elevation), float(60)),
+    max(u.lightPosCss.z.mul(STUDIO_LIGHT_BODY_HEIGHT).sub(u.elevation), float(60)),
   )
   const lightDir = normalize(toLight)
   const viewDir = vec3(0, 0, 1)
@@ -141,46 +208,72 @@ export function createPolymerBodyMaterial(
   const nDotL = dot(normal, lightDir)
   const wrapped = clamp(nDotL.add(u.subsurfaceWrap).div(float(1).add(u.subsurfaceWrap)), float(0), float(1))
 
-  // Satin micro-facet sheen along the light-catching bevel rim.
+  // Satin micro-facet highlight along the light-catching bevel rim.
   const nDotH = max(dot(normal, halfVec), float(0))
-  const spec = pow(nDotH, u.shininess).mul(u.sheen).mul(mix(float(0.25), float(1.35), rimFactor))
-
-  // Subtle ambient-occlusion lip right at the outer 1.8 px edge + recessed cavity rim shading.
-  const edgeLip = smoothstep(float(0), float(2.0), sdf.negate())
-  const recessShadow = u.recessed.mul(rimFactor).mul(0.11)
-
-  // Bead-blasted EDM mold micro-grain in CSS pixel coordinates.
-  const hash = fract(sin(dot(pCss, vec2(12.9898, 78.233))).mul(43758.5453)).sub(0.5)
-  const grainOffset = hash.mul(u.grain)
-
-  // Architectural hairline seam just inside the bevel shoulder (modernist graphic discipline).
-  const seamBand = smoothstep(float(1.2), float(0), abs(sdf.negate().sub(bevel.mul(0.92))))
-  const seamDarken = seamBand.mul(u.seamInk).mul(0.08)
+  const spec = pow(nDotH, u.shininess).mul(u.specular).mul(mix(float(0.25), float(1.35), shape.rimFactor))
 
   // THREE.Color converts CSS hex to linear RGB automatically on CPU.
   const baseLin = u.baseColor
   const warmLin = u.warmTint
 
-  // Combine ambient paper bounce + wrapped directional light + subsurface warmth + satin sheen.
+  // Combine ambient paper bounce + wrapped directional light + subsurface warmth + satin highlight.
   const litShade = mix(float(0.79), float(1.055), wrapped)
-    .sub(recessShadow)
-    .sub(seamDarken)
-    .mul(mix(float(0.88), float(1), edgeLip))
-  const warmScatter = warmLin.mul(u.warmth).mul(rimFactor).mul(max(nDotL, float(0)).mul(0.14))
+    .sub(shape.recessShadow)
+    .sub(shape.seamDarken)
+    .mul(mix(float(0.88), float(1), shape.edgeLip))
+  const warmScatter = warmLin.mul(u.warmth).mul(shape.rimFactor).mul(max(nDotL, float(0)).mul(0.14))
+  const grain = vec3(shape.grainOffset, shape.grainOffset, shape.grainOffset)
   const polymerRgb = clamp(
-    baseLin.mul(litShade).add(warmScatter).add(vec3(spec, spec, spec)).add(vec3(grainOffset, grainOffset, grainOffset)),
+    baseLin.mul(litShade).add(warmScatter).add(vec3(spec, spec, spec)).add(grain),
     vec3(0, 0, 0),
     vec3(1, 1, 1),
   )
 
-  // Composite premultiplied HTML capture ink (buttons, inputs, typography) onto lit polymer face.
-  const domSample = surface.map.sample(texCoord)
-  const polyA = u.bodyOpacity.mul(silhouette)
-  const domA = domSample.a.mul(silhouette)
-  const outA = domA.add(polyA.mul(float(1).sub(domA)))
-  const outPremulRgb = domSample.rgb.mul(silhouette).add(polymerRgb.mul(polyA).mul(float(1).sub(domA)))
+  const polyA = u.bodyOpacity.mul(shape.silhouette)
+  material.outputNode = compositeCaptureOverBody(surface, shape, vec4(polymerRgb.mul(polyA), polyA))
+  return material
+}
 
-  material.outputNode = premultipliedOutput(vec4(outPremulRgb, outA))
+// ── physical body ─────────────────────────────────────────────────────
+
+/**
+ * The same body on `MeshPhysicalNodeMaterial`: the cushion normal becomes
+ * its `normalNode` (and the clearcoat's), so Fresnel, the environment and
+ * the scene's lights all see the bevel. Finish values (roughness, clearcoat,
+ * sheen, IOR) are the material's own properties, written by the caller; a
+ * lobe left at 0 is compiled out, so a preset pays only for the lobes it uses
+ * (docs/materials-research.md §2).
+ */
+export function createPhysicalPolymerBodyMaterial(
+  surface: SurfaceNodes,
+  u: PolymerBodyUniforms,
+): MeshPhysicalNodeMaterial {
+  const material = new MeshPhysicalNodeMaterial({
+    transparent: true,
+    depthWrite: false,
+    metalness: 0,
+  })
+  material.premultipliedAlpha = true
+
+  const shape = polymerBodyShape(surface, u)
+  // The plane's local axes are +x right, +y up, +z toward the camera; CSS +y is down.
+  const normalLocal = vec3(shape.normalCss.x, shape.normalCss.y.negate(), shape.normalCss.z)
+  const normalView = normalize(transformNormalToView(normalLocal))
+  material.normalNode = normalView
+  material.clearcoatNormalNode = normalView
+
+  const grain = vec3(shape.grainOffset, shape.grainOffset, shape.grainOffset)
+  const moldShade = float(1)
+    .sub(shape.recessShadow)
+    .sub(shape.seamDarken)
+    .mul(mix(float(0.88), float(1), shape.edgeLip))
+  material.colorNode = clamp(u.baseColor.mul(moldShade).add(grain), vec3(0, 0, 0), vec3(1, 1, 1))
+  material.opacityNode = u.bodyOpacity.mul(shape.silhouette)
+
+  // `output` is the lit body, premultiplied because `premultipliedAlpha` is set.
+  // Light past white clips here, since SurfaceCanvas leaves tone mapping off.
+  const litBody = vec4(min(output.rgb, vec3(output.a, output.a, output.a)), output.a)
+  material.outputNode = compositeCaptureOverBody(surface, shape, litBody)
   return material
 }
 

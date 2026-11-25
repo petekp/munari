@@ -8,6 +8,7 @@ import { CaptureEngineStatus } from '../../components/CaptureEngineStatus'
 import { Button, Status, Tag } from '../../components/system'
 import { sceneUrl } from '../../captureMode'
 import { PolymerCanvasTelemetry } from './PolymerPrototypeSurface'
+import { PolymerStudioLight } from './PolymerPrototypeStudioLight'
 import { PolymerPrototypeTweaks } from './PolymerPrototypeTweaks'
 import {
   notifyPolymerTuning,
@@ -352,6 +353,7 @@ export function PolymerPrototypeApp({ onReady }: { readonly onReady?: () => void
               style={{ position: 'absolute', inset: 0, zIndex: 10 }}
             >
               <PolymerCanvasTelemetry />
+              <PolymerStudioLight />
             </SurfaceCanvas>
           )}
 
