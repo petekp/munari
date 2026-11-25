@@ -29,6 +29,7 @@ import {
   LIGHT_RIGS,
   liveFinish,
   notifyFinishTuning,
+  startRig,
   studio,
   subscribeFinishTuning,
   type CardTilt,
@@ -220,7 +221,12 @@ function Cards({ canvasId, inScene, finish, text, tilt, lights }: CardsProps) {
 export function MaterialFinishesApp({ onReady }: { readonly onReady?: () => void }) {
   const supported = useCaptureSupport()
   const canvasId = useId()
-  const initial = useState(readParams)[0]
+  const initial = useState(() => {
+    const params = readParams()
+    // Before the first render, so the light handle draws at the rig's start.
+    startRig(params.light)
+    return params
+  })[0]
   const [finish, setFinish] = useState<FinishId>(initial.finish)
   const [text, setText] = useState<TextLighting>(initial.text)
   const [rig, setRig] = useState<LightRig>(initial.light)

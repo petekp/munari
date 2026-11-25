@@ -154,7 +154,8 @@ export const FINISHES: Readonly<Record<FinishId, Readonly<Finish>>> = Object.fre
     detailDepth: 0.2,
   }),
   // A glass glaze on a ceramic body, which physicallybased.info lists as
-  // porcelain: roughness 0, IOR 1.5. Glaze and body match in IOR, so the
+  // porcelain: roughness 0, IOR 1.5. Coat roughness 0.02 matches lacquer's,
+  // so the softbox's image keeps a sharp edge. Glaze and body match in IOR, so the
   // base reflects nothing; the glaze is the coat.
   'glazed-ceramic': Object.freeze({
     ...NO_LOBES,
@@ -163,7 +164,7 @@ export const FINISHES: Readonly<Record<FinishId, Readonly<Finish>>> = Object.fre
     ior: 1.52,
     specularIntensity: 0,
     clearcoat: 1,
-    clearcoatRoughness: 0.035,
+    clearcoatRoughness: 0.02,
     edgeWidth: 8,
     detail: 'glaze',
     detailScale: 160,
@@ -233,15 +234,19 @@ export interface StudioTuning {
   environmentIntensity: number
 }
 
-// Every rig starts its key over the 40 px gap between the product and form
-// cards at their mid-height. The softbox is a tall strip: its image on a
-// coat is a narrow bar, where a broad box laid a pale block over the form
-// card's input (2026-11-25 shots). A coat's highlight lands between the light and
-// the camera's axis, so this puts lacquer's highlight on the form card's
-// left side without the light handle covering the card's text. Powers are
-// set so satin polymer, the brightest body, keeps its body under the tone
-// curve's shoulder and only its highlight rolls off (probe on m2,
-// 2026-11-25: face median sRGB 219 against the shoulder's 226).
+// A coat's highlight lands between the key and the camera's axis: at
+// height 480, about halfway (measured on m2: the key at y 618 CSS px put
+// lacquer's bar at 536, with the axis at 450). The studio rigs start the key
+// below the form card's centre, so the bar lies in the text-free band
+// between "Not saved" and Save, and the light handle sits below the card.
+// The previous start, over the gap between the product and form cards, laid
+// the bar over the form card's label; the room rig keeps that start as the
+// previous behavior. The softbox is wide and short to fit that band: 200 px
+// wide left a small isolated spot, and 560 px ran the bar over "Not saved".
+// Powers are set so satin polymer, the brightest body, keeps its body at or
+// under the tone curve's shoulder and only its highlight rolls off (probe on
+// m2, 2026-11-25: face median sRGB 226 on the form card, at the shoulder,
+// and 199 to 200 on the outer cards).
 const STUDIO_START: Readonly<Record<LightRig, Readonly<StudioTuning>>> = Object.freeze({
   room: Object.freeze({
     lightX: 0.382,
@@ -255,30 +260,35 @@ const STUDIO_START: Readonly<Record<LightRig, Readonly<StudioTuning>>> = Object.
     environmentIntensity: 0.65,
   }),
   softbox: Object.freeze({
-    lightX: 0.382,
-    lightY: 0.48,
-    lightHeight: 320,
+    lightX: 0.517,
+    lightY: 0.687,
+    lightHeight: 480,
     lightPower: 1.55,
-    softboxWidth: 60,
-    softboxHeight: 240,
+    softboxWidth: 290,
+    softboxHeight: 80,
     rimPower: 1.2,
     rimElevation: 15,
-    environmentIntensity: 1.2,
+    environmentIntensity: 1.35,
   }),
   'studio-point': Object.freeze({
-    lightX: 0.382,
-    lightY: 0.48,
-    lightHeight: 320,
+    lightX: 0.517,
+    lightY: 0.687,
+    lightHeight: 480,
     lightPower: 1.55,
     softboxWidth: 0,
     softboxHeight: 0,
     rimPower: 1.2,
     rimElevation: 15,
-    environmentIntensity: 1.2,
+    environmentIntensity: 1.35,
   }),
 })
 
 export const studio: StudioTuning = { ...STUDIO_START.softbox }
+
+/** Start the studio at a rig's values, key position included. Does not notify. */
+export function startRig(rig: LightRig): void {
+  Object.assign(studio, STUDIO_START[rig])
+}
 
 /** Restart the studio at a rig's values, keeping the key where it was dragged. */
 export function applyRig(rig: LightRig): void {

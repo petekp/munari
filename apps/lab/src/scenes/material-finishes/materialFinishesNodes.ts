@@ -223,7 +223,10 @@ export function createFinishMaterial(inputs: FinishMaterialInputs, text: TextLig
     // SAFETY: a mat3 times a vec3 is a vec3; three's types return a bare Node.
     return normalize(shape.tilt.mul(inCard) as Node<'vec3'>)
   }
-  const withRelief = viewNormal(edge.add(relief))
+  // The relief is defined on the flat face. Fading it as the edge turns
+  // keeps it from shifting the rim's fast-changing normal pixel to pixel.
+  const reliefOnEdge = relief.div(float(1).add(dot(edge, edge)))
+  const withRelief = viewNormal(edge.add(reliefOnEdge))
   const edgeOnly = viewNormal(edge)
   const inCoat = reliefIsInCoat(detail)
   material.normalNode = inCoat ? edgeOnly : withRelief

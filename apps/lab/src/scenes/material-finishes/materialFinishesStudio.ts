@@ -10,10 +10,12 @@
 // lower edge (2026-11-24 review). The built studio is one tone on every
 // wall, with a broad soft panel overhead and a fill panel behind the viewer
 // that covers the whole cone, so every card face reflects one even tone.
-// Strips at the cone's ends put bright bars on the outer cards' faces,
-// which the dark-ink finishes lost their labels under and orange peel broke
-// into blotches (2026-11-25 shots). Strips past the cone light only the
-// cards' rounded edges, whose normals turn far enough to reflect them.
+// The studio has no narrow strips. Inside the cone they laid bright bars
+// under the outer cards' text. Outside it, a rounded edge turns its normal
+// about 10° per CSS px, so a 9° strip reflected as a band under one device
+// pixel wide and aliased: luminance along the product card's left rim
+// jumped by 43 per pixel on lacquer and 24 on the glaze, against 0 on every
+// other rim (m2 probe, 2026-11-25).
 //
 // A point light's mirror image on a coat at roughness 0.02 is a dot, and
 // the first build's lacquer read as a dot over a broad wash. The softbox
@@ -149,7 +151,6 @@ export function placeStudioLights(lights: StudioLights, frame: SurfaceRenderFram
 const WALL = 0.22
 const OVERHEAD = 1.2
 const BEHIND = 0.6
-const STRIP = 3.5
 
 function panel(radiance: number, width: number, height: number, position: readonly [number, number, number]): THREE.Mesh {
   const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })
@@ -179,10 +180,7 @@ export function createStudioScene(): StudioScene {
   const overhead = panel(OVERHEAD, 10, 10, [0, 5.9, 0])
   // Behind the viewer, ±35° by ±16° around the view axis.
   const behind = panel(BEHIND, 10, 4, [0, 0, 7])
-  // Two strips at about ±48° azimuth, outside the cone.
-  const leftStrip = panel(STRIP, 1.1, 6, [-5.4, 0.2, 4.8])
-  const rightStrip = panel(STRIP, 1.1, 6, [5.4, 0.2, 4.8])
-  scene.add(overhead, behind, leftStrip, rightStrip)
+  scene.add(overhead, behind)
   return {
     scene,
     dispose() {
