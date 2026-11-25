@@ -35,6 +35,9 @@ let declarationSeq = 0
  * mesh cannot exist in the DOM reconciler — the host renders it inside the
  * Canvas, with the store and part passed as props rather than through a
  * context the two trees do not share.
+ *
+ * Outside a SurfaceCanvas its first render suspends until Munari's scene
+ * module loads, so the caller's Canvas needs a Suspense boundary above it.
  */
 export function SurfaceMesh({ surface, part, ...props }: SurfaceMeshProps) {
   const root = use(SurfaceRootContext)

@@ -14,7 +14,7 @@ rasterizer out until `isolatedTextInputs` content is captured.
 that mounts the canvas later, so it fails when page-side Surface code imports
 three's renderer, TSL or R3F again. Before Surface's scene components moved
 behind `surfaceSceneLookup.tsx`, that first page measured 529.0 kB of the
-531.6 kB the `surface` entry ships. With the split, it measures 189.5 kB. A static import of `SurfacePrewarm` in
+531.6 kB the `surface` entry ships. With the split, it measures 189.6 kB. A static import of `SurfacePrewarm` in
 `Surface.tsx` measures 519.5 kB; that fault was run on 2026-11-25 and the check
 failed on `lazyCanvas`.
 

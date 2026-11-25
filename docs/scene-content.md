@@ -153,6 +153,13 @@ so its stand-in material sets that too. `onReady` fires once every build has
 finished. Keep `Surface.Prewarm` mounted while a presenter may need its
 pipelines, because three deletes a pipeline that nothing uses.
 
+Outside a `SurfaceCanvas`, in an R3F `Canvas` of your own, `Surface.Mesh`,
+`Surface.LitMaterial` and `Surface.Prewarm` first render after Munari's scene
+module loads. R3F's `Canvas` passes that wait to the page, so put a `Suspense`
+boundary above the `Canvas`. Without one, the page stops committing updates
+until the module arrives. A load that fails reaches the nearest error
+boundary, and the next mount loads again.
+
 ## Renderer settings
 
 `gl` passes options to the `WebGPURenderer` that `SurfaceCanvas` creates.
