@@ -5,7 +5,7 @@
 // the board owns the spin state the page writes into.
 
 import { useEffect, useMemo, useRef } from 'react'
-import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { BODY, FOOT_PROFILE, KNOB_PROFILE, LID_PROFILE, bodyArcAtHeight, clampAnchor, freeAnchor, onBody, TEAPOT_SCALE, wrappedPoint, type BodyAnchor } from './reviewNotesLaw'
 import type { Board } from './reviewNotesBoard'
@@ -101,13 +101,6 @@ function wheelTexture(): THREE.CanvasTexture {
   return texture
 }
 
-// The pointer bridge raycasts only Surface meshes, so a press on the spout
-// would reach a note hidden behind it. Nearer meshes that stop propagation
-// end R3F's delivery before it reaches the paper (23 Nov 2026: without them
-// a click on the spout focused the note wrapped behind it).
-const stop = (event: ThreeEvent<PointerEvent | MouseEvent>) => event.stopPropagation()
-const occluder = { onPointerDown: stop, onPointerUp: stop, onPointerMove: stop, onClick: stop }
-
 export function Teapot({ board }: { board: Board }) {
   const turntable = useRef<THREE.Group>(null)
   const body = useRef<THREE.Mesh>(null)
@@ -176,10 +169,10 @@ export function Teapot({ board }: { board: Board }) {
     <group ref={turntable} scale={TEAPOT_SCALE}>
       <mesh geometry={geometry.foot} material={materials.bisque} castShadow receiveShadow />
       <mesh ref={body} geometry={geometry.body} material={materials.glaze} castShadow receiveShadow />
-      <mesh ref={lid} geometry={geometry.lid} material={materials.rim} castShadow {...occluder} />
-      <mesh geometry={geometry.knob} material={materials.glaze} castShadow {...occluder} />
-      <mesh ref={spout} geometry={geometry.spout} material={materials.glaze} castShadow receiveShadow {...occluder} />
-      <mesh ref={handle} geometry={geometry.handle} material={materials.glaze} castShadow receiveShadow {...occluder} />
+      <mesh ref={lid} geometry={geometry.lid} material={materials.rim} castShadow />
+      <mesh geometry={geometry.knob} material={materials.glaze} castShadow />
+      <mesh ref={spout} geometry={geometry.spout} material={materials.glaze} castShadow receiveShadow />
+      <mesh ref={handle} geometry={geometry.handle} material={materials.glaze} castShadow receiveShadow />
       <mesh geometry={geometry.wheelTop} material={materials.wheel} position-y={WHEEL_TOP} receiveShadow />
       <mesh geometry={geometry.wheelRim} material={materials.iron} position-y={WHEEL_TOP - 10} />
       <mesh geometry={geometry.wheelSpindle} material={materials.iron} position-y={WHEEL_TOP - 40} />

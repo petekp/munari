@@ -18,9 +18,10 @@
 // where the presenter is held to it.
 
 import * as THREE from 'three'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { deformSurfaceGeometry } from './surfaceDeform'
 import { registerHostSpace } from './surfaceHostSpace'
+import { markSurfaceMesh } from './surfaceOcclusion'
 import {
   createSurfaceRoute,
   registerSurfacePlane,
@@ -92,6 +93,7 @@ function step(overrides: Partial<SurfaceRouteStep> = {}): SurfaceRouteStep {
     contentHeight: CONTENT_H,
     authoredGeometry: false,
     authoredRaycast: false,
+    pointer: null,
     ...overrides,
   }
 }
@@ -376,6 +378,69 @@ describe('live source and geometry ownership', () => {
     expect(route.riding()).toBe(true)
     route.release()
     expect(replacement.style.transform).toBe('')
+  })
+})
+
+describe('a scene mesh in front of the Surface', () => {
+  const CENTER = { x: 400, y: 300, buttons: 0 }
+  const BESIDE = { x: 540, y: 300, buttons: 0 }
+  let releaseMark: () => void
+
+  beforeEach(() => {
+    const scene = new THREE.Scene()
+    const prop = new THREE.Mesh(new THREE.BoxGeometry(40, 40, 40), new THREE.MeshBasicMaterial())
+    prop.position.z = 100
+    scene.add(mesh, prop)
+    scene.updateMatrixWorld()
+    releaseMark = markSurfaceMesh(mesh)
+  })
+
+  afterEach(() => releaseMark())
+
+  function trusted<T extends Event>(event: T): T {
+    Object.defineProperty(event, 'isTrusted', { value: true })
+    return event
+  }
+
+  it('relays where the mesh covers the pointer, and rides beside it', () => {
+    const route = createSurfaceRoute()
+    expect(route.step(step({ pointer: CENTER }), duties).to).toBe('relay')
+    expect(route.step(step({ pointer: BESIDE }), duties).to).toBe('native')
+    route.release()
+  })
+
+  it('keeps the route of a press in progress when the mesh comes between', () => {
+    const route = createSurfaceRoute()
+    route.step(step({ pointer: BESIDE }), duties)
+    expect(route.step(step({ pointer: { ...CENTER, buttons: 1 } }), duties).to).toBe('native')
+    route.release()
+  })
+
+  it('parks on the move that reaches the mesh, before the next press is hit-tested', () => {
+    const route = createSurfaceRoute()
+    route.step(step({ pointer: BESIDE }), duties)
+    expect(route.riding()).toBe(true)
+    root.dispatchEvent(trusted(new PointerEvent('pointermove', { bubbles: true, clientX: CENTER.x, clientY: CENTER.y })))
+    expect(route.riding()).toBe(false)
+    root.dispatchEvent(trusted(new PointerEvent('pointermove', { bubbles: true, clientX: BESIDE.x, clientY: BESIDE.y })))
+    expect(route.riding()).toBe(true)
+    route.release()
+  })
+
+  it('gives the scene a cold press aimed through the mesh at the lifted HTML', () => {
+    const route = createSurfaceRoute()
+    route.step(step({ pointer: BESIDE }), duties)
+    const heardByContent: Event[] = []
+    const heardByScene: Event[] = []
+    root.addEventListener('pointerdown', (event) => heardByContent.push(event))
+    glCanvas.addEventListener('pointerdown', (event) => heardByScene.push(event))
+    const press = trusted(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, buttons: 1, clientX: CENTER.x, clientY: CENTER.y }))
+    root.dispatchEvent(press)
+    expect(route.riding()).toBe(false)
+    expect(press.defaultPrevented).toBe(true)
+    expect(heardByContent).toEqual([])
+    expect(heardByScene).toHaveLength(1)
+    route.release()
   })
 })
 

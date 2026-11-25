@@ -34,6 +34,8 @@ import './tearPlanner.css'
 const FOV = 30
 /** The sheet beneath sits this far behind the top one, in px: enough for depth, too little to change its size. */
 const UNDER_Z = -2
+/** The falling sheet's shadow lies in front of the next sheet, and a visible mesh in front of a Surface takes its pointer (decisions.md #78). */
+const NO_HIT: THREE.Object3D['raycast'] = () => {}
 
 // ── canvas furniture ─────
 
@@ -182,7 +184,7 @@ function SheetRig({ index, motion, slotRef }: { readonly index: 0 | 1; readonly 
 
   return (
     <>
-    <mesh ref={shadowRef} visible={false} renderOrder={-1} material={shadow.material}>
+    <mesh ref={shadowRef} visible={false} raycast={NO_HIT} renderOrder={-1} material={shadow.material}>
       <planeGeometry args={[SHEET_WIDTH, SHEET_HEIGHT]} />
     </mesh>
     <group ref={groupRef}>

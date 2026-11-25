@@ -85,6 +85,7 @@ import {
   createShadowUniforms,
 } from './flightNodes'
 import './flight.css'
+import { FlightCardShadow } from './FlightCardShadow'
 import { corners } from './flightCorners'
 import { densityScheduleStep, densitySupply } from './flightDensityLaw'
 import { attachFlightGestures } from './flightGestures'
@@ -1285,25 +1286,7 @@ function Flying({
         texture={cardTexture}
       />
 
-      {/* renderOrder 2 — AFTER the card, on purpose. The card writes depth
-          (the card occludes its own shadow), so drawing the shadow second lets
-          the depth test carve the card's silhouette out of it per fragment:
-          CSS's outside-the-border-box clip, enforced by geometry. Drawn
-          first, the shadow's interior survived under the card and leaked
-          through the border's AA column as a 1px dark seam — the "extra
-          border" on the right edge. The corners still show fringe: the
-          radius mask DISCARDS there, no depth is written, and the shadow
-          paints the notch exactly where CSS would. */}
-      <mesh
-        ref={shadowRef}
-        name="flight-card-shadow"
-        renderOrder={2}
-        frustumCulled={false}
-        visible={false}
-      >
-        <planeGeometry args={[1, 1]} />
-        <primitive object={shadowMaterial} attach="material" />
-      </mesh>
+      <FlightCardShadow ref={shadowRef} material={shadowMaterial} />
 
       {/* Separated wiring: the source is declared in the page, in the slot
           this card came from, and this is its presentation. `manual`

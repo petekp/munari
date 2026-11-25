@@ -42,7 +42,6 @@ import {
   captureEngine,
   clampScale,
   clearPointerState,
-  deepestElementAt,
   forwardPointer,
   lastPointerPlace,
   type PointerPlace,
@@ -55,7 +54,6 @@ import {
   selectLodTier,
   silenceHoverMove,
   surfaceCursorAt,
-  surfaceRadiusSd,
   trackDrag,
   trackFocusModality,
   trackPointerPlace,
@@ -73,6 +71,8 @@ import { createSurfaceRasterAlignment } from './surfaceRasterAlignment'
 import { matchedSurfaceDensity } from './surfacePixelDensity'
 import { watchSurfacePlacement } from './surfacePlacement'
 import { registerSurfacePlane, createSurfaceRoute, type SurfaceRouteRelayDuties } from './surfaceNativeRoute'
+import { markSurfaceMesh } from './surfaceOcclusion'
+import { surfaceHitRegion } from './surfaceHitRegion'
 import { suspendCameraControls } from '../cameraControls'
 import { useLatest } from '../useLatest'
 import {
@@ -195,6 +195,10 @@ interface SurfaceLodState { tier:number; proposed:number; agree:number; frame:nu
 let lodKeySeq = 0
 let lodPhaseSeq = 0
 let presenterSeq = 0
+
+function pointerOf(place: PointerPlace | null) {
+  return place ? { x: place.x, y: place.y, buttons: place.sample.buttons } : null
+}
 
 // Outside a SurfaceCanvas, WebGPURenderer's output pass reports its internal
 // target during every draw, so a canvas draw looks like an off-screen draw and
@@ -453,6 +457,10 @@ export function SurfacePresenter({
     if (!presenterHost || !mountedMesh) return
     return presenterHost.registerObject(mountedMesh)
   }, [presenterHost, mountedMesh])
+  useLayoutEffect(() => {
+    if (!mountedMesh) return
+    return markSurfaceMesh(mountedMesh)
+  }, [mountedMesh])
 
   // Document-level pointer machinery, reference-counted across every
   // Surface on the page — one set of listeners however many presenters.
@@ -505,73 +513,21 @@ export function SurfacePresenter({
     }
   }, [radius, width, height, chromeRadii])
 
-  /**
-   * The hit region.
-   *
-   * Declining HERE rather than inside the handlers is the whole point: an
-   * intersection r3f never sees is one it never counts as a hover, so the
-   * Surface behind keeps the pointer instead of being told it lost it. That
-   * is what makes a floating layer possible — its slab is full panel size
-   * and stands in front of the panel it belongs to, so with `'geometry'`
-   * the moment a popover opened the layer caught every ray, the panel
-   * behind went dead, and — hearing `pointerOut` — dismissed the very thing
-   * that had just opened.
-   *
-   * Installed unconditionally and branching on a ref, never swapped for
-   * `undefined`: r3f assigns props onto the instance, and handing back
-   * undefined leaves the last function attached rather than restoring the
-   * class default — the mesh would stay permanently un-hittable.
-   */
-  const raycast = useMemo<THREE.Object3D['raycast']>(
+  // Installed unconditionally and reading refs, never swapped for
+  // `undefined`: r3f assigns props onto the instance, and handing back
+  // undefined leaves the last function attached rather than restoring the
+  // class default — the mesh would stay permanently un-hittable.
+  const raycast = useMemo(
     () =>
-      function (this: THREE.Mesh, raycaster, intersects) {
-        // Input follows the eye (crossingPointer, decisions.md #33). While
-        // the canvas is not the presented side this mesh is not pointer
-        // geometry: the gate never goes solid, so a lifting-phase click
-        // reaches the page copy the viewer is actually looking at instead
-        // of relaying to the parked one.
-        if (!storeRef.current.canvasHearsPointer()) return
-        // While the parked canvas rides over the renderer the browser owns
-        // the pointer, and a hit here would relay a synthetic copy of an
-        // event the DOM already received natively. Asked of the rig itself,
-        // not of route state, so it cannot be a frame stale.
-        if (routeCtl.riding()) return
-        const cast = authoredRaycastRef.current ?? THREE.Mesh.prototype.raycast
-        const mode = pointerEventsRef.current
-        if (mode === 'none') return
-        if (mode === 'geometry') {
-          const radii = radiiRef.current
-          if (radii.some((r) => r > 0)) {
-            // A rounded surface's corners are not surface. The same SDF as
-            // the material mask, on the RAW uv, so a ray and a fragment
-            // agree about where the corner ends.
-            const hits: THREE.Intersection[] = []
-            cast.call(this, raycaster, hits)
-            for (const hit of hits) {
-              if (
-                !hit.uv ||
-                surfaceRadiusSd(hit.uv.x, hit.uv.y, widthRef.current, heightRef.current, radii) <= 0
-              ) {
-                intersects.push(hit)
-              }
-            }
-            return
-          }
-          cast.call(this, raycaster, intersects)
-          return
-        }
-        const el = elementRef.current
-        if (!el) return
-        const hits: THREE.Intersection[] = []
-        cast.call(this, raycaster, hits)
-        const rect = el.getBoundingClientRect()
-        for (const hit of hits) {
-          if (!hit.uv) continue
-          const x = rect.left + hit.uv.x * rect.width
-          const y = rect.top + (1 - hit.uv.y) * rect.height
-          if (deepestElementAt(el, x, y)) intersects.push(hit)
-        }
-      },
+      surfaceHitRegion({
+        hears: () => storeRef.current.canvasHearsPointer(),
+        riding: () => routeCtl.riding(),
+        authoredRaycast: () => authoredRaycastRef.current,
+        pointerEvents: () => pointerEventsRef.current,
+        element: () => elementRef.current,
+        radii: () => radiiRef.current,
+        size: () => [widthRef.current, heightRef.current],
+      }),
     // Stable identities — this memo never actually re-runs.
     [storeRef, pointerEventsRef, widthRef, heightRef, authoredRaycastRef, routeCtl],
   )
@@ -871,6 +827,7 @@ export function SurfacePresenter({
         contentHeight: height,
         authoredGeometry: geometry !== undefined,
         authoredRaycast: authoredRaycast !== undefined,
+        pointer: pointerOf(lastPointerPlace()),
       },
       relayDuties.current,
     )

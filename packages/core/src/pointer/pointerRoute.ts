@@ -46,6 +46,12 @@
 //   onScreen — a parked canvas whose transformed box leaves the viewport
 //              stops receiving paint records; the compositor skips it.
 //   capable  — the whole rig is an origin-trial behaviour.
+//   unobstructed — the browser hit-tests the lifted canvas above the
+//              renderer canvas, so on the native route a click lands on the
+//              Surface's HTML through any mesh drawn in front of it. Where a
+//              nearer scene mesh covers the pointer's point on the Surface,
+//              the relay takes over, and its raycast declines that point
+//              (decisions.md #78), so the click reaches the scene instead.
 //
 // Coverage is NOT a condition, by construction rather than by luck: the
 // canvas wears the pose itself, and the native hit clip follows the
@@ -87,6 +93,8 @@ export interface PointerRouteConditions {
   readonly facing: boolean
   /** The projected quad still reaches the viewport. */
   readonly onScreen: boolean
+  /** No nearer scene mesh covers the Surface at the pointer's last place. */
+  readonly unobstructed: boolean
 }
 
 /**
@@ -149,7 +157,8 @@ export function routeFor(conditions: PointerRouteConditions): PointerRoute {
     conditions.exclusiveSource &&
     conditions.planar &&
     conditions.facing &&
-    conditions.onScreen
+    conditions.onScreen &&
+    conditions.unobstructed
   ) {
     return 'native'
   }
