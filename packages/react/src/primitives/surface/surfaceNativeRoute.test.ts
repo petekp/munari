@@ -442,7 +442,7 @@ describe('a scene mesh in front of the Surface', () => {
     root.dispatchEvent(press)
     expect(route.riding()).toBe(false)
     root.dispatchEvent(trusted(new PointerEvent('pointerup', at)))
-    const click = trusted(new MouseEvent('click', at))
+    const click = trusted(new PointerEvent('click', { ...at, detail: 1 }))
     root.dispatchEvent(click)
     expect(press.defaultPrevented).toBe(true)
     expect(click.defaultPrevented).toBe(true)
@@ -459,6 +459,19 @@ describe('a scene mesh in front of the Surface', () => {
     root.addEventListener('click', (event) => heardByContent.push(event.type))
     root.dispatchEvent(trusted(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, buttons: 1, clientX: BESIDE.x, clientY: BESIDE.y })))
     root.dispatchEvent(trusted(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: BESIDE.x, clientY: BESIDE.y })))
+    expect(heardByContent).toEqual(['click'])
+    route.release()
+  })
+
+  it('leaves a keyboard click alone after a covered tap was cancelled', () => {
+    const route = createSurfaceRoute()
+    route.step(step({ pointer: BESIDE }), duties)
+    const at = { bubbles: true, cancelable: true, pointerId: 7, clientX: CENTER.x, clientY: CENTER.y }
+    root.dispatchEvent(trusted(new PointerEvent('pointerdown', { ...at, buttons: 1 })))
+    root.dispatchEvent(trusted(new PointerEvent('pointercancel', at)))
+    const heardByContent: string[] = []
+    root.addEventListener('click', (event) => heardByContent.push(event.type))
+    root.dispatchEvent(trusted(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 0 })))
     expect(heardByContent).toEqual(['click'])
     route.release()
   })

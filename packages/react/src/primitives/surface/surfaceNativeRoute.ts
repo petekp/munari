@@ -224,7 +224,8 @@ export function createSurfaceRoute(): SurfaceRouteController {
   let obstructed = false
   let listening = false
   const pressesForScene = new Set<number>()
-  let swallowClick = false
+  // The pointer whose covered tap went to the scene, until the click it makes.
+  let tapForScene: number | null = null
   const token = Symbol()
   let route: PointerRoute = 'page'
   let rig: NativePointerRig | null = null
@@ -357,10 +358,12 @@ export function createSurfaceRoute(): SurfaceRouteController {
     if (!event.isTrusted || !latest) return
     if (event.type === 'pointerup' || event.type === 'pointercancel') {
       if (pressesForScene.delete(event.pointerId) && insideRig(event.target)) handToScene(event)
+      // A cancelled tap makes no click, so the next click is not its own.
+      if (event.type === 'pointercancel' && tapForScene === event.pointerId) tapForScene = null
       return
     }
     const pressing = event.type === 'pointerdown'
-    if (pressing) swallowClick = false
+    if (pressing && tapForScene === event.pointerId) tapForScene = null
     if (event.buttons !== 0 && !pressing) return
     const { input, duties } = latest
     const covered = coveredAt(input, raycaster, event.clientX, event.clientY)
@@ -375,7 +378,7 @@ export function createSurfaceRoute(): SurfaceRouteController {
     // press, its release, its compatibility mouse events or the click a tap
     // makes from them, so the scene gets the press and its release instead.
     pressesForScene.add(event.pointerId)
-    swallowClick = true
+    tapForScene = event.pointerId
     handToScene(event)
   }
 
@@ -390,10 +393,14 @@ export function createSurfaceRoute(): SurfaceRouteController {
     latest.input.glCanvas.dispatchEvent(new PointerEvent(event.type, event))
   }
 
-  // Preventing a touch press does not cancel the click its tap produces.
+  // Preventing a touch press does not cancel the click its tap produces. Only
+  // that click is swallowed: a keyboard or assistive-technology click has
+  // detail 0, and Chrome dispatches a pointer's click as a PointerEvent
+  // carrying that pointer's id.
   const onClick = (event: MouseEvent) => {
-    if (!event.isTrusted || !swallowClick) return
-    swallowClick = false
+    if (!event.isTrusted || tapForScene === null || event.detail === 0) return
+    if (event instanceof PointerEvent && event.pointerId !== tapForScene) return
+    tapForScene = null
     if (!insideRig(event.target)) return
     event.preventDefault()
     event.stopImmediatePropagation()
@@ -410,7 +417,7 @@ export function createSurfaceRoute(): SurfaceRouteController {
       window.removeEventListener('click', onClick, true)
       obstructed = false
       pressesForScene.clear()
-      swallowClick = false
+      tapForScene = null
     }
   }
 
