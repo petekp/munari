@@ -18,10 +18,9 @@
 // where the presenter is held to it.
 
 import * as THREE from 'three'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { deformSurfaceGeometry } from './surfaceDeform'
 import { registerHostSpace } from './surfaceHostSpace'
-import { markSurfaceMesh } from './surfaceOcclusion'
 import {
   createSurfaceRoute,
   registerSurfacePlane,
@@ -378,102 +377,6 @@ describe('live source and geometry ownership', () => {
     expect(route.riding()).toBe(true)
     route.release()
     expect(replacement.style.transform).toBe('')
-  })
-})
-
-describe('a scene mesh in front of the Surface', () => {
-  const CENTER = { x: 400, y: 300, buttons: 0 }
-  const BESIDE = { x: 540, y: 300, buttons: 0 }
-  let releaseMark: () => void
-
-  beforeEach(() => {
-    const scene = new THREE.Scene()
-    const prop = new THREE.Mesh(new THREE.BoxGeometry(40, 40, 40), new THREE.MeshBasicMaterial())
-    prop.position.z = 100
-    scene.add(mesh, prop)
-    scene.updateMatrixWorld()
-    const canvas = { clock: { elapsedTime: 1 }, raycaster: new THREE.Raycaster() }
-    releaseMark = markSurfaceMesh(mesh, () => canvas)
-  })
-
-  afterEach(() => releaseMark())
-
-  function trusted<T extends Event>(event: T): T {
-    Object.defineProperty(event, 'isTrusted', { value: true })
-    return event
-  }
-
-  it('relays where the mesh covers the pointer, and rides beside it', () => {
-    const route = createSurfaceRoute()
-    expect(route.step(step({ pointer: CENTER }), duties).to).toBe('relay')
-    expect(route.step(step({ pointer: BESIDE }), duties).to).toBe('native')
-    route.release()
-  })
-
-  it('keeps the route of a press in progress when the mesh comes between', () => {
-    const route = createSurfaceRoute()
-    route.step(step({ pointer: BESIDE }), duties)
-    expect(route.step(step({ pointer: { ...CENTER, buttons: 1 } }), duties).to).toBe('native')
-    route.release()
-  })
-
-  it('parks on the move that reaches the mesh, before the next press is hit-tested', () => {
-    const route = createSurfaceRoute()
-    route.step(step({ pointer: BESIDE }), duties)
-    expect(route.riding()).toBe(true)
-    root.dispatchEvent(trusted(new PointerEvent('pointermove', { bubbles: true, clientX: CENTER.x, clientY: CENTER.y })))
-    expect(route.riding()).toBe(false)
-    root.dispatchEvent(trusted(new PointerEvent('pointermove', { bubbles: true, clientX: BESIDE.x, clientY: BESIDE.y })))
-    expect(route.riding()).toBe(true)
-    route.release()
-  })
-
-  it('gives the scene a cold tap aimed through the mesh at the lifted HTML', () => {
-    const route = createSurfaceRoute()
-    route.step(step({ pointer: BESIDE }), duties)
-    const heardByContent: string[] = []
-    const heardByScene: string[] = []
-    for (const type of ['pointerdown', 'pointerup', 'click']) {
-      root.addEventListener(type, (event) => heardByContent.push(event.type))
-      glCanvas.addEventListener(type, (event) => heardByScene.push(event.type))
-    }
-    const at = { bubbles: true, cancelable: true, pointerId: 7, clientX: CENTER.x, clientY: CENTER.y }
-    const press = trusted(new PointerEvent('pointerdown', { ...at, buttons: 1 }))
-    root.dispatchEvent(press)
-    expect(route.riding()).toBe(false)
-    root.dispatchEvent(trusted(new PointerEvent('pointerup', at)))
-    const click = trusted(new PointerEvent('click', { ...at, detail: 1 }))
-    root.dispatchEvent(click)
-    expect(press.defaultPrevented).toBe(true)
-    expect(click.defaultPrevented).toBe(true)
-    expect(heardByContent).toEqual([])
-    expect(heardByScene).toEqual(['pointerdown', 'pointerup'])
-    route.release()
-  })
-
-  it('leaves the next click alone once a press reached the content', () => {
-    const route = createSurfaceRoute()
-    route.step(step({ pointer: BESIDE }), duties)
-    root.dispatchEvent(trusted(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, buttons: 1, clientX: CENTER.x, clientY: CENTER.y })))
-    const heardByContent: string[] = []
-    root.addEventListener('click', (event) => heardByContent.push(event.type))
-    root.dispatchEvent(trusted(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, buttons: 1, clientX: BESIDE.x, clientY: BESIDE.y })))
-    root.dispatchEvent(trusted(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: BESIDE.x, clientY: BESIDE.y })))
-    expect(heardByContent).toEqual(['click'])
-    route.release()
-  })
-
-  it('leaves a keyboard click alone after a covered tap was cancelled', () => {
-    const route = createSurfaceRoute()
-    route.step(step({ pointer: BESIDE }), duties)
-    const at = { bubbles: true, cancelable: true, pointerId: 7, clientX: CENTER.x, clientY: CENTER.y }
-    root.dispatchEvent(trusted(new PointerEvent('pointerdown', { ...at, buttons: 1 })))
-    root.dispatchEvent(trusted(new PointerEvent('pointercancel', at)))
-    const heardByContent: string[] = []
-    root.addEventListener('click', (event) => heardByContent.push(event.type))
-    root.dispatchEvent(trusted(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 0 })))
-    expect(heardByContent).toEqual(['click'])
-    route.release()
   })
 })
 

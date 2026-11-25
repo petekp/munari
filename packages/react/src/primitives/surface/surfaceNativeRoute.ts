@@ -357,9 +357,7 @@ export function createSurfaceRoute(): SurfaceRouteController {
   const onPointer = (event: PointerEvent) => {
     if (!event.isTrusted || !latest) return
     if (event.type === 'pointerup' || event.type === 'pointercancel') {
-      if (pressesForScene.delete(event.pointerId) && insideRig(event.target)) handToScene(event)
-      // A cancelled tap makes no click, so the next click is not its own.
-      if (event.type === 'pointercancel' && tapForScene === event.pointerId) tapForScene = null
+      onRelease(event)
       return
     }
     const pressing = event.type === 'pointerdown'
@@ -368,6 +366,10 @@ export function createSurfaceRoute(): SurfaceRouteController {
     const { input, duties } = latest
     const covered = coveredAt(input, raycaster, event.clientX, event.clientY)
     if (covered === obstructed) return
+    // A press may park the lifted canvas but never lift it. The browser has
+    // already aimed the press at the renderer canvas, and lifting now would
+    // hide the Surface from the relay that must deliver it.
+    if (pressing && !covered) return
     const wasRiding = rig?.riding() === true
     const host = rigHost
     obstructed = covered
@@ -380,6 +382,24 @@ export function createSurfaceRoute(): SurfaceRouteController {
     pressesForScene.add(event.pointerId)
     tapForScene = event.pointerId
     handToScene(event)
+  }
+
+  const onRelease = (event: PointerEvent) => {
+    if (pressesForScene.delete(event.pointerId) && insideRig(event.target)) handToScene(event)
+    // A cancelled tap makes no click, so the next click is not its own.
+    if (event.type === 'pointercancel' && tapForScene === event.pointerId) tapForScene = null
+    if (event.type === 'pointercancel') uncoverAtGestureEnd(event)
+  }
+
+  // A touch leaves no pointer place for the next frame to read once it lifts,
+  // so the end of a gesture reads the cover again: its click, or a cancel that
+  // makes none. An uncovered point lifts the canvas on the next frame. Chrome
+  // hit-tests a tap's click after its release, so a lift at the release would
+  // also hand that click to the lifted HTML, a second click after the relay's.
+  // A press still handed to the scene keeps the canvas parked.
+  const uncoverAtGestureEnd = (event: MouseEvent) => {
+    if (!latest || !obstructed || pressesForScene.size > 0) return
+    if (!coveredAt(latest.input, raycaster, event.clientX, event.clientY)) obstructed = false
   }
 
   const insideRig = (target: EventTarget | null, host = rigHost): target is Element =>
@@ -398,7 +418,9 @@ export function createSurfaceRoute(): SurfaceRouteController {
   // detail 0, and Chrome dispatches a pointer's click as a PointerEvent
   // carrying that pointer's id.
   const onClick = (event: MouseEvent) => {
-    if (!event.isTrusted || tapForScene === null || event.detail === 0) return
+    if (!event.isTrusted || event.detail === 0) return
+    uncoverAtGestureEnd(event)
+    if (tapForScene === null) return
     if (event instanceof PointerEvent && event.pointerId !== tapForScene) return
     tapForScene = null
     if (!insideRig(event.target)) return
