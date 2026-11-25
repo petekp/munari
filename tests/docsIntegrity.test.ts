@@ -57,6 +57,9 @@ function canonicalDocs(): string[] {
     ...readdirSync(join(ROOT, 'docs/decisions'))
       .filter((name) => name.endsWith('.md'))
       .map((name) => `docs/decisions/${name}`),
+    ...readdirSync(join(ROOT, 'docs/platform'))
+      .filter((name) => name.endsWith('.md'))
+      .map((name) => `docs/platform/${name}`),
     ...subdirReadmes('instruments'),
     ...subdirReadmes('registry'),
   ]
