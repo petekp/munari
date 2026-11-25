@@ -1,6 +1,6 @@
 # Materials and effects research
 
-> **Status: research with measured GPU cost (nothing built).** Written 2026-11-23 against `three@0.186.1`. GPU costs were measured on an Apple M2 Pro in headless Chrome for Testing 156 ([§2](#2-measured-gpu-cost)). No preset API, material or lab scene described here exists yet. The per-candidate detail is in the [materials catalog](materials-research-catalog.md).
+> **Status: research with measured GPU cost.** Written 2026-11-23 against `three@0.186.1`. GPU costs were measured on an Apple M2 Pro in headless Chrome for Testing 156 ([§2](#2-measured-gpu-cost)). Shortlist items 1 and 2 ([§5](#5-shortlist-to-prototype-first)) are lab prototypes: the `material-finishes` scene and the polymer prototype's physical body. No preset API exists yet. The per-candidate detail is in the [materials catalog](materials-research-catalog.md).
 
 Three's `MeshPhysicalNodeMaterial` already provides most of the finishes a UI panel needs: clearcoat, sheen, iridescence, anisotropy and transmission with dispersion. Each of the four surface lobes costs 0.06 to 1.01 ms more per full screen at 2880×1800 on an M2 Pro, on top of the 0.76 ms that physical lighting costs. `MeshPhysicalNodeMaterial` measured 0.05 ms more than `MeshStandardNodeMaterial`, the base of `Surface.LitMaterial`, and it adds no bundle bytes, because `WebGPURenderer` already registers every node material ([payload research §2.4](payload-optimization-research.md#24-empirical-trap-check-what-does-not-save-bytes-in-threewebgpu)).
 

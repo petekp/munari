@@ -24,7 +24,7 @@ const markers = {
   veil: '.veil-page', knobs: '.knb-page', optics: '.opt-page', logo: '.logo-page .logo-word', selection: '.sel-prose',
   candidates: '.cand-rail', refraction: '.refraction-page', gallery: '.gallery-page', crystal: '.crystal-page',
   controls: '.controls-page', 'marble-hand': '.mh-app', plume: '.plume-page', gravity: '.gv-poem', lamp: '.lamp-page',
-  rain: '.rain-page', 'distortion-wave': '.wave-page', wordmark: '.wordmark-page', style: '.style-page .m-display', why: '.why-page .m-display', 'polymer-prototype': '.poly-page', 'frontier-prototype': '.frontier-page', 'beyond-prototype': '.beyond-page', 'signature-prototype': '.sig-page', 'cutaway-prototype': '.cw-page',
+  rain: '.rain-page', 'distortion-wave': '.wave-page', wordmark: '.wordmark-page', style: '.style-page .m-display', why: '.why-page .m-display', 'polymer-prototype': '.poly-page', 'frontier-prototype': '.frontier-page', 'beyond-prototype': '.beyond-page', 'signature-prototype': '.sig-page', 'cutaway-prototype': '.cw-page', 'material-finishes': '.mf-cards',
   light: '.light-page[data-page-ready="true"] .light-masthead-title',
   postcard: '.light-page[data-page-ready="true"] .postcard-hero-holder',
   'review-notes': '.rn-page', 'tear-planner': '.tp-stage',
@@ -66,7 +66,7 @@ try {
       await page.evaluate(() => document.fonts.ready)
       const selected = await page.evaluate(async ({ scene, candidate }) => {
         const { demoFor } = await import('/src/components/sceneCatalog.ts')
-        const titles = { home: 'Munari · Live HTML in 3D', style: 'Style guide · Munari', why: 'Why Munari · Munari', 'polymer-prototype': 'Polymer prototype · Munari', 'frontier-prototype': 'Frontier prototypes · Munari', 'beyond-prototype': 'Beyond flat UI · Munari', 'signature-prototype': 'Signature prototypes · Munari' }
+        const titles = { home: 'Munari · Live HTML in 3D', style: 'Style guide · Munari', why: 'Why Munari · Munari', 'polymer-prototype': 'Polymer prototype · Munari', 'frontier-prototype': 'Frontier prototypes · Munari', 'beyond-prototype': 'Beyond flat UI · Munari', 'signature-prototype': 'Signature prototypes · Munari', 'material-finishes': 'Material finishes · Munari' }
         const expectedTitle = titles[scene] ?? `${demoFor(scene)?.title ?? scene} · Munari`
         return {
           title: document.title, expectedTitle,
