@@ -6,20 +6,18 @@
 // which are not on the mesh, because either one places hardware where the
 // content is about to be rather than where it is.
 //
-// Position comes from the geometry, not from the plane the geometry
-// usually is: the same UV on a deformed sheet is somewhere plane math
-// cannot name, and an object placed by plane math floats off a sheet the
-// moment it bends.
+// The scene group that places those children, and the geometry sampling
+// that puts it there, live in SurfaceAnchorGroup.tsx so a page that declares an
+// anchor loads no three code before a canvas mounts.
 //
-// Ownership: this component owns its key's subscription and the transform
-// it puts on its group. It owns no receipt, no paint, and no texture.
+// Ownership: this component owns its key's subscription. It owns no receipt,
+// no paint, no texture, and no transform: SurfaceAnchorGroup places the group.
 
-import { createContext, use, useEffect, useMemo, useRef, useState } from 'react'
-import { useFrame } from '@react-three/fiber'
-import * as THREE from 'three'
-import { sampleUvPosition, type SourceUvRect } from '@munari/core'
+import { createContext, use, useEffect, useMemo, useState } from 'react'
+import type { SourceUvRect } from '@munari/core'
 import { useSurfaceAnchorContext } from './surfaceAnchorScope'
 import { useSurfacePart } from './surfaceContext'
+import { SceneAnchorGroup } from './surfaceSceneLookup'
 
 export interface SurfaceAnchorProps {
   /** The `data-munari-anchor` value this stands on. */
@@ -43,16 +41,7 @@ export interface SurfaceAnchorBox {
   readonly uv: SourceUvRect
 }
 
-const UP = new THREE.Vector3(0, 0, 1)
-const NORMAL = new THREE.Vector3()
-
-type GeometryAttribute = THREE.BufferAttribute | THREE.InterleavedBufferAttribute
-
-function attributeVersion(attribute: GeometryAttribute): number {
-  return attribute instanceof THREE.InterleavedBufferAttribute ? attribute.data.version : attribute.version
-}
-
-const SurfaceAnchorBoxContext = createContext<SurfaceAnchorBox | null>(null)
+export const SurfaceAnchorBoxContext = createContext<SurfaceAnchorBox | null>(null)
 
 /**
  * The box this anchor stands on. `cssWidth`/`cssHeight` are the captured CSS
@@ -86,104 +75,14 @@ export function SurfaceAnchor({ name, offset = 0, children }: SurfaceAnchorProps
 
   if (!box || !placed) return null
   return (
-    <AnchorGroup
+    <SceneAnchorGroup
       u={placed.u}
       v={placed.v}
       offset={offset}
       rect={box}
     >
       {children}
-    </AnchorGroup>
-  )
-}
-
-/**
- * The transform, resolved against the presenter's actual geometry.
- *
- * Split out so the sampling runs in a mounted group with a parent to read —
- * the geometry lives on the mesh above, and there is no other way to reach
- * it that does not make every caller pass a ref down.
- */
-function AnchorGroup({
-  u,
-  v,
-  offset,
-  rect,
-  children,
-}: {
-  u: number
-  v: number
-  offset: number
-  rect: SourceUvRect
-  children?: React.ReactNode
-}) {
-  const [group, setGroup] = useState<THREE.Group | null>(null)
-  // UVs and triangle indices can move an anchor without changing positions.
-  // Replaced attributes can also restart at the same upload version.
-  const placedRef = useRef<{
-    position: GeometryAttribute
-    positionVersion: number
-    uvs: GeometryAttribute
-    uvVersion: number
-    index: THREE.BufferAttribute | null
-    indexVersion: number
-    u: number
-    v: number
-    offset: number
-  } | null>(null)
-  useFrame(() => {
-    if (!group) return
-    const mesh = group.parent
-    if (!(mesh instanceof THREE.Mesh)) return
-    const position = mesh.geometry.getAttribute('position')
-    const uvs = mesh.geometry.getAttribute('uv')
-    if (!position || !uvs) return
-    const index = mesh.geometry.getIndex()
-    const positionVersion = attributeVersion(position)
-    const uvVersion = attributeVersion(uvs)
-    const indexVersion = index?.version ?? 0
-    const last = placedRef.current
-    if (
-      last &&
-      last.position === position &&
-      last.positionVersion === positionVersion &&
-      last.uvs === uvs &&
-      last.uvVersion === uvVersion &&
-      last.index === index &&
-      last.indexVersion === indexVersion &&
-      last.u === u &&
-      last.v === v &&
-      last.offset === offset
-    ) {
-      return
-    }
-    const sample = sampleUvPosition(
-      position.array,
-      uvs.array,
-      index?.array ?? null,
-      u,
-      v,
-    )
-    if (!sample) return
-    placedRef.current = { position, positionVersion, uvs, uvVersion, index, indexVersion, u, v, offset }
-    group.position.set(
-      sample.x + sample.nx * offset,
-      sample.y + sample.ny * offset,
-      sample.z + sample.nz * offset,
-    )
-    NORMAL.set(sample.nx, sample.ny, sample.nz)
-    group.quaternion.setFromUnitVectors(UP, NORMAL)
-  })
-
-  const box = useMemo<SurfaceAnchorBox>(
-    () => ({ cssWidth: rect.cssWidth, cssHeight: rect.cssHeight, uv: rect }),
-    [rect],
-  )
-
-  return (
-    <group ref={setGroup}>
-      <SurfaceAnchorBoxContext value={box}>{children}</SurfaceAnchorBoxContext>
-    </group>
+    </SceneAnchorGroup>
   )
 }
 

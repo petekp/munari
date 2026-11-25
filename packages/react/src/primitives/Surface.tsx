@@ -3,12 +3,11 @@
 import { createContext, use, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type CSSProperties } from 'react'
 import { createNativePointerRig, matchMotion, nativeRideStyle, pixelGridSnap, clampScale, zIndexAbove, type NativePointerRig, type SurfaceChrome, type SurfacePartId } from '@munari/core'
 import { SurfaceRoot as SurfaceController, type SurfaceIdentityProps } from './surface/SurfaceRoot'
-import { SurfaceMesh } from './surface/SurfaceMesh'
+import { SurfaceMesh } from './surface/SurfaceMeshDeclaration'
 import { SurfacePart } from './surface/SurfacePart'
 import { SurfaceScene as SurfaceSceneBoundary } from './surface/SurfaceScene'
 import { SurfaceAnchor } from './surface/SurfaceAnchor'
-import { SurfaceLitMaterial } from './surface/surfaceMaterials'
-import { SurfacePrewarm } from './surface/SurfacePrewarm'
+import { SceneLitMaterial, ScenePrewarm } from './surface/surfaceSceneLookup'
 import { SceneContribution } from './surface/SurfaceSceneContribution'
 import { SurfaceRootContext, SurfacePartContext, DEFAULT_PART } from './surface/surfaceContext'
 import { surfaceStoreOf, useSurfaceHandle, type SurfaceHandle } from './surface/surfaceHandle'
@@ -436,8 +435,8 @@ export const Surface = Object.assign(BasicSurface, {
   Scene: SurfaceScene,
   Mesh: SurfaceMesh,
   Anchor: SurfaceAnchor,
-  LitMaterial: SurfaceLitMaterial,
-  Prewarm: SurfacePrewarm,
+  LitMaterial: SceneLitMaterial,
+  Prewarm: ScenePrewarm,
 })
 
 function useViewCallbacks(controls: SurfaceControls) {
@@ -479,6 +478,6 @@ export const SceneSurface = Object.assign(BasicSceneSurface, {
   Mesh: SurfaceMesh,
   Scene: SurfaceScene,
   Anchor: SurfaceAnchor,
-  LitMaterial: SurfaceLitMaterial,
-  Prewarm: SurfacePrewarm,
+  LitMaterial: SceneLitMaterial,
+  Prewarm: ScenePrewarm,
 })

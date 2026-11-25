@@ -48,7 +48,7 @@ import { useSurfaceDevicePixelRatio } from './surfaceDevicePixelRatio'
 import { watchSurfacePlacement } from './surfacePlacement'
 import { surfaceCanvasPixelRatio, surfaceCanvasDisplayScale, counterSurfaceCanvasScale } from './surfacePixelDensity'
 import { useLatest } from '../useLatest'
-import { SurfaceHostContext } from './surfaceHostContext'
+import { SurfaceHostScope } from './surfaceHostScope'
 import { CanvasPointerGate } from '../CanvasPointerGate'
 import { GLSL_SCAN_INTERVAL_MS, reportGlslInScene } from './glslMaterial'
 import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
@@ -631,7 +631,7 @@ export function SurfaceCanvas({
   return (
     <>
       <SurfaceOutwardSources host={host} />
-      <SurfaceHostContext value={host}>
+      <SurfaceHostScope host={host}>
         <RendererStartBoundary key={rendererMount}>
           <Canvas
             {...canvasProps}
@@ -656,7 +656,7 @@ export function SurfaceCanvas({
             {pointerMode === 'surfaces' ? <SurfacePointerBridge host={host} /> : null}
           </Canvas>
         </RendererStartBoundary>
-      </SurfaceHostContext>
+      </SurfaceHostScope>
       {showFallback ? fallback : null}
     </>
   )

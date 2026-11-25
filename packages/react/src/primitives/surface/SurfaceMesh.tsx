@@ -1,4 +1,4 @@
-// <Surface.Mesh> — one scene presentation of an HTML source.
+// Surface presenter — the mesh that draws one scene presentation of an HTML source.
 //
 // The law: a warming presenter DRAWS, it does not hide. Several independent
 // handoffs composite in one Canvas, so the old trick — hide the canvas
@@ -15,6 +15,9 @@
 // A write-free pass proves warm-up only (`warm-up` in `presentationRoute`);
 // only a color-writing pass releases the page. The before hook records the
 // pass configuration; the after hook confirms primitives actually drew.
+//
+// The public <Surface.Mesh> that decides where this presenter renders is
+// SurfaceMeshDeclaration.tsx, which page code can import without three.
 //
 // Ownership: this component owns the mesh, the default material, the
 // raycast region, pointer relay, LOD demand, and presentation evidence. It
@@ -73,12 +76,8 @@ import { registerSurfacePlane, createSurfaceRoute, type SurfaceRouteRelayDuties 
 import { suspendCameraControls } from '../cameraControls'
 import { useLatest } from '../useLatest'
 import {
-  DEFAULT_PART,
-  SurfaceHandleContext,
   SurfaceMaterialContext,
   SurfacePartContext,
-  SurfaceRootContext,
-  SurfaceTunnelContext,
   type SurfaceMaterialValue,
   type SurfacePartValue,
 } from './surfaceContext'
@@ -106,9 +105,8 @@ import {
   matchDomTransform,
   reportUnmatchableChain,
 } from './matchDom'
-import { surfaceStoreOf, type SurfaceHandle, type SurfaceStore } from './surfaceHandle'
+import type { SurfaceHandle, SurfaceStore } from './surfaceHandle'
 import { useSurfaceHostContext } from './surfaceHostContext'
-import { useCanvasPresence } from './SurfaceScene'
 import { createSurfaceFrameChannel, readSurfaceFrameState, SurfaceFrameContext, surfaceBelongsToScene } from './surfaceFrame'
 
 export type SurfaceRadius =
@@ -228,69 +226,13 @@ const _surfScale = new THREE.Vector3()
 const _drawingSize = new THREE.Vector2()
 const _viewport = new THREE.Vector4()
 
-/**
- * One presentation of a Surface.
- *
- * Declared in a scene tree it renders where it stands. Declared in a page
- * tree it renders NOTHING there and registers inward instead, because a
- * mesh cannot exist in the DOM reconciler — the host renders it inside the
- * Canvas, with the store and part passed as props rather than through a
- * context the two trees do not share.
- */
-export function SurfaceMesh({ surface, part, ...props }: SurfaceMeshProps) {
-  const root = use(SurfaceRootContext)
-  const inheritedPart = use(SurfacePartContext)
-  const tunneled = use(SurfaceTunnelContext)
-  const store = surface ? surfaceStoreOf(surface) : (root?.store ?? null)
-  if (!store) {
-    throw new Error(
-      'munari: <Surface.Mesh> found no Surface. Put it inside a <Surface>, or ' +
-        'pass the handle it presents as `surface={…}` for separated wiring.',
-    )
-  }
-  const controllerActive = root?.store === store ? root.controllerActive : true
-  const partId = part ?? inheritedPart?.id ?? DEFAULT_PART
-  const registerKey = useMemo(() => `inward-${presenterSeq++}`, [])
-  const host = root?.host ?? null
-  const mounted = useCanvasPresence(store)
-  const handleValue = useMemo(() => ({ handle: store.handle, store }), [store])
-  useEffect(() => {
-    if (controllerActive) return store.declarePresentation('canvas')
-  }, [store, controllerActive])
-
-  // A page-declared presentation is registered, not rendered. The element
-  // is rebuilt on every render so prop changes reach the scene, and the
-  // registry keys it stably so the host reconciles rather than remounts —
-  // a remount here would drop the presenter's readiness proof and hang the
-  // handoff it was in the middle of.
-  const inward = root !== null && root.wiring === 'page' && !tunneled
-  const element = (
-    <SurfaceHandleContext value={handleValue}>
-      <SurfaceTunnelContext value>
-        <SurfacePresenter {...props} store={store} partId={partId} tunneled />
-      </SurfaceTunnelContext>
-    </SurfaceHandleContext>
-  )
-  useEffect(() => {
-    if (!inward || !host || !mounted || !controllerActive) return
-    return host.registerPresenter({ key: registerKey, element })
-  })
-
-  if (inward || !mounted || !controllerActive) return null
-  return (
-    <SurfaceHandleContext value={handleValue}>
-      <SurfacePresenter {...props} store={store} partId={partId} tunneled={tunneled} />
-    </SurfaceHandleContext>
-  )
-}
-
 /** A pointer arrival in a Surface's own texture coordinates. */
 interface ArrivalUv {
   u: number
   v: number
 }
 
-interface PresenterProps extends Omit<SurfaceMeshProps, 'surface' | 'part'> {
+export interface PresenterProps extends Omit<SurfaceMeshProps, 'surface' | 'part'> {
   store: SurfaceStore
   partId: SurfacePartId
   /** True when the host renders this on behalf of a page declaration. */
@@ -315,7 +257,7 @@ function readRuntimeFacts(part: SurfacePartPublication | null) {
   }
 }
 
-function SurfacePresenter({
+export function SurfacePresenter({
   store,
   partId,
   sampledParts = [],

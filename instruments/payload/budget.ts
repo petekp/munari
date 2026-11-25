@@ -3,7 +3,7 @@
 // An entry passes while its gzip size stays at or under the recorded size plus
 // its margin. The margin absorbs a dependency's patch release; a change in
 // what an entry imports moves the size by far more than any margin recorded
-// in budgets.json (instruments/README.md, payload budget).
+// in budgets.json (instruments/payload/README.md).
 
 export interface EntryBudget {
   name: string
