@@ -10,10 +10,22 @@
 // material with no React render (the polymer prototype's pattern).
 
 import { NO_LOBES, type Finish, type FinishId } from './materialFinishesFinish'
-import { FINISH_LOOKS, FOIL_HOLOGRAPHIC, PAPER_OFFICE, RUBBER_BLACK, WAX_CANDLE, type FinishLook } from './materialFinishesLooks'
+import {
+  FOIL_HOLOGRAPHIC,
+  FOIL_OIL_SLICK,
+  FOIL_CRUMPLED,
+  PAPER_OFFICE,
+  PAPER_KRAFT,
+  PAPER_COLD_PRESS,
+  RUBBER_BLACK,
+  RUBBER_GRIP,
+  RUBBER_SILICONE,
+  WAX_CANDLE,
+  WAX_BEESWAX,
+  WAX_SILICONE,
+} from './materialFinishesPresets'
 
 export type { Finish, FinishId, SurfaceDetail, TextLighting } from './materialFinishesFinish'
-export type { FinishLook } from './materialFinishesLooks'
 
 // Lobe values follow the MaterialX example presets (Apache-2.0) at
 // github.com/AcademySoftwareFoundation/MaterialX, resources/Materials/
@@ -114,10 +126,18 @@ export const FINISHES: Readonly<Record<FinishId, Readonly<Finish>>> = Object.fre
     crackle: 0.2,
     crackleScale: 90,
   }),
-  'thin-film-foil': FOIL_HOLOGRAPHIC,
-  paper: PAPER_OFFICE,
-  'soft-touch-rubber': RUBBER_BLACK,
-  'translucent-wax': WAX_CANDLE,
+  'thin-film-foil-holographic': FOIL_HOLOGRAPHIC,
+  'thin-film-foil-oil-slick': FOIL_OIL_SLICK,
+  'thin-film-foil-crumpled': FOIL_CRUMPLED,
+  'paper-office': PAPER_OFFICE,
+  'paper-kraft': PAPER_KRAFT,
+  'paper-cold-press': PAPER_COLD_PRESS,
+  'soft-touch-rubber-black': RUBBER_BLACK,
+  'soft-touch-rubber-grip': RUBBER_GRIP,
+  'soft-touch-rubber-silicone': RUBBER_SILICONE,
+  'translucent-wax-candle': WAX_CANDLE,
+  'translucent-wax-beeswax': WAX_BEESWAX,
+  'translucent-wax-silicone': WAX_SILICONE,
 })
 
 export const FINISH_ORDER: readonly { readonly id: FinishId; readonly label: string }[] = [
@@ -126,10 +146,18 @@ export const FINISH_ORDER: readonly { readonly id: FinishId; readonly label: str
   { id: 'anodized-aluminum', label: 'Anodized aluminum' },
   { id: 'velvet', label: 'Velvet' },
   { id: 'glazed-ceramic', label: 'Glazed ceramic' },
-  { id: 'thin-film-foil', label: 'Thin-film foil' },
-  { id: 'paper', label: 'Paper' },
-  { id: 'soft-touch-rubber', label: 'Soft-touch rubber' },
-  { id: 'translucent-wax', label: 'Translucent wax' },
+  { id: 'thin-film-foil-holographic', label: 'Holographic foil' },
+  { id: 'thin-film-foil-oil-slick', label: 'Oil-slick foil' },
+  { id: 'thin-film-foil-crumpled', label: 'Crumpled foil' },
+  { id: 'paper-office', label: 'Office paper' },
+  { id: 'paper-kraft', label: 'Kraft paper' },
+  { id: 'paper-cold-press', label: 'Cold-press paper' },
+  { id: 'soft-touch-rubber-black', label: 'Black soft-touch' },
+  { id: 'soft-touch-rubber-grip', label: 'Orange grip rubber' },
+  { id: 'soft-touch-rubber-silicone', label: 'Sage silicone rubber' },
+  { id: 'translucent-wax-candle', label: 'Candle wax' },
+  { id: 'translucent-wax-beeswax', label: 'Beeswax' },
+  { id: 'translucent-wax-silicone', label: 'Coral silicone' },
 ]
 
 export function isFinishId(value: string | null): value is FinishId {
@@ -175,35 +203,25 @@ export const FINISH_STUDIOS: Readonly<Record<FinishId, FinishStudio>> = Object.f
   'anodized-aluminum': { environment: 'even' },
   velvet: { studio: Object.freeze({ environmentIntensity: 1.4, lightPower: 5, rimPower: 1.5 }), environment: 'even' },
   'glazed-ceramic': { environment: 'gradient' },
-  'thin-film-foil': { environment: 'even' },
-  paper: { environment: 'even' },
-  'soft-touch-rubber': { environment: 'even' },
-  'translucent-wax': { environment: 'even' },
+  'thin-film-foil-holographic': { environment: 'even' },
+  'thin-film-foil-oil-slick': { environment: 'even' },
+  'thin-film-foil-crumpled': { environment: 'even' },
+  'paper-office': { environment: 'even' },
+  'paper-kraft': { environment: 'even' },
+  'paper-cold-press': { environment: 'even' },
+  'soft-touch-rubber-black': { environment: 'even' },
+  'soft-touch-rubber-grip': { environment: 'even' },
+  'soft-touch-rubber-silicone': { environment: 'even' },
+  'translucent-wax-candle': { environment: 'even' },
+  'translucent-wax-beeswax': { environment: 'even' },
+  'translucent-wax-silicone': { environment: 'even' },
 })
-
-/** The looks of a finish; a settled finish has one, its tuned values. */
-export function looksOf(finish: FinishId): readonly FinishLook[] {
-  return FINISH_LOOKS[finish] ?? [{ id: 'tuned', label: 'Tuned', intent: '', finish: FINISHES[finish], studio: FINISH_STUDIOS[finish] }]
-}
-
-/** Whether a finish has more than one look to choose between. */
-export function hasLookChoice(finish: FinishId): boolean {
-  return looksOf(finish).length > 1
-}
-
-/** A finish's look by id, or its first look. */
-export function lookOf(finish: FinishId, id: string | null | undefined): FinishLook {
-  const looks = looksOf(finish)
-  const found = looks.find((look) => look.id === id) ?? looks[0]
-  if (!found) throw new Error(`The ${finish} finish has no looks`)
-  return found
-}
 
 export const liveFinish: Finish = { ...FINISHES.lacquer }
 
-/** Load a finish's tuned values, or one of its looks', into the live copy. */
-export function applyFinish(finish: FinishId, look?: string | null): void {
-  Object.assign(liveFinish, lookOf(finish, look).finish)
+/** Load a finish's tuned values into the live copy. */
+export function applyFinish(finish: FinishId): void {
+  Object.assign(liveFinish, FINISHES[finish])
   notifyFinishTuning()
 }
 
@@ -301,15 +319,15 @@ const STUDIO_START: Readonly<Record<LightRig, Readonly<StudioTuning>>> = Object.
 
 export const studio: StudioTuning = { ...STUDIO_START.softbox }
 
-/** Start the studio at a rig's values and a finish's or look's, key position included. Does not notify. */
-export function startStudio(rig: LightRig, finish: FinishId, look?: string | null): void {
-  Object.assign(studio, STUDIO_START[rig], lookOf(finish, look).studio.studio)
+/** Start the studio at a rig's values and a finish's, key position included. Does not notify. */
+export function startStudio(rig: LightRig, finish: FinishId): void {
+  Object.assign(studio, STUDIO_START[rig], FINISH_STUDIOS[finish].studio)
 }
 
-/** Restart the studio at a rig's values and a finish's or look's, keeping the key where it was dragged. */
-export function applyStudio(rig: LightRig, finish: FinishId, look?: string | null): void {
+/** Restart the studio at a rig's values and a finish's, keeping the key where it was dragged. */
+export function applyStudio(rig: LightRig, finish: FinishId): void {
   const { lightX, lightY } = studio
-  Object.assign(studio, STUDIO_START[rig], lookOf(finish, look).studio.studio, { lightX, lightY })
+  Object.assign(studio, STUDIO_START[rig], FINISH_STUDIOS[finish].studio, { lightX, lightY })
   notifyFinishTuning()
 }
 

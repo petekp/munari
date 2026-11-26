@@ -126,7 +126,7 @@ function ColorField({ name, label }: { readonly name: FinishColor; readonly labe
   )
 }
 
-export function MaterialFinishesTweaks({ finish, look, rig }: { readonly finish: FinishId; readonly look: string; readonly rig: LightRig }) {
+export function MaterialFinishesTweaks({ finish, rig }: { readonly finish: FinishId; readonly rig: LightRig }) {
   const [, bump] = useState(0)
   useEffect(() => subscribeFinishTuning(() => bump((n) => n + 1)), [])
 
@@ -147,7 +147,7 @@ export function MaterialFinishesTweaks({ finish, look, rig }: { readonly finish:
       <TuningGroup title="colors" initialState="open">
         <ColorField name="color" label="Body" />
         <ColorField name="sheenColor" label="Sheen" />
-        <Button compact variant="outline" onClick={() => applyFinish(finish, look)}>
+        <Button compact variant="outline" onClick={() => applyFinish(finish)}>
           Reset finish
         </Button>
       </TuningGroup>

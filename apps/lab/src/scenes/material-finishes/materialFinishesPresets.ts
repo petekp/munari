@@ -1,14 +1,14 @@
-// Material finishes looks — the candidate values for the four newest
-// finishes, three looks each, to compare side by side.
+// Material finishes presets — the four newest finish families, three
+// presets each, and the families the compare page shows side by side.
 //
-// A look pairs a finish's values with the studio it is judged in. Each
-// finish's first look is its entry in FINISHES.
+// Each preset is a finish of its own, listed in FINISHES, FINISH_ORDER and
+// FINISH_STUDIOS by its id. A family groups the presets of one material so
+// they can be judged against each other under the same rig.
 //
-// Ownership: this module holds the candidate values. materialFinishesTuning
-// resolves a finish's looks and loads one into the live copy.
+// Ownership: this module holds the preset values and the families.
+// materialFinishesTuning lists each preset as a finish.
 
 import { NO_LOBES, type Finish, type FinishId } from './materialFinishesFinish'
-import type { FinishStudio } from './materialFinishesTuning'
 
 // A foil is a metal sheet under a thin film. The film is three's
 // thin-film model (Belcour and Barla 2017); the material applies it to the
@@ -171,109 +171,62 @@ export const WAX_SILICONE: Readonly<Finish> = Object.freeze({
   edgeWidth: 32,
 })
 
-/** One way to show a finish: its values and the studio it is judged in. */
-export interface FinishLook {
-  readonly id: string
-  readonly label: string
-  /** What the look is after, in one sentence. */
+/** One preset in a family, with what it is after in one sentence. */
+export interface FamilyPreset {
+  readonly id: FinishId
   readonly intent: string
-  readonly finish: Readonly<Finish>
-  readonly studio: FinishStudio
 }
 
-// The four newest finishes have looks to choose between. A finish's first
-// look is its entry in FINISHES and FINISH_STUDIOS.
-export const FINISH_LOOKS: Readonly<Partial<Record<FinishId, readonly FinishLook[]>>> = Object.freeze({
-  'thin-film-foil': [
-    {
-      id: 'holographic',
-      label: 'Holographic silver',
-      intent: 'Silver foil under a film that thins in fine bands, so each card carries a rainbow that shifts as the light moves.',
-      finish: FOIL_HOLOGRAPHIC,
-      studio: { environment: 'even' },
-    },
-    {
-      id: 'oil-slick',
-      label: 'Oil slick',
-      intent: 'Dark gunmetal under a thick film in broad swirls of violet, teal and gold.',
-      finish: FOIL_OIL_SLICK,
-      studio: { environment: 'even' },
-    },
-    {
-      id: 'crumpled',
-      label: 'Crumpled wrapper',
-      intent: 'Iridescent wrapper foil crumpled into flat facets, each catching the light and the film at its own angle.',
-      finish: FOIL_CRUMPLED,
-      studio: { environment: 'even' },
-    },
-  ],
-  paper: [
-    {
-      id: 'office',
-      label: 'Office paper',
-      intent: 'Bright white sheet stock with fine fibers and a crisp cut edge.',
-      finish: PAPER_OFFICE,
-      studio: { environment: 'even' },
-    },
-    {
-      id: 'kraft',
-      label: 'Kraft',
-      intent: 'Brown unbleached kraft paper whose darker fibers show across the sheet.',
-      finish: PAPER_KRAFT,
-      studio: { environment: 'even' },
-    },
-    {
-      id: 'cold-press',
-      label: 'Cold-press',
-      intent: 'Cream watercolor paper with a heavy tooth that catches the light.',
-      finish: PAPER_COLD_PRESS,
-      studio: { environment: 'even' },
-    },
-  ],
-  'soft-touch-rubber': [
-    {
-      id: 'black',
-      label: 'Black soft-touch',
-      intent: 'The dead-matte black coating of a remote or a mouse, with a soft gray sheen at grazing angles over a thick molded edge.',
-      finish: RUBBER_BLACK,
-      studio: { environment: 'even' },
-    },
-    {
-      id: 'grip',
-      label: 'Orange grip',
-      intent: 'Safety-orange rubber molded with a grid of raised grip dots.',
-      finish: RUBBER_GRIP,
-      studio: { environment: 'even' },
-    },
-    {
-      id: 'silicone',
-      label: 'Sage silicone',
-      intent: 'Soft sage silicone rubber over a wide pillowed edge, with a faint fuzz at grazing angles.',
-      finish: RUBBER_SILICONE,
-      studio: { environment: 'even' },
-    },
-  ],
-  'translucent-wax': [
-    {
-      id: 'candle',
-      label: 'Candle wax',
-      intent: 'Ivory paraffin whose light leaks out pale and warm through the thin rounded edge.',
-      finish: WAX_CANDLE,
-      studio: { environment: 'even' },
-    },
-    {
-      id: 'beeswax',
-      label: 'Beeswax',
-      intent: 'A rolled beeswax sheet embossed with honeycomb cells, glowing golden where it thins over the edge.',
-      finish: WAX_BEESWAX,
-      studio: { environment: 'even' },
-    },
-    {
-      id: 'silicone',
-      label: 'Coral silicone',
-      intent: 'Glossy translucent coral silicone, like a phone case, glowing pink through a wide edge.',
-      finish: WAX_SILICONE,
-      studio: { environment: 'even' },
-    },
-  ],
-})
+/** The presets of one material, compared side by side. */
+export interface FinishFamily {
+  readonly id: string
+  readonly label: string
+  readonly presets: readonly FamilyPreset[]
+}
+
+export const FINISH_FAMILIES: readonly FinishFamily[] = [
+  {
+    id: 'thin-film-foil',
+    label: 'Thin-film foil',
+    presets: [
+      { id: 'thin-film-foil-holographic', intent: 'Silver foil under a film that thins in fine bands, so each card carries a rainbow that shifts as the light moves.' },
+      { id: 'thin-film-foil-oil-slick', intent: 'Dark gunmetal under a thick film in broad swirls of violet, teal and gold.' },
+      { id: 'thin-film-foil-crumpled', intent: 'Iridescent wrapper foil crumpled into flat facets, each catching the light and the film at its own angle.' },
+    ],
+  },
+  {
+    id: 'paper',
+    label: 'Paper',
+    presets: [
+      { id: 'paper-office', intent: 'Bright white sheet stock with fine fibers and a crisp cut edge.' },
+      { id: 'paper-kraft', intent: 'Brown unbleached kraft paper whose darker fibers show across the sheet.' },
+      { id: 'paper-cold-press', intent: 'Cream watercolor paper with a heavy tooth that catches the light.' },
+    ],
+  },
+  {
+    id: 'soft-touch-rubber',
+    label: 'Soft-touch rubber',
+    presets: [
+      { id: 'soft-touch-rubber-black', intent: 'The dead-matte black coating of a remote or a mouse, with a soft gray sheen at grazing angles over a thick molded edge.' },
+      { id: 'soft-touch-rubber-grip', intent: 'Safety-orange rubber molded with a grid of raised grip dots.' },
+      { id: 'soft-touch-rubber-silicone', intent: 'Soft sage silicone rubber over a wide pillowed edge, with a faint fuzz at grazing angles.' },
+    ],
+  },
+  {
+    id: 'translucent-wax',
+    label: 'Translucent wax',
+    presets: [
+      { id: 'translucent-wax-candle', intent: 'Ivory paraffin whose light leaks out pale and warm through the thin rounded edge.' },
+      { id: 'translucent-wax-beeswax', intent: 'A rolled beeswax sheet embossed with honeycomb cells, glowing golden where it thins over the edge.' },
+      { id: 'translucent-wax-silicone', intent: 'Glossy translucent coral silicone, like a phone case, glowing pink through a wide edge.' },
+    ],
+  },
+]
+
+export function familyOf(id: string | null): FinishFamily | undefined {
+  return FINISH_FAMILIES.find((family) => family.id === id)
+}
+
+export function familyOfFinish(finish: FinishId): FinishFamily | undefined {
+  return FINISH_FAMILIES.find((family) => family.presets.some((preset) => preset.id === finish))
+}

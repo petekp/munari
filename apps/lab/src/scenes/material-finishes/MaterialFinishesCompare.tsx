@@ -1,15 +1,16 @@
-// Look comparison — each of one finish's looks in its own live frame, side
-// by side, so the looks can be judged against each other under the same
-// rig (?scene=material-finishes&compare=<finish id>&text=&light=).
+// Preset comparison — each preset of one material in its own live frame,
+// side by side, so the presets can be judged against each other under the
+// same rig (?scene=material-finishes&compare=<family id>&text=&light=).
 //
-// The law: a look sets studio values and the environment along with the
-// finish, and the page has one studio, so the looks cannot share a canvas.
+// The law: a preset sets studio values and the environment along with the
+// finish, and the page has one studio, so the presets cannot share a canvas.
 // Each frame is a full 1440×900 copy of the scene without its controls,
 // scaled to half size, which keeps the cards' layout and the light's
 // placement the same as the full page.
 
 import { useEffect } from 'react'
-import { FINISH_ORDER, hasLookChoice, isLightRig, looksOf, type FinishId } from './materialFinishesTuning'
+import { FINISH_FAMILIES, type FinishFamily } from './materialFinishesPresets'
+import { FINISH_ORDER, isLightRig } from './materialFinishesTuning'
 
 // The scene's layout and light placement are tuned at this viewport.
 const FRAME_WIDTH = 1440
@@ -20,12 +21,11 @@ function sceneQuery(entries: Record<string, string>): string {
   return `?${new URLSearchParams({ scene: 'material-finishes', ...entries })}`
 }
 
-export function MaterialFinishesCompare({ finish, onReady }: { readonly finish: FinishId; readonly onReady?: () => void }) {
+export function MaterialFinishesCompare({ family, onReady }: { readonly family: FinishFamily; readonly onReady?: () => void }) {
   const params = new URLSearchParams(window.location.search)
   const text = params.get('text') === 'lit' ? 'lit' : 'unlit'
   const lightParam = params.get('light')
   const light = isLightRig(lightParam) ? lightParam : 'softbox'
-  const label = FINISH_ORDER.find((item) => item.id === finish)?.label ?? finish
 
   useEffect(() => {
     requestAnimationFrame(() => onReady?.())
@@ -34,10 +34,10 @@ export function MaterialFinishesCompare({ finish, onReady }: { readonly finish: 
   return (
     <div className="mf-compare">
       <header className="mf-compare-header">
-        <h1 className="mf-compare-title">{label}: {looksOf(finish).length} looks</h1>
-        <nav className="mf-compare-nav" aria-label="Finish">
-          {FINISH_ORDER.filter((item) => hasLookChoice(item.id)).map((item) => (
-            <a key={item.id} href={sceneQuery({ compare: item.id, text, light })} aria-current={item.id === finish ? 'page' : undefined}>
+        <h1 className="mf-compare-title">{family.label}: {family.presets.length} presets</h1>
+        <nav className="mf-compare-nav" aria-label="Material">
+          {FINISH_FAMILIES.map((item) => (
+            <a key={item.id} href={sceneQuery({ compare: item.id, text, light })} aria-current={item.id === family.id ? 'page' : undefined}>
               {item.label}
             </a>
           ))}
@@ -47,13 +47,14 @@ export function MaterialFinishesCompare({ finish, onReady }: { readonly finish: 
         </p>
       </header>
       <div className="mf-compare-grid">
-        {looksOf(finish).map((look) => {
-          const full = sceneQuery({ finish, look: look.id, text, light })
+        {family.presets.map((preset) => {
+          const label = FINISH_ORDER.find((item) => item.id === preset.id)?.label ?? preset.id
+          const full = sceneQuery({ finish: preset.id, text, light })
           return (
-            <figure key={look.id} className="mf-compare-item">
+            <figure key={preset.id} className="mf-compare-item">
               <div className="mf-compare-frame" style={{ width: FRAME_WIDTH * FRAME_SCALE, height: FRAME_HEIGHT * FRAME_SCALE }}>
                 <iframe
-                  title={`${label}, ${look.label}`}
+                  title={label}
                   src={`${full}&bare`}
                   width={FRAME_WIDTH}
                   height={FRAME_HEIGHT}
@@ -61,8 +62,8 @@ export function MaterialFinishesCompare({ finish, onReady }: { readonly finish: 
                 />
               </div>
               <figcaption>
-                <a href={full}>{look.label}</a> <code>look={look.id}</code>
-                <span>{look.intent}</span>
+                <a href={full}>{label}</a> <code>finish={preset.id}</code>
+                <span>{preset.intent}</span>
               </figcaption>
             </figure>
           )

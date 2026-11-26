@@ -1,10 +1,10 @@
-// Material finishes prototype — nine physical finishes on Surfaces holding
+// Material finishes prototype — seventeen physical finishes on Surfaces holding
 // real UI cards, each with its text lit with the body or laid over it unlit,
 // under a choice of studio light rigs, flat or tilting toward the pointer
-// (?scene=material-finishes&finish=<id>&look=<id>&text=lit|unlit
+// (?scene=material-finishes&finish=<id>&text=lit|unlit
 // &light=softbox|studio-point|room&tilt=none|pointer). With
-// &compare=<finish id> the page shows each look of a finish that has
-// several side by side instead.
+// &compare=<family id> the page shows the presets of one material side by
+// side instead.
 //
 // This is shortlist item 1 of docs/materials-research.md §5. A flat card
 // under an orthographic view shows a coat, sheen or anisotropic highlight as
@@ -21,6 +21,7 @@ import { Button, Status, Tag } from '../../components/system'
 import { showChrome } from '../../bareMode'
 import { sceneUrl } from '../../captureMode'
 import { MaterialFinishesCompare } from './MaterialFinishesCompare'
+import { familyOf, familyOfFinish } from './materialFinishesPresets'
 import { FinishCard, pagePointer } from './MaterialFinishesSurface'
 import { createStudioLights, createStudioScene, lightsOf, type StudioLights } from './materialFinishesStudio'
 import { MaterialFinishesTweaks } from './MaterialFinishesTweaks'
@@ -28,13 +29,12 @@ import {
   applyFinish,
   applyStudio,
   FINISH_ORDER,
-  hasLookChoice,
+  FINISH_STUDIOS,
+  FINISHES,
   isFinishId,
   isLightRig,
   LIGHT_RIGS,
   liveFinish,
-  lookOf,
-  looksOf,
   notifyFinishTuning,
   startStudio,
   studio,
@@ -42,7 +42,6 @@ import {
   type CardTilt,
   type EnvironmentKind,
   type FinishId,
-  type FinishLook,
   type LightRig,
   type TextLighting,
 } from './materialFinishesTuning'
@@ -70,7 +69,6 @@ function keyDelta(key: string): readonly [number, number] | null {
 
 interface SceneParams {
   readonly finish: FinishId
-  readonly look: string
   readonly text: TextLighting
   readonly light: LightRig
   readonly tilt: CardTilt
@@ -80,30 +78,26 @@ function readParams(): SceneParams {
   const params = new URLSearchParams(window.location.search)
   const finish = params.get('finish')
   const light = params.get('light')
-  const finishId = isFinishId(finish) ? finish : 'lacquer'
   return {
-    finish: finishId,
-    look: lookOf(finishId, params.get('look')).id,
+    finish: isFinishId(finish) ? finish : 'lacquer',
     text: params.get('text') === 'lit' ? 'lit' : 'unlit',
     light: isLightRig(light) ? light : 'softbox',
     tilt: params.get('tilt') === 'pointer' ? 'pointer' : 'none',
   }
 }
 
-function writeParams({ finish, look, text, light, tilt }: SceneParams): void {
+function writeParams({ finish, text, light, tilt }: SceneParams): void {
   const params = new URLSearchParams(window.location.search)
   params.set('scene', 'material-finishes')
   params.set('finish', finish)
-  if (hasLookChoice(finish)) params.set('look', look)
-  else params.delete('look')
   params.set('text', text)
   params.set('light', light)
   params.set('tilt', tilt)
   window.history.replaceState(null, '', `?${params.toString()}`)
 }
 
-function compareUrl(finish: FinishId, text: TextLighting, light: LightRig): string {
-  return `?${new URLSearchParams({ scene: 'material-finishes', compare: finish, text, light })}`
+function compareUrl(family: string, text: TextLighting, light: LightRig): string {
+  return `?${new URLSearchParams({ scene: 'material-finishes', compare: family, text, light })}`
 }
 
 function StudioEnvironment({ rig, environment }: { readonly rig: LightRig; readonly environment: EnvironmentKind }) {
@@ -171,20 +165,20 @@ function PointerTracker() {
 interface CardsProps {
   readonly canvasId: SurfaceCanvasId
   readonly inScene: boolean
-  readonly look: FinishLook
+  readonly finish: FinishId
   readonly text: TextLighting
   readonly tilt: CardTilt
   readonly rig: LightRig
   readonly lights: StudioLights
 }
 
-function Cards({ canvasId, inScene, look, text, tilt, rig, lights }: CardsProps) {
+function Cards({ canvasId, inScene, finish, text, tilt, rig, lights }: CardsProps) {
   const [bag, setBag] = useState(0)
   const [name, setName] = useState('Morning take, room 2')
   const [saved, setSaved] = useState<string | null>(null)
   const [gain, setGain] = useState<'low' | 'mid' | 'high'>('mid')
   const hasCrackle = useSyncExternalStore(subscribeFinishTuning, () => liveFinish.crackle > 0)
-  const card = { canvasId, inScene, detail: look.finish.detail, hasCrackle, text, tilt, rig, lights }
+  const card = { canvasId, inScene, detail: FINISHES[finish].detail, hasCrackle, text, tilt, rig, lights }
 
   return (
     <main className="mf-cards">
@@ -240,7 +234,8 @@ function Cards({ canvasId, inScene, look, text, tilt, rig, lights }: CardsProps)
 
 export function MaterialFinishesApp({ onReady }: { readonly onReady?: () => void }) {
   const [compare] = useState(() => new URLSearchParams(window.location.search).get('compare'))
-  if (isFinishId(compare) && hasLookChoice(compare)) return <MaterialFinishesCompare finish={compare} onReady={onReady} />
+  const family = familyOf(compare)
+  if (family) return <MaterialFinishesCompare family={family} onReady={onReady} />
   return <MaterialFinishesScene onReady={onReady} />
 }
 
@@ -250,12 +245,10 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
   const initial = useState(() => {
     const params = readParams()
     // Before the first render, so the light handle draws at the start.
-    startStudio(params.light, params.finish, params.look)
+    startStudio(params.light, params.finish)
     return params
   })[0]
   const [finish, setFinish] = useState<FinishId>(initial.finish)
-  const [lookId, setLookId] = useState(initial.look)
-  const look = lookOf(finish, lookId)
   const [text, setText] = useState<TextLighting>(initial.text)
   const [rig, setRig] = useState<LightRig>(initial.light)
   const [tilt, setTilt] = useState<CardTilt>(initial.tilt)
@@ -274,9 +267,9 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
   }, [])
 
   useEffect(() => {
-    applyFinish(initial.finish, initial.look)
-    applyStudio(initial.light, initial.finish, initial.look)
-  }, [initial.finish, initial.look, initial.light])
+    applyFinish(initial.finish)
+    applyStudio(initial.light, initial.finish)
+  }, [initial.finish, initial.light])
 
   useEffect(() => {
     let alive = true
@@ -311,20 +304,12 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
     return () => cancelAnimationFrame(frame)
   }, [sweeping, moveLight])
 
-  const current: SceneParams = { finish, look: look.id, text, light: rig, tilt }
+  const current: SceneParams = { finish, text, light: rig, tilt }
   const selectFinish = (next: FinishId) => {
-    const first = lookOf(next, null)
     setFinish(next)
-    setLookId(first.id)
-    applyFinish(next, first.id)
-    applyStudio(rig, next, first.id)
-    writeParams({ ...current, finish: next, look: first.id })
-  }
-  const selectLook = (next: FinishLook) => {
-    setLookId(next.id)
-    applyFinish(finish, next.id)
-    applyStudio(rig, finish, next.id)
-    writeParams({ ...current, look: next.id })
+    applyFinish(next)
+    applyStudio(rig, next)
+    writeParams({ ...current, finish: next })
   }
   const selectText = (next: TextLighting) => {
     setText(next)
@@ -332,7 +317,7 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
   }
   const selectRig = (next: LightRig) => {
     setRig(next)
-    applyStudio(next, finish, look.id)
+    applyStudio(next, finish)
     writeParams({ ...current, light: next })
   }
   const selectTilt = (next: CardTilt) => {
@@ -357,9 +342,10 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
   }
 
   const showsScene = supported && inScene
+  const family = familyOfFinish(finish)
 
   return (
-    <div ref={pageRef} className="mf-page" data-finish={finish} data-look={look.id} data-text={text}>
+    <div ref={pageRef} className="mf-page" data-finish={finish} data-text={text}>
       {supported && (
         <SurfaceCanvas
           id={canvasId}
@@ -370,7 +356,7 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
           onCreated={({ gl }) => gl.setClearAlpha(0)}
           style={{ position: 'fixed', inset: 0, zIndex: 10 }}
         >
-          <StudioEnvironment rig={rig} environment={look.studio.environment} />
+          <StudioEnvironment rig={rig} environment={FINISH_STUDIOS[finish].environment} />
           <TuningInvalidator />
           {tilt === 'pointer' && <PointerTracker />}
           {lightsOf(rig, lights).map((light) => (
@@ -423,7 +409,7 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
       </header>
       )}
 
-      <Cards canvasId={canvasId} inScene={showsScene} look={look} text={text} tilt={tilt} rig={rig} lights={lights} />
+      <Cards canvasId={canvasId} inScene={showsScene} finish={finish} text={text} tilt={tilt} rig={rig} lights={lights} />
 
       {supported && (
         <button
@@ -442,19 +428,10 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
 
       {showChrome && (
       <footer className="mf-hud">
-        {hasLookChoice(finish) && (
-          <>
-            <div className="mf-pills" role="group" aria-label="Look">
-              {looksOf(finish).map((item) => (
-                <Button key={item.id} compact variant={look.id === item.id ? 'solid' : 'outline'} aria-pressed={look.id === item.id} onClick={() => selectLook(item)}>
-                  {item.label}
-                </Button>
-              ))}
-            </div>
-            <a className="mf-compare-link" href={compareUrl(finish, text, rig)}>
-              Compare looks
-            </a>
-          </>
+        {family && (
+          <a className="mf-compare-link" href={compareUrl(family.id, text, rig)}>
+            Compare {family.label.toLowerCase()} presets
+          </a>
         )}
         <Button compact variant={sweeping ? 'solid' : 'outline'} aria-pressed={sweeping} disabled={!showsScene} onClick={() => setSweeping((on) => !on)}>
           {sweeping ? 'Stop sweep' : 'Sweep light'}
@@ -467,7 +444,7 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
       </footer>
       )}
 
-      {showChrome && <MaterialFinishesTweaks finish={finish} look={look.id} rig={rig} />}
+      {showChrome && <MaterialFinishesTweaks finish={finish} rig={rig} />}
     </div>
   )
 }
