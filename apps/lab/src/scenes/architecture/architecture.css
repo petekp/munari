@@ -1,0 +1,342 @@
+/* Architecture guide — the layer map and its detail on paper and ink, over
+ * system.css tokens. Demo thumbnails and frames are the only color. */
+
+.arch-page {
+  position: absolute;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--m-paper);
+  color: var(--m-ink);
+  font: 400 16px/1.5 var(--m-sans);
+}
+
+.arch-header,
+.arch-page main > * {
+  box-sizing: border-box;
+  width: min(var(--m-measure), 100% - 2 * var(--m-gutter));
+  margin-inline: auto;
+}
+
+.arch-page :is(h1, h2, h3, h4, p, ol, ul) {
+  margin: 0;
+}
+
+.arch-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--m-s5);
+  padding-block: var(--m-s5);
+}
+
+.arch-logo {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
+.arch-logo .munari-logo {
+  --wordmark-base: clamp(30px, 3.4vw, 44px);
+}
+
+.arch-header nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-s5);
+}
+
+.arch-intro {
+  display: grid;
+  gap: var(--m-s5);
+  padding-block: clamp(32px, 5vw, 64px) var(--m-s7);
+}
+
+.arch-intro .m-lead {
+  max-width: 56ch;
+}
+
+/* ── layer map and detail ─────────────────────────────────── */
+
+.arch-explorer {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: var(--m-s7);
+  align-items: start;
+  padding-block: var(--m-s6) var(--m-s8);
+  border-top: 1px solid var(--m-ink);
+}
+
+.arch-map {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--m-s3);
+}
+
+.arch-stack {
+  padding: 0;
+  list-style: none;
+}
+
+.arch-layer {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: var(--m-s3);
+  width: 100%;
+  padding: var(--m-s4);
+  border: 1px solid var(--m-ink);
+  background: var(--m-paper);
+  color: var(--m-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--m-t-fast) var(--m-ease), color var(--m-t-fast) var(--m-ease);
+}
+
+.arch-layer:hover {
+  background: var(--m-field);
+}
+
+.arch-layer:focus-visible {
+  outline: 2px solid var(--m-ink);
+  outline-offset: 3px;
+}
+
+.arch-layer[aria-pressed='true'] {
+  background: var(--m-ink);
+  color: var(--m-paper);
+}
+
+.arch-layer-number {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid currentColor;
+  font: 400 13px/1 var(--m-code);
+}
+
+.arch-layer-title {
+  display: block;
+  font: 600 19px/1.25 var(--m-sans);
+}
+
+.arch-layer-summary {
+  display: block;
+  margin-top: 2px;
+  color: var(--m-quiet);
+  font: 400 14px/1.4 var(--m-sans);
+}
+
+.arch-layer[aria-pressed='true'] .arch-layer-summary {
+  color: #bdbdbd;
+}
+
+.arch-flow {
+  padding: var(--m-s2) 0 var(--m-s2) 60px;
+  color: var(--m-quiet);
+  font-family: var(--m-code);
+}
+
+.arch-return {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-block: var(--m-s4);
+  padding-inline: var(--m-s2);
+  border-left: 1px solid var(--m-ink);
+  color: var(--m-quiet);
+  font-family: var(--m-code);
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.arch-detail {
+  position: sticky;
+  top: var(--m-s5);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--m-s3);
+  min-width: 0;
+}
+
+.arch-detail .m-lead {
+  margin-bottom: var(--m-s2);
+}
+
+.arch-detail-label {
+  margin-top: var(--m-s4);
+  color: var(--m-quiet);
+  font: 600 13px/1.4 var(--m-sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.arch-api-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--m-s2);
+}
+
+.arch-api {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 2px var(--m-s2);
+  border: 1px solid var(--m-rule);
+  color: var(--m-ink);
+  font: 400 14px/1.5 var(--m-code);
+  text-decoration: none;
+}
+
+.arch-api code {
+  font: inherit;
+}
+
+a.arch-api:hover {
+  border-color: var(--m-ink);
+}
+
+.arch-api-entry {
+  color: var(--m-quiet);
+  font-size: 12px;
+}
+
+.arch-links {
+  display: grid;
+  gap: var(--m-s1);
+  padding: 0;
+  list-style: none;
+}
+
+.arch-path {
+  font: 400 14px/1.5 var(--m-code);
+  overflow-wrap: anywhere;
+}
+
+.arch-live {
+  display: grid;
+  gap: var(--m-s3);
+}
+
+.arch-live-choices {
+  display: flex;
+  gap: var(--m-s2);
+}
+
+.arch-live-choices [aria-pressed='true'] {
+  background: var(--m-ink);
+  color: var(--m-paper);
+}
+
+.arch-live-stage {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: var(--m-stage-radius);
+  background: var(--m-field);
+}
+
+.arch-live-stage :is(img, iframe) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  object-fit: cover;
+}
+
+.arch-live-run {
+  position: absolute;
+  left: var(--m-s4);
+  bottom: var(--m-s4);
+}
+
+/* ── entry points ─────────────────────────────────────────── */
+
+.arch-entries {
+  display: grid;
+  gap: var(--m-s4);
+  padding-block: var(--m-s6) var(--m-s8);
+  border-top: 1px solid var(--m-ink);
+}
+
+.arch-entry-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--m-s6);
+  margin-top: var(--m-s4);
+}
+
+.arch-entry {
+  display: grid;
+  align-content: start;
+  gap: var(--m-s2);
+  min-width: 0;
+}
+
+.arch-entry-name code {
+  font: 600 15px/1.4 var(--m-code);
+  overflow-wrap: anywhere;
+}
+
+.arch-entry-group {
+  display: grid;
+  gap: var(--m-s1);
+  margin-top: var(--m-s3);
+}
+
+.arch-entry-section {
+  color: var(--m-ink);
+  font-weight: 600;
+}
+
+.arch-entry-names {
+  padding: 0;
+  list-style: none;
+  font: 400 13px/1.7 var(--m-code);
+}
+
+.arch-entry-names a {
+  color: var(--m-ink);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.arch-entry-names a:hover {
+  text-decoration: underline;
+}
+
+.arch-entry-names [data-kind='type'] a {
+  color: var(--m-quiet);
+}
+
+.arch-type-tag {
+  margin-left: var(--m-s2);
+  color: var(--m-tick);
+  font: 400 11px/1 var(--m-sans);
+}
+
+@media (max-width: 900px) {
+  .arch-explorer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .arch-detail {
+    position: static;
+  }
+
+  .arch-map {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .arch-return {
+    justify-content: flex-start;
+    margin-block: 0;
+    padding: var(--m-s2) 0 0;
+    border-top: 1px solid var(--m-ink);
+    border-left: 0;
+    writing-mode: horizontal-tb;
+    transform: none;
+  }
+}

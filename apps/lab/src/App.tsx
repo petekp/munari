@@ -41,6 +41,7 @@ const DistortionWaveApp = lazy(() => import('./scenes/distortion-wave/Distortion
 const RainApp = lazy(() => import('./scenes/rain/Rain').then(m => ({ default: m.RainApp })))
 const StyleApp = lazy(() => import('./scenes/style/Style').then(m => ({ default: m.StyleApp })))
 const WhyApp = lazy(() => import('./scenes/why/Why').then(m => ({ default: m.WhyApp })))
+const ArchitectureApp = lazy(() => import('./scenes/architecture/Architecture').then(m => ({ default: m.ArchitectureApp })))
 const PolymerPrototypeApp = lazy(() => import('./scenes/polymer-prototype/PolymerPrototype').then(m => ({ default: m.PolymerPrototypeApp })))
 const MaterialFinishesApp = lazy(() => import('./scenes/material-finishes/MaterialFinishes').then(m => ({ default: m.MaterialFinishesApp })))
 const FrontierPrototypeApp = lazy(() => import('./scenes/frontier-prototype/FrontierPrototype').then(m => ({ default: m.FrontierPrototypeApp })))
@@ -74,6 +75,7 @@ const LAB_SCENES = [
   'wordmark',
   'style',
   'why',
+  'architecture',
   'polymer-prototype',
   'material-finishes',
   'frontier-prototype',
@@ -136,6 +138,7 @@ const PAGE_SCENES = {
   wordmark: WordmarkApp,
   style: StyleApp,
   why: WhyApp,
+  architecture: ArchitectureApp,
   'polymer-prototype': PolymerPrototypeApp,
   'material-finishes': MaterialFinishesApp,
   'frontier-prototype': FrontierPrototypeApp,
@@ -220,6 +223,7 @@ const SITE_TITLES = {
   home: 'Munari · Live HTML in 3D',
   style: 'Style guide · Munari',
   why: 'Why Munari · Munari',
+  architecture: 'Architecture · Munari',
   'polymer-prototype': 'Polymer prototype · Munari',
   'material-finishes': 'Material finishes · Munari',
   'frontier-prototype': 'Frontier prototypes · Munari',
@@ -229,13 +233,14 @@ const SITE_TITLES = {
 const SITE_LAZY_PAGES = {
   style: StyleApp,
   why: WhyApp,
+  architecture: ArchitectureApp,
   'polymer-prototype': PolymerPrototypeApp,
   'material-finishes': MaterialFinishesApp,
   'frontier-prototype': FrontierPrototypeApp,
   'beyond-prototype': BeyondPrototypeApp,
   'signature-prototype': SignaturePrototypeApp,
 } as const
-const OMITS_NOTICE = new Set<SceneId>(['home', 'why', 'polymer-prototype', 'material-finishes', 'frontier-prototype', 'beyond-prototype', 'signature-prototype', 'marble-hand', 'plume', 'postcard'])
+const OMITS_NOTICE = new Set<SceneId>(['home', 'why', 'architecture', 'polymer-prototype', 'material-finishes', 'frontier-prototype', 'beyond-prototype', 'signature-prototype', 'marble-hand', 'plume', 'postcard'])
 
 function isSitePage(scene: SceneId): boolean {
   return scene in SITE_TITLES

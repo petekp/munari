@@ -2,6 +2,7 @@ import path from 'node:path'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { architectureExportMap } from './src/scenes/architecture/architectureExportMapPlugin.ts'
 
 // The lab is a CONSUMER. `@petepetrash/munari`, its `/advanced` entry, and
 // `@petepetrash/munari/style.css` resolve through the workspace exactly as
@@ -10,7 +11,7 @@ import tailwindcss from '@tailwindcss/vite'
 // past it on a relative path (tests/boundary.test.ts enforces the same rule
 // statically).
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), architectureExportMap(path.resolve(import.meta.dirname, '../..'))],
   resolve: {
     // `@/…` resolves to apps/lab/src.
     alias: [{ find: '@', replacement: path.resolve(import.meta.dirname, 'src') }],
