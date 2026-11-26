@@ -3,8 +3,8 @@
 // under a choice of studio light rigs, flat or tilting toward the pointer
 // (?scene=material-finishes&finish=<id>&look=<id>&text=lit|unlit
 // &light=softbox|studio-point|room&tilt=none|pointer). With
-// &compare=<finish id> the page shows each of that finish's looks side by
-// side instead.
+// &compare=<finish id> the page shows each look of a finish that has
+// several side by side instead.
 //
 // This is shortlist item 1 of docs/materials-research.md §5. A flat card
 // under an orthographic view shows a coat, sheen or anisotropic highlight as
@@ -28,6 +28,7 @@ import {
   applyLook,
   applyStudio,
   FINISH_LOOKS,
+  hasLookChoice,
   FINISH_ORDER,
   isFinishId,
   isLightRig,
@@ -237,7 +238,7 @@ function Cards({ canvasId, inScene, look, text, tilt, lights }: CardsProps) {
 
 export function MaterialFinishesApp({ onReady }: { readonly onReady?: () => void }) {
   const [compare] = useState(() => new URLSearchParams(window.location.search).get('compare'))
-  if (isFinishId(compare)) return <MaterialFinishesCompare finish={compare} onReady={onReady} />
+  if (isFinishId(compare) && hasLookChoice(compare)) return <MaterialFinishesCompare finish={compare} onReady={onReady} />
   return <MaterialFinishesScene onReady={onReady} />
 }
 
@@ -442,16 +443,20 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
 
       {showChrome && (
       <footer className="mf-hud">
-        <div className="mf-pills" role="group" aria-label="Look">
-          {FINISH_LOOKS[finish].map((item) => (
-            <Button key={item.id} compact variant={look.id === item.id ? 'solid' : 'outline'} aria-pressed={look.id === item.id} onClick={() => selectLook(item)}>
-              {item.label}
-            </Button>
-          ))}
-        </div>
-        <a className="mf-compare-link" href={compareUrl(finish, text, rig)}>
-          Compare looks
-        </a>
+        {hasLookChoice(finish) && (
+          <>
+            <div className="mf-pills" role="group" aria-label="Look">
+              {FINISH_LOOKS[finish].map((item) => (
+                <Button key={item.id} compact variant={look.id === item.id ? 'solid' : 'outline'} aria-pressed={look.id === item.id} onClick={() => selectLook(item)}>
+                  {item.label}
+                </Button>
+              ))}
+            </div>
+            <a className="mf-compare-link" href={compareUrl(finish, text, rig)}>
+              Compare looks
+            </a>
+          </>
+        )}
         <Button compact variant={sweeping ? 'solid' : 'outline'} aria-pressed={sweeping} disabled={!showsScene} onClick={() => setSweeping((on) => !on)}>
           {sweeping ? 'Stop sweep' : 'Sweep light'}
         </Button>

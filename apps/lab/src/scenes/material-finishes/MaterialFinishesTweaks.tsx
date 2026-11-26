@@ -93,7 +93,7 @@ const RIM_KNOBS: readonly Knob<StudioNumber>[] = [
   { key: 'rimElevation', label: 'rim elevation (deg)', min: 2, max: 60, step: 1 },
 ]
 const ENVIRONMENT_KNOBS: readonly Knob<StudioNumber>[] = [
-  { key: 'environmentIntensity', label: 'environment', min: 0, max: 2, step: 0.05 },
+  { key: 'environmentIntensity', label: 'environment', min: 0, max: 4, step: 0.05 },
 ]
 
 function studioKnobs(rig: LightRig): readonly Knob<StudioNumber>[] {

@@ -17,8 +17,7 @@
 /* Page ink for each finish's body, so the HTML reads on the page and on the
  * body alike. Content styling, not part of a finish. */
 .mf-page[data-finish='lacquer'] { --mf-ink: #f7efe8; --mf-quiet: rgba(247, 239, 232, 0.72); }
-.mf-page[data-finish='satin-polymer'] { --mf-ink: #1b1b19; --mf-quiet: rgba(27, 27, 25, 0.66); }
-.mf-page[data-finish='satin-polymer'][data-look='charcoal'] { --mf-ink: #f1f1ee; --mf-quiet: rgba(241, 241, 238, 0.72); }
+.mf-page[data-finish='satin-polymer'] { --mf-ink: #f1f1ee; --mf-quiet: rgba(241, 241, 238, 0.72); }
 .mf-page[data-finish='anodized-aluminum'] { --mf-ink: #15181c; --mf-quiet: rgba(21, 24, 28, 0.68); }
 .mf-page[data-finish='velvet'] { --mf-ink: #f5ecf4; --mf-quiet: rgba(245, 236, 244, 0.72); }
 .mf-page[data-finish='glazed-ceramic'] { --mf-ink: #16241a; --mf-quiet: rgba(22, 36, 26, 0.68); }

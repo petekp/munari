@@ -9,7 +9,7 @@
 // placement the same as the full page.
 
 import { useEffect } from 'react'
-import { FINISH_LOOKS, FINISH_ORDER, isLightRig, type FinishId } from './materialFinishesTuning'
+import { FINISH_LOOKS, FINISH_ORDER, hasLookChoice, isLightRig, type FinishId } from './materialFinishesTuning'
 
 // The scene's layout and light placement are tuned at this viewport.
 const FRAME_WIDTH = 1440
@@ -36,7 +36,7 @@ export function MaterialFinishesCompare({ finish, onReady }: { readonly finish: 
       <header className="mf-compare-header">
         <h1 className="mf-compare-title">{label}: {FINISH_LOOKS[finish].length} looks</h1>
         <nav className="mf-compare-nav" aria-label="Finish">
-          {FINISH_ORDER.map((item) => (
+          {FINISH_ORDER.filter((item) => hasLookChoice(item.id)).map((item) => (
             <a key={item.id} href={sceneQuery({ compare: item.id, text, light })} aria-current={item.id === finish ? 'page' : undefined}>
               {item.label}
             </a>

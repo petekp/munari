@@ -19,11 +19,10 @@ export type TextLighting = 'lit' | 'unlit'
  * noise, so changing kind rebuilds the material.
  * - `orange-peel`: coat ripples of a sprayed lacquer.
  * - `brushed`: grooves along x from a brushed sheet.
- * - `grain`: fine even texture, like a mold finish or a bead blast.
  * - `pile`: velvet pile laid in patches, plus fiber grain.
  * - `glaze`: the slow waviness of a fired glaze.
  */
-export type SurfaceDetail = 'none' | 'orange-peel' | 'brushed' | 'grain' | 'pile' | 'glaze'
+export type SurfaceDetail = 'none' | 'orange-peel' | 'brushed' | 'pile' | 'glaze'
 
 export interface Finish {
   /** Body color, sRGB hex. */
@@ -96,12 +95,12 @@ const NO_LOBES = {
 // does not divide the IORs, and the base's own 4% lobe at the base
 // roughness drew the broad wash under lacquer's and the glaze's coat
 // highlights. Coated finishes set `specularIntensity` 0 instead.
-const CURRENT: Readonly<Record<FinishId, Readonly<Finish>>> = Object.freeze({
+const FINISHES: Readonly<Record<FinishId, Readonly<Finish>>> = Object.freeze({
   // open_pbr_carpaint: coat 1 at roughness 0.02 over a base whose IOR equals
   // the coat's. Orange peel within the catalog's 0–0.05 coat-normal range.
   lacquer: Object.freeze({
     ...NO_LOBES,
-    color: '#6b1522',
+    color: '#8c1022',
     roughness: 0.3,
     ior: 1.5,
     specularIntensity: 0,
@@ -110,28 +109,29 @@ const CURRENT: Readonly<Record<FinishId, Readonly<Finish>>> = Object.freeze({
     edgeWidth: 6,
     detail: 'orange-peel',
     detailScale: 18,
-    detailDepth: 0.006,
+    detailDepth: 0.004,
   }),
   // standard_surface_plastic: one dielectric lobe at roughness 0.32, no
   // coat and no sheen. "Satin" is the gloss level of a molded part; the
   // fabric sheen lobe the first build gave it has no counterpart in plastic.
-  // IOR 1.49 is polypropylene and PMMA on physicallybased.info.
+  // IOR 1.49 is polypropylene and PMMA on physicallybased.info. A dark
+  // body lets the soft highlight stand out.
   'satin-polymer': Object.freeze({
     ...NO_LOBES,
-    color: '#e7e4dc',
-    roughness: 0.34,
+    color: '#3a3d42',
+    roughness: 0.36,
     ior: 1.49,
-    edgeWidth: 10,
+    edgeWidth: 12,
   }),
   // open_pbr_aluminum_brushed: roughness 0.2, anisotropy 0.9;
-  // standard_surface_metal_brushed: roughness 0.25, anisotropy 0.65. Body
-  // between their base colors (0.912 and 0.5 linear) for a clear anodize.
+  // standard_surface_metal_brushed: roughness 0.25, anisotropy 0.65. The body
+  // is a blue dyed anodize, by eye.
   // The grooves run along x, which spreads the highlight across them, along
   // y: rotation π/2 turns three's stretched axis from u to v.
   'anodized-aluminum': Object.freeze({
     ...NO_LOBES,
-    color: '#c9ccd0',
-    roughness: 0.24,
+    color: '#7da2d4',
+    roughness: 0.26,
     metalness: 1,
     ior: 1.5,
     anisotropy: 0.65,
@@ -166,19 +166,23 @@ const CURRENT: Readonly<Record<FinishId, Readonly<Finish>>> = Object.freeze({
   // A glass glaze on a ceramic body, which physicallybased.info lists as
   // porcelain: roughness 0, IOR 1.5. Coat roughness 0.02 matches lacquer's,
   // so the softbox's image keeps a sharp edge. Glaze and body match in IOR, so the
-  // base reflects nothing; the glaze is the coat.
+  // base reflects nothing; the glaze is the coat. A celadon green that runs
+  // thin and pale over the rounded edge, with a sparse, faint crackle.
   'glazed-ceramic': Object.freeze({
     ...NO_LOBES,
-    color: '#bcdac3',
+    color: '#8db59a',
     roughness: 0.5,
     ior: 1.52,
     specularIntensity: 0,
     clearcoat: 1,
     clearcoatRoughness: 0.02,
-    edgeWidth: 8,
+    edgeWidth: 12,
     detail: 'glaze',
-    detailScale: 160,
-    detailDepth: 0.012,
+    detailScale: 120,
+    detailDepth: 0.035,
+    rimColor: '#e6eee2',
+    crackle: 0.2,
+    crackleScale: 90,
   }),
 })
 
@@ -216,114 +220,91 @@ export interface FinishLook {
   readonly environment: EnvironmentKind
 }
 
-const CURRENT_INTENT = 'The tuning before the looks were split out, kept to compare against.'
-
-function current(id: FinishId): FinishLook {
-  return { id: 'current', label: 'Current', intent: CURRENT_INTENT, finish: CURRENT[id], environment: 'even' }
-}
-
-// Each finish keeps its current tuning as the first look and adds looks
-// that try a different direction for Pete to choose between. Lobe values
-// stay inside the MaterialX presets' ranges above; colors, relief and
-// studio changes are by eye, checked by blind readers on m2 captures.
+// Four finishes are settled and have one look each. Velvet has several to
+// choose between, built on its values above. Lobe values stay
+// inside the MaterialX presets' ranges; colors, relief and studio changes
+// are by eye, checked by blind readers on m2 captures.
 //
 // Velvet's sheen is Charlie sheen, which three evaluates for point and
 // directional lights and the environment but not for the softbox
-// (directRectArea at r186). Seen face on, the lobe is weak: measured on
-// m2 (2026-11-26), sheen 1 lifted the current velvet's face from sRGB 14
-// to 22 and its edge to 35, all of it near black. The velvet looks tilt
-// the pile far enough that patches of the face turn toward grazing, where
-// the lobe is strong, light the body so the face sits above black, and
-// raise the grazing rim light, which three does give sheen.
+// (directRectArea at r186). Its environment term is the lobe's albedo,
+// which at sheen roughness 0.7 is about 7% face on and 55% at grazing
+// (IBLSheenBRDF at r186), so a card lit by the environment glows along its
+// rounded edge and stays dark on its face. The velvet looks raise the
+// environment to 3 or more and give the sheen a color far lighter than the
+// body. On m2 (2026-11-26) that took the edge's median from sRGB 33 to 93
+// to 154 and the face's from 22 to 46 to 96.
+// The pile relief is what reads as cloth: with no relief blind readers
+// called the cards frosted glass, and with a grain 2 to 6 px across, leather.
 export const FINISH_LOOKS: Readonly<Record<FinishId, readonly FinishLook[]>> = Object.freeze({
   lacquer: [
-    current('lacquer'),
     {
       id: 'sky',
       label: 'Crimson under a sky',
-      intent: 'A brighter crimson coat that reflects a fill brightening toward the top, so each card shows the falloff of a glossy panel.',
-      finish: Object.freeze({ ...CURRENT.lacquer, color: '#8c1022', detailDepth: 0.004 }),
-      environment: 'gradient',
-    },
-    {
-      id: 'piano-black',
-      label: 'Piano black',
-      intent: 'A black coat, where the only light on the face is what it reflects.',
-      finish: Object.freeze({ ...CURRENT.lacquer, color: '#0d0c0e', clearcoatRoughness: 0.01, edgeWidth: 8, detailDepth: 0.002 }),
+      intent: 'A crimson coat that reflects a fill brightening toward the top, so each card shows the falloff of a glossy panel.',
+      finish: FINISHES.lacquer,
       environment: 'gradient',
     },
   ],
   'satin-polymer': [
-    current('satin-polymer'),
     {
       id: 'charcoal',
       label: 'Charcoal housing',
       intent: 'A dark gray molded part, where the soft satin highlight stands out against the body.',
-      finish: Object.freeze({ ...CURRENT['satin-polymer'], color: '#3a3d42', roughness: 0.36, edgeWidth: 12 }),
-      environment: 'even',
-    },
-    {
-      id: 'yellow-molding',
-      label: 'Yellow molding',
-      intent: 'A saturated molded color with a thicker rounded edge, like a tool housing.',
-      finish: Object.freeze({ ...CURRENT['satin-polymer'], color: '#f0c24b', roughness: 0.3, edgeWidth: 16 }),
+      finish: FINISHES['satin-polymer'],
       environment: 'even',
     },
   ],
   'anodized-aluminum': [
-    current('anodized-aluminum'),
     {
       id: 'blue-anodize',
       label: 'Blue anodize',
       intent: 'A dyed anodize, the colored brushed metal of a carabiner or a laptop lid.',
-      finish: Object.freeze({ ...CURRENT['anodized-aluminum'], color: '#7da2d4', roughness: 0.26 }),
-      environment: 'even',
-    },
-    {
-      id: 'bead-blast',
-      label: 'Bead blast',
-      intent: 'A blasted metal with no grain direction: an even, fine satin.',
-      finish: Object.freeze({ ...CURRENT['anodized-aluminum'], color: '#c5c8cc', roughness: 0.38, anisotropy: 0, detail: 'grain', detailScale: 0.8, detailDepth: 0.03 }),
+      finish: FINISHES['anodized-aluminum'],
       environment: 'even',
     },
   ],
   velvet: [
-    current('velvet'),
     {
-      id: 'crushed',
-      label: 'Crushed',
-      intent: 'Pile pressed in broad swirls, so patches of the face catch the light and patches go dark.',
-      finish: Object.freeze({ ...CURRENT.velvet, color: '#5a2766', sheenColor: '#d58be6', sheenRoughness: 0.85, edgeWidth: 48, detailScale: 150, detailDepth: 0.36 }),
-      studio: Object.freeze({ rimPower: 2.4 }),
+      id: 'emerald',
+      label: 'Emerald cushion',
+      intent: 'Deep green pile over a padded edge, lit by a bright fill, so a wide pale-mint glow rings each card.',
+      finish: Object.freeze({ ...FINISHES.velvet, color: '#0c3b2c', sheenColor: '#8fe0b8', edgeWidth: 90, detailScale: 24, detailDepth: 0.08 }),
+      studio: Object.freeze({ environmentIntensity: 3, rimPower: 3 }),
       environment: 'even',
     },
     {
-      id: 'padded',
-      label: 'Padded',
-      intent: 'Cloth over a deep cushion, so a wide band around each card turns toward grazing and glows.',
-      finish: Object.freeze({ ...CURRENT.velvet, color: '#5e1430', sheenColor: '#e8709c', sheenRoughness: 0.8, edgeWidth: 100, detailScale: 36, detailDepth: 0.26 }),
-      studio: Object.freeze({ rimPower: 3, rimElevation: 10 }),
+      id: 'midnight',
+      label: 'Midnight rim',
+      intent: 'Navy pile with a tighter sheen lobe and a narrow edge, so a bright periwinkle line traces each rim.',
+      finish: Object.freeze({ ...FINISHES.velvet, color: '#141a3a', sheenColor: '#b8c4ff', sheenRoughness: 0.5, edgeWidth: 48, detailScale: 24, detailDepth: 0.08 }),
+      studio: Object.freeze({ environmentIntensity: 3.5, rimPower: 3 }),
       environment: 'even',
+    },
+    {
+      id: 'plum-sky',
+      label: 'Plum under a sky',
+      intent: 'Plum pile over a wide padded edge in a fill that brightens toward the top, so the top edges glow brightest.',
+      finish: Object.freeze({ ...FINISHES.velvet, sheenColor: '#e2a6f0', edgeWidth: 110, detailScale: 24, detailDepth: 0.08 }),
+      studio: Object.freeze({ environmentIntensity: 3, rimPower: 3, rimElevation: 8 }),
+      environment: 'gradient',
     },
   ],
   'glazed-ceramic': [
-    current('glazed-ceramic'),
     {
       id: 'celadon',
       label: 'Celadon',
-      intent: 'A deeper green glaze that runs thin and pale over the rounded edge and carries a sparse, faint crackle, as old celadon does.',
-      finish: Object.freeze({ ...CURRENT['glazed-ceramic'], color: '#8db59a', rimColor: '#e6eee2', edgeWidth: 12, detailScale: 120, detailDepth: 0.035, crackle: 0.2, crackleScale: 90 }),
-      environment: 'gradient',
-    },
-    {
-      id: 'crackle',
-      label: 'Crackle',
-      intent: 'A white glaze crazed into a fine network of dark lines.',
-      finish: Object.freeze({ ...CURRENT['glazed-ceramic'], color: '#efeadf', clearcoatRoughness: 0.03, crackle: 0.45, crackleScale: 44 }),
+      intent: 'A green glaze that runs thin and pale over the rounded edge and carries a sparse, faint crackle, as old celadon does.',
+      finish: FINISHES['glazed-ceramic'],
       environment: 'gradient',
     },
   ],
 })
+
+/** Whether a finish has more than one look to choose between. */
+export function hasLookChoice(finish: FinishId): boolean {
+  return FINISH_LOOKS[finish].length > 1
+}
 
 export function lookOf(finish: FinishId, id: string | null): FinishLook {
   const looks = FINISH_LOOKS[finish]
@@ -334,7 +315,7 @@ export function lookOf(finish: FinishId, id: string | null): FinishLook {
   return first
 }
 
-export const liveFinish: Finish = { ...CURRENT.lacquer }
+export const liveFinish: Finish = { ...FINISHES.lacquer }
 
 /** Load a look's finish values into the live copy. */
 export function applyLook(look: FinishLook): void {

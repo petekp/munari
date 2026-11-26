@@ -147,11 +147,6 @@ function reliefSlope(detail: SurfaceDetail, p: Node<'vec2'>, scale: Node<'float'
       const hairline = valueNoise(vec2(p.x.div(scale.mul(50)).add(31.7), p.y.div(scale.mul(0.55))))
       return vec2(0, groove.z.add(hairline.z.mul(0.5)).mul(depth))
     }
-    case 'grain': {
-      const coarse = valueNoise(p.div(scale))
-      const fine = valueNoise(p.div(scale.mul(0.5)).add(5.3))
-      return coarse.yz.add(fine.yz.mul(0.5)).mul(depth)
-    }
     case 'pile': {
       // Patches where the pile lies a different way, and fiber grain.
       const patch = valueNoise(p.div(scale))
