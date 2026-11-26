@@ -204,9 +204,10 @@ Surface is presented, so every author would repeat the lab's switch. See
 ### Text color
 
 A finish changes the body under the text, so the text color has to follow
-it. Dark ink is unreadable on crimson lacquer. The materials demo found
-that each card needs a wrapper setting `--mf-body`, `--mf-ink` and
-`--mf-quiet` from the finish. The page presentation shows the HTML with no
+it. Dark ink is unreadable on crimson lacquer. The material finishes lab
+scene sets `--mf-body` from JS on its page wrapper (`.mf-page`), and
+`--mf-ink` and `--mf-quiet` come from CSS rules keyed on its
+`data-finish` attribute. The page presentation shows the HTML with no
 canvas, so the CSS must hold the same colors.
 
 | Design | Usage | Consequence |

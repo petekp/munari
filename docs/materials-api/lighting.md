@@ -102,8 +102,10 @@ The looks need two things a shared canvas cannot give per finish.
   and the even fill. Whether two environment textures keep one pipeline
   is unverified.
 - Velvet's stronger key and rim become the finish's `lightGain`. Munari
-  gives a finish whose gain is not 1 its own copies of the rig's lights,
-  at the same positions and scaled intensity, through `lightsNode`. Its
+  gives each distinct gain value one shared set of copies of the rig's
+  lights, at the same positions and scaled intensity, through
+  `lightsNode`. The cache key hashes light ids, so copies made per
+  Surface would build a node graph per Surface. Its
   environment strength becomes its `envMapIntensity`. Velvet then keeps
   its tuned studio next to satin on one canvas, at the cost of one more
   pipeline. Whether lights outside the scene graph need their world

@@ -71,7 +71,7 @@ the first page. The finish material joins `surfaceSceneComponents`, which
 - The physical material adds no bytes over the standard one, because
   WebGPURenderer registers every node material already
   (docs/payload-optimization-research.md).
-- The lab's finish code is 19.7 kB gzip of commented TypeScript source
+- The lab's finish code is 19.8 kB gzip of commented TypeScript source
   across its five modules. The tuning module also holds the lab's live
   copies and listeners. The minified size of a library finish module is
   unmeasured and probably smaller.
