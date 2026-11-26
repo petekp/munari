@@ -11,7 +11,7 @@
 // one even tint, so the key light stands a few hundred CSS px over the
 // cards, dragged or swept across them under a perspective camera.
 
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { PMREMGenerator, WebGPURenderer } from 'three/webgpu'
@@ -180,7 +180,8 @@ function Cards({ canvasId, inScene, look, text, tilt, lights }: CardsProps) {
   const [name, setName] = useState('Morning take, room 2')
   const [saved, setSaved] = useState<string | null>(null)
   const [gain, setGain] = useState<'low' | 'mid' | 'high'>('mid')
-  const card = { canvasId, inScene, detail: look.finish.detail, hasCrackle: look.finish.crackle > 0, text, tilt, lights }
+  const hasCrackle = useSyncExternalStore(subscribeFinishTuning, () => liveFinish.crackle > 0)
+  const card = { canvasId, inScene, detail: look.finish.detail, hasCrackle, text, tilt, lights }
 
   return (
     <main className="mf-cards">

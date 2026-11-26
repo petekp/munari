@@ -175,10 +175,6 @@ export interface StudioScene {
   dispose(): void
 }
 
-/**
- * The studio as a scene to bake with PMREMGenerator.fromScene. World +z is
- * toward the viewer, which is where SurfaceCanvas's camera looks from.
- */
 function gradientPanel(): THREE.Mesh {
   const geometry = new THREE.PlaneGeometry(10, 4, 1, 24)
   const position = geometry.getAttribute('position')
@@ -194,6 +190,10 @@ function gradientPanel(): THREE.Mesh {
   return mesh
 }
 
+/**
+ * The studio as a scene to bake with PMREMGenerator.fromScene. World +z is
+ * toward the viewer, which is where SurfaceCanvas's camera looks from.
+ */
 export function createStudioScene(environment: EnvironmentKind): StudioScene {
   const scene = new THREE.Scene()
   const wallMaterial = new THREE.MeshBasicMaterial({ side: THREE.BackSide })
