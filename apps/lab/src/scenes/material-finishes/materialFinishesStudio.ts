@@ -10,6 +10,8 @@
 // lower edge (2026-11-24 review). The built studio is one tone on every
 // wall, with a broad soft panel overhead and a fill panel behind the viewer
 // that covers the whole cone, so every card face reflects one even tone.
+// A look can swap that fill for one that brightens toward its top, which
+// a gloss shows as a falloff from each card's top edge to its bottom.
 // The studio has no narrow strips. Inside the cone they laid bright bars
 // under the outer cards' text. Outside it, a rounded edge turns its normal
 // about 10° per CSS px, so a 9° strip reflected as a band under one device
@@ -35,7 +37,7 @@ import * as THREE from 'three'
 import { RectAreaLightNode } from 'three/webgpu'
 import { RectAreaLightTexturesLib } from 'three/examples/jsm/lights/RectAreaLightTexturesLib.js'
 import type { SurfaceRenderFrame } from '@petepetrash/munari'
-import { studio, type LightRig } from './materialFinishesTuning'
+import { studio, type EnvironmentKind, type LightRig } from './materialFinishesTuning'
 
 RectAreaLightNode.setLTC(RectAreaLightTexturesLib.init())
 
@@ -151,6 +153,13 @@ export function placeStudioLights(lights: StudioLights, frame: SurfaceRenderFram
 const WALL = 0.22
 const OVERHEAD = 1.2
 const BEHIND = 0.6
+// The gradient fill runs from FLOOR to SKY across the cards' mirror cone,
+// ±9° in elevation, which at the panel's 7 units is about ±1.1 units. A
+// coat reflects 4% of it, so the sky has to be several times the even fill
+// for the falloff to show on a dark lacquer. By eye, unmeasured.
+const GRADIENT_FLOOR = 0.12
+const GRADIENT_SKY = 2.6
+const GRADIENT_SPAN = 1.2
 
 function panel(radiance: number, width: number, height: number, position: readonly [number, number, number]): THREE.Mesh {
   const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })
@@ -170,7 +179,22 @@ export interface StudioScene {
  * The studio as a scene to bake with PMREMGenerator.fromScene. World +z is
  * toward the viewer, which is where SurfaceCanvas's camera looks from.
  */
-export function createStudioScene(): StudioScene {
+function gradientPanel(): THREE.Mesh {
+  const geometry = new THREE.PlaneGeometry(10, 4, 1, 24)
+  const position = geometry.getAttribute('position')
+  const colors = new Float32Array(position.count * 3)
+  for (let index = 0; index < position.count; index++) {
+    const t = THREE.MathUtils.smoothstep(position.getY(index), -GRADIENT_SPAN, GRADIENT_SPAN)
+    colors.fill(THREE.MathUtils.lerp(GRADIENT_FLOOR, GRADIENT_SKY, t), index * 3, index * 3 + 3)
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, vertexColors: true }))
+  mesh.position.set(0, 0, 7)
+  mesh.lookAt(0, 0, 0)
+  return mesh
+}
+
+export function createStudioScene(environment: EnvironmentKind): StudioScene {
   const scene = new THREE.Scene()
   const wallMaterial = new THREE.MeshBasicMaterial({ side: THREE.BackSide })
   wallMaterial.color.setScalar(WALL)
@@ -179,7 +203,7 @@ export function createStudioScene(): StudioScene {
   // Overhead, a broad panel for the cards' top edges and the fill.
   const overhead = panel(OVERHEAD, 10, 10, [0, 5.9, 0])
   // Behind the viewer, ±35° by ±16° around the view axis.
-  const behind = panel(BEHIND, 10, 4, [0, 0, 7])
+  const behind = environment === 'gradient' ? gradientPanel() : panel(BEHIND, 10, 4, [0, 0, 7])
   scene.add(overhead, behind)
   return {
     scene,

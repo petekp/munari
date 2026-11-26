@@ -19,10 +19,11 @@ export type TextLighting = 'lit' | 'unlit'
  * noise, so changing kind rebuilds the material.
  * - `orange-peel`: coat ripples of a sprayed lacquer.
  * - `brushed`: grooves along x from a brushed sheet.
+ * - `grain`: fine even texture, like a mold finish or a bead blast.
  * - `pile`: velvet pile laid in patches, plus fiber grain.
  * - `glaze`: the slow waviness of a fired glaze.
  */
-export type SurfaceDetail = 'none' | 'orange-peel' | 'brushed' | 'pile' | 'glaze'
+export type SurfaceDetail = 'none' | 'orange-peel' | 'brushed' | 'grain' | 'pile' | 'glaze'
 
 export interface Finish {
   /** Body color, sRGB hex. */
@@ -52,6 +53,12 @@ export interface Finish {
   detailScale: number
   /** Steepest slope the detail adds to the normal. */
   detailDepth: number
+  /** Body color at the rim, sRGB hex, where a glaze runs thin over the edge; null keeps `color`. */
+  rimColor: string | null
+  /** How far a crackle network darkens the body, 0 to 1; 0 compiles none. */
+  crackle: number
+  /** Cell size of the crackle network, CSS px. */
+  crackleScale: number
 }
 
 const NO_LOBES = {
@@ -72,6 +79,9 @@ const NO_LOBES = {
   detail: 'none',
   detailScale: 1,
   detailDepth: 0,
+  rimColor: null,
+  crackle: 0,
+  crackleScale: 40,
 } as const
 
 // Lobe values follow the MaterialX example presets (Apache-2.0) at
@@ -86,7 +96,7 @@ const NO_LOBES = {
 // does not divide the IORs, and the base's own 4% lobe at the base
 // roughness drew the broad wash under lacquer's and the glaze's coat
 // highlights. Coated finishes set `specularIntensity` 0 instead.
-export const FINISHES: Readonly<Record<FinishId, Readonly<Finish>>> = Object.freeze({
+const CURRENT: Readonly<Record<FinishId, Readonly<Finish>>> = Object.freeze({
   // open_pbr_carpaint: coat 1 at roughness 0.02 over a base whose IOR equals
   // the coat's. Orange peel within the catalog's 0–0.05 coat-normal range.
   lacquer: Object.freeze({
@@ -184,10 +194,151 @@ export function isFinishId(value: string | null): value is FinishId {
   return FINISH_ORDER.some((item) => item.id === value)
 }
 
-export const liveFinish: Finish = { ...FINISHES.lacquer }
+// ── looks ──────────────────────────────────────────────────────────────
 
-export function applyFinish(id: FinishId): void {
-  Object.assign(liveFinish, FINISHES[id])
+/**
+ * What a finish reflects besides the lights.
+ * - `even`: one tone across the whole mirror cone.
+ * - `gradient`: a fill behind the viewer that brightens toward the top,
+ *   so a gloss shows a sky-to-floor falloff across each card.
+ */
+export type EnvironmentKind = 'even' | 'gradient'
+
+/** One way to show a finish: its values and the studio it is judged in. */
+export interface FinishLook {
+  readonly id: string
+  readonly label: string
+  /** What the look is after, in one sentence. */
+  readonly intent: string
+  readonly finish: Readonly<Finish>
+  /** Studio values this look sets over its rig's start. */
+  readonly studio?: Readonly<Partial<StudioTuning>>
+  readonly environment: EnvironmentKind
+}
+
+const CURRENT_INTENT = 'The tuning before the looks were split out, kept to compare against.'
+
+function current(id: FinishId): FinishLook {
+  return { id: 'current', label: 'Current', intent: CURRENT_INTENT, finish: CURRENT[id], environment: 'even' }
+}
+
+// Each finish keeps its current tuning as the first look and adds looks
+// that try a different direction for Pete to choose between. Lobe values
+// stay inside the MaterialX presets' ranges above; colors, relief and
+// studio changes are by eye, checked by blind readers on m2 captures.
+//
+// Velvet's sheen is Charlie sheen, which three evaluates for point and
+// directional lights and the environment but not for the softbox
+// (directRectArea at r186). Seen face on, the lobe is weak: measured on
+// m2 (2026-11-26), sheen 1 lifted the current velvet's face from sRGB 14
+// to 22 and its edge to 35, all of it near black. The velvet looks tilt
+// the pile far enough that patches of the face turn toward grazing, where
+// the lobe is strong, light the body so the face sits above black, and
+// raise the grazing rim light, which three does give sheen.
+export const FINISH_LOOKS: Readonly<Record<FinishId, readonly FinishLook[]>> = Object.freeze({
+  lacquer: [
+    current('lacquer'),
+    {
+      id: 'sky',
+      label: 'Crimson under a sky',
+      intent: 'A brighter crimson coat that reflects a fill brightening toward the top, so each card shows the falloff of a glossy panel.',
+      finish: Object.freeze({ ...CURRENT.lacquer, color: '#8c1022', detailDepth: 0.004 }),
+      environment: 'gradient',
+    },
+    {
+      id: 'piano-black',
+      label: 'Piano black',
+      intent: 'A black coat, where the only light on the face is what it reflects.',
+      finish: Object.freeze({ ...CURRENT.lacquer, color: '#0d0c0e', clearcoatRoughness: 0.01, edgeWidth: 8, detailDepth: 0.002 }),
+      environment: 'gradient',
+    },
+  ],
+  'satin-polymer': [
+    current('satin-polymer'),
+    {
+      id: 'charcoal',
+      label: 'Charcoal housing',
+      intent: 'A dark gray molded part, where the soft satin highlight stands out against the body.',
+      finish: Object.freeze({ ...CURRENT['satin-polymer'], color: '#3a3d42', roughness: 0.36, edgeWidth: 12 }),
+      environment: 'even',
+    },
+    {
+      id: 'yellow-molding',
+      label: 'Yellow molding',
+      intent: 'A saturated molded color with a thicker rounded edge, like a tool housing.',
+      finish: Object.freeze({ ...CURRENT['satin-polymer'], color: '#f0c24b', roughness: 0.3, edgeWidth: 16 }),
+      environment: 'even',
+    },
+  ],
+  'anodized-aluminum': [
+    current('anodized-aluminum'),
+    {
+      id: 'blue-anodize',
+      label: 'Blue anodize',
+      intent: 'A dyed anodize, the colored brushed metal of a carabiner or a laptop lid.',
+      finish: Object.freeze({ ...CURRENT['anodized-aluminum'], color: '#7da2d4', roughness: 0.26 }),
+      environment: 'even',
+    },
+    {
+      id: 'bead-blast',
+      label: 'Bead blast',
+      intent: 'A blasted metal with no grain direction: an even, fine satin.',
+      finish: Object.freeze({ ...CURRENT['anodized-aluminum'], color: '#c5c8cc', roughness: 0.38, anisotropy: 0, detail: 'grain', detailScale: 0.8, detailDepth: 0.03 }),
+      environment: 'even',
+    },
+  ],
+  velvet: [
+    current('velvet'),
+    {
+      id: 'crushed',
+      label: 'Crushed',
+      intent: 'Pile pressed in broad swirls, so patches of the face catch the light and patches go dark.',
+      finish: Object.freeze({ ...CURRENT.velvet, color: '#5a2766', sheenColor: '#d58be6', sheenRoughness: 0.85, edgeWidth: 48, detailScale: 150, detailDepth: 0.36 }),
+      studio: Object.freeze({ rimPower: 2.4 }),
+      environment: 'even',
+    },
+    {
+      id: 'padded',
+      label: 'Padded',
+      intent: 'Cloth over a deep cushion, so a wide band around each card turns toward grazing and glows.',
+      finish: Object.freeze({ ...CURRENT.velvet, color: '#5e1430', sheenColor: '#e8709c', sheenRoughness: 0.8, edgeWidth: 100, detailScale: 36, detailDepth: 0.26 }),
+      studio: Object.freeze({ rimPower: 3, rimElevation: 10 }),
+      environment: 'even',
+    },
+  ],
+  'glazed-ceramic': [
+    current('glazed-ceramic'),
+    {
+      id: 'celadon',
+      label: 'Celadon',
+      intent: 'A deeper green glaze that runs thin and pale over the rounded edge and carries a sparse, faint crackle, as old celadon does.',
+      finish: Object.freeze({ ...CURRENT['glazed-ceramic'], color: '#8db59a', rimColor: '#e6eee2', edgeWidth: 12, detailScale: 120, detailDepth: 0.035, crackle: 0.2, crackleScale: 90 }),
+      environment: 'gradient',
+    },
+    {
+      id: 'crackle',
+      label: 'Crackle',
+      intent: 'A white glaze crazed into a fine network of dark lines.',
+      finish: Object.freeze({ ...CURRENT['glazed-ceramic'], color: '#efeadf', clearcoatRoughness: 0.03, crackle: 0.45, crackleScale: 44 }),
+      environment: 'gradient',
+    },
+  ],
+})
+
+export function lookOf(finish: FinishId, id: string | null): FinishLook {
+  const looks = FINISH_LOOKS[finish]
+  const found = looks.find((look) => look.id === id)
+  if (found) return found
+  const first = looks[0]
+  if (!first) throw new Error(`The ${finish} finish has no looks`)
+  return first
+}
+
+export const liveFinish: Finish = { ...CURRENT.lacquer }
+
+/** Load a look's finish values into the live copy. */
+export function applyLook(look: FinishLook): void {
+  Object.assign(liveFinish, look.finish)
   notifyFinishTuning()
 }
 
@@ -285,15 +436,15 @@ const STUDIO_START: Readonly<Record<LightRig, Readonly<StudioTuning>>> = Object.
 
 export const studio: StudioTuning = { ...STUDIO_START.softbox }
 
-/** Start the studio at a rig's values, key position included. Does not notify. */
-export function startRig(rig: LightRig): void {
-  Object.assign(studio, STUDIO_START[rig])
+/** Start the studio at a rig's values and a look's, key position included. Does not notify. */
+export function startStudio(rig: LightRig, look: FinishLook): void {
+  Object.assign(studio, STUDIO_START[rig], look.studio)
 }
 
-/** Restart the studio at a rig's values, keeping the key where it was dragged. */
-export function applyRig(rig: LightRig): void {
+/** Restart the studio at a rig's values and a look's, keeping the key where it was dragged. */
+export function applyStudio(rig: LightRig, look: FinishLook): void {
   const { lightX, lightY } = studio
-  Object.assign(studio, STUDIO_START[rig], { lightX, lightY })
+  Object.assign(studio, STUDIO_START[rig], look.studio, { lightX, lightY })
   notifyFinishTuning()
 }
 

@@ -44,6 +44,8 @@ import { MeshPhysicalNodeMaterial, type Node, type TextureNode, type UniformNode
 import {
   abs,
   clamp,
+  dFdx,
+  dFdy,
   Discard,
   dot,
   float,
@@ -51,6 +53,7 @@ import {
   Fn,
   fract,
   length,
+  materialClearcoatRoughness,
   materialMetalness,
   materialRoughness,
   materialSpecularIntensity,
@@ -63,6 +66,7 @@ import {
   select,
   sign,
   sin,
+  smoothstep,
   sqrt,
   sRGBTransferEOTF,
   sRGBTransferOETF,
@@ -84,6 +88,19 @@ const INK_ROUGHNESS = 0.5
 // the steepest slope at 1/√0.08, about 74°, so the rim pixel keeps a
 // finite normal.
 const RIM_SLOPE_FLOOR = 0.08
+// Specular anti-aliasing after Kaplanyan et al., "Stable Specular
+// Highlights" (HPG 2016): the normal's change across a pixel, as variance
+// at their SIGMA2 0.25, widens alpha² by twice that, capped at their KAPPA
+// 0.18. A rounded edge turns its normal about 10° per CSS px, so a coat at
+// roughness 0.02 reflected the softbox there as a band under one device
+// pixel wide, which flickered pixel to pixel along glazed ceramic's lower
+// rim (m2 probe, 2026-11-25: luminance jumped 13 per pixel there, under 0.2
+// on every other rim).
+const FILTER_SIGMA2 = 0.25
+const FILTER_KAPPA = 0.18
+// Crackle lines are this many CSS px wide where the cell borders meet.
+// By eye, unmeasured.
+const CRACKLE_LINE_PX = 0.9
 
 // SAFETY: three declares neutralToneMapping's layout as vec3 to vec3; its
 // published types leave the result untyped.
@@ -130,6 +147,11 @@ function reliefSlope(detail: SurfaceDetail, p: Node<'vec2'>, scale: Node<'float'
       const hairline = valueNoise(vec2(p.x.div(scale.mul(50)).add(31.7), p.y.div(scale.mul(0.55))))
       return vec2(0, groove.z.add(hairline.z.mul(0.5)).mul(depth))
     }
+    case 'grain': {
+      const coarse = valueNoise(p.div(scale))
+      const fine = valueNoise(p.div(scale.mul(0.5)).add(5.3))
+      return coarse.yz.add(fine.yz.mul(0.5)).mul(depth)
+    }
     case 'pile': {
       // Patches where the pile lies a different way, and fiber grain.
       const patch = valueNoise(p.div(scale))
@@ -148,12 +170,23 @@ function reliefIsInCoat(detail: SurfaceDetail): boolean {
   return detail === 'orange-peel' || detail === 'glaze'
 }
 
+interface EdgeProfile {
+  readonly slope: Node<'vec2'>
+  readonly towardRim: Node<'float'>
+}
+
 /**
- * The slope of a rounded edge `width` px wide, falling outward from a
- * rounded-rect card of half size `half` and corner radii `radii`
- * (tl, tr, br, bl). `p` is CSS px from the card's center, y down.
+ * A rounded edge `width` px wide, falling outward from a rounded-rect
+ * card of half size `half` and corner radii `radii` (tl, tr, br, bl):
+ * its slope, and how far across the edge `p` is, 0 where the flat face
+ * ends and 1 at the rim. `p` is CSS px from the card's center, y down.
  */
-function edgeSlope(p: Node<'vec2'>, half: Node<'vec2'>, radii: Node<'vec4'>, width: Node<'float'>): Node<'vec2'> {
+function edgeProfile(
+  p: Node<'vec2'>,
+  half: Node<'vec2'>,
+  radii: Node<'vec4'>,
+  width: Node<'float'>,
+): EdgeProfile {
   const left = p.x.lessThan(0)
   const top = p.y.lessThan(0)
   // An edge wider than its corner radius has contours that meet the
@@ -169,17 +202,59 @@ function edgeSlope(p: Node<'vec2'>, half: Node<'vec2'>, radii: Node<'vec4'>, wid
   const awayFromCenter = select(inCorner, outside.div(max(outsideLength, float(1e-4))), select(q.x.greaterThan(q.y), vec2(1, 0), vec2(0, 1)))
   const outward = awayFromCenter.mul(sign(p))
   const towardRim = float(1).sub(clamp(distance.negate().div(max(width, float(1e-3))), float(0), float(1)))
+  const hasEdge = width.greaterThan(0.5)
   const slope = towardRim.div(sqrt(max(float(1).sub(towardRim.mul(towardRim)), float(RIM_SLOPE_FLOOR))))
-  return outward.mul(select(width.greaterThan(0.5), slope, float(0)))
+  return { slope: outward.mul(select(hasEdge, slope, float(0))), towardRim: select(hasEdge, towardRim, float(0)) }
+}
+
+// ── body pattern ───────────────────────────────────────────────────────
+
+/**
+ * Coverage of a crackle network at content point `p`, 0 to 1: the borders
+ * of a Voronoi tiling with cells `scale` px across. The border is where the
+ * nearest and second-nearest cell points are equally far.
+ */
+function crackleLines(p: Node<'vec2'>, scale: Node<'float'>): Node<'float'> {
+  const q = p.div(scale)
+  const cell = floor(q)
+  let nearest: Node<'float'> = float(8)
+  let second: Node<'float'> = float(8)
+  for (let y = -1; y <= 1; y++) {
+    for (let x = -1; x <= 1; x++) {
+      const neighbor = cell.add(vec2(x, y))
+      const point = neighbor.add(vec2(latticeHash(neighbor), latticeHash(neighbor.add(19.19))))
+      const distance = length(point.sub(q))
+      second = min(max(nearest, distance), second)
+      nearest = min(nearest, distance)
+    }
+  }
+  const gap = second.sub(nearest)
+  const line = float(CRACKLE_LINE_PX).div(scale)
+  // The gap grows at about two per cell unit across a border.
+  return float(1).sub(smoothstep(line, line.mul(2.5), gap))
+}
+
+/** Perceptual roughness widened by the normal's change across the pixel. */
+function filteredRoughness(roughness: Node<'float'>, normal: Node<'vec3'>): Node<'float'> {
+  const dx = dFdx(normal)
+  const dy = dFdy(normal)
+  const variance = dot(dx, dx).add(dot(dy, dy)).mul(FILTER_SIGMA2)
+  const alpha = roughness.mul(roughness)
+  const alpha2 = clamp(alpha.mul(alpha).add(min(variance.mul(2), float(FILTER_KAPPA))), float(0), float(1))
+  return sqrt(sqrt(alpha2))
 }
 
 // ── material ───────────────────────────────────────────────────────────
 
-/** The uniforms that shape a finish's normal, written before each draw. */
+/** The uniforms that shape a finish's normal and pattern its body, written before each draw. */
 export interface FinishShapeUniforms {
   readonly edgeWidth: UniformNode<'float', number>
   readonly detailScale: UniformNode<'float', number>
   readonly detailDepth: UniformNode<'float', number>
+  /** Body color at the rim, linear light. */
+  readonly rimColor: UniformNode<'color', THREE.Color>
+  readonly crackle: UniformNode<'float', number>
+  readonly crackleScale: UniformNode<'float', number>
   /** The card's tilt as a rotation in its own frame; identity when flat. */
   readonly tilt: UniformNode<'mat3', THREE.Matrix3>
 }
@@ -189,6 +264,9 @@ export function createFinishShapeUniforms(): FinishShapeUniforms {
     edgeWidth: uniform(0),
     detailScale: uniform(1),
     detailDepth: uniform(0),
+    rimColor: uniform(new THREE.Color()),
+    crackle: uniform(0),
+    crackleScale: uniform(40),
     tilt: uniform(new THREE.Matrix3()),
   }
 }
@@ -206,7 +284,13 @@ export interface FinishMaterialInputs {
   readonly shape: FinishShapeUniforms
 }
 
-export function createFinishMaterial(inputs: FinishMaterialInputs, text: TextLighting, detail: SurfaceDetail): MeshPhysicalNodeMaterial {
+/** `hasCrackle` compiles the crackle network, which costs nine cell lookups a fragment. */
+export function createFinishMaterial(
+  inputs: FinishMaterialInputs,
+  text: TextLighting,
+  detail: SurfaceDetail,
+  hasCrackle: boolean,
+): MeshPhysicalNodeMaterial {
   const { capture, cornerMask, size, radii, body, shape } = inputs
   const material = new MeshPhysicalNodeMaterial({ transparent: true, depthWrite: false, premultipliedAlpha: true })
   const texCoord = uv()
@@ -215,7 +299,7 @@ export function createFinishMaterial(inputs: FinishMaterialInputs, text: TextLig
   const uncovered = float(1).sub(page.a)
 
   const content = vec2(texCoord.x.sub(0.5), float(0.5).sub(texCoord.y)).mul(size)
-  const edge = edgeSlope(content, size.mul(0.5), radii, shape.edgeWidth)
+  const { slope: edge, towardRim } = edgeProfile(content, size.mul(0.5), radii, shape.edgeWidth)
   const relief = reliefSlope(detail, content, shape.detailScale, shape.detailDepth)
   const viewNormal = (slope: Node<'vec2'>) => {
     // Content y runs down; the card's frame runs up.
@@ -229,16 +313,24 @@ export function createFinishMaterial(inputs: FinishMaterialInputs, text: TextLig
   const withRelief = viewNormal(edge.add(reliefOnEdge))
   const edgeOnly = viewNormal(edge)
   const inCoat = reliefIsInCoat(detail)
-  material.normalNode = inCoat ? edgeOnly : withRelief
-  material.clearcoatNormalNode = inCoat ? withRelief : edgeOnly
+  const baseNormal = inCoat ? edgeOnly : withRelief
+  const coatNormal = inCoat ? withRelief : edgeOnly
+  material.normalNode = baseNormal
+  material.clearcoatNormalNode = coatNormal
+  material.roughnessNode = filteredRoughness(materialRoughness, baseNormal)
+  material.clearcoatRoughnessNode = filteredRoughness(materialClearcoatRoughness, coatNormal)
+
+  // A glaze thins fastest near the rim, so its color shifts there most.
+  const rimBody = mix(body, shape.rimColor, towardRim.mul(towardRim))
+  const bodyColor = hasCrackle ? rimBody.mul(float(1).sub(crackleLines(content, shape.crackleScale).mul(shape.crackle))) : rimBody
 
   if (text === 'lit') {
     material.metalnessNode = materialMetalness.mul(uncovered)
-    material.roughnessNode = mix(materialRoughness, float(INK_ROUGHNESS), page.a)
+    material.roughnessNode = filteredRoughness(mix(materialRoughness, float(INK_ROUGHNESS), page.a), baseNormal)
     material.specularIntensityNode = mix(materialSpecularIntensity, float(1), page.a)
     // SAFETY: three declares this TSL function's layout as vec3 to vec3; its
     // published types leave the result untyped.
-    const bodyEncoded = sRGBTransferOETF(body) as Node<'vec3'>
+    const bodyEncoded = sRGBTransferOETF(bodyColor) as Node<'vec3'>
     // SAFETY: as above, vec3 to vec3.
     const albedo = sRGBTransferEOTF(page.rgb.add(bodyEncoded.mul(uncovered))) as Node<'vec3'>
     material.colorNode = vec4(albedo, 1)
@@ -250,7 +342,7 @@ export function createFinishMaterial(inputs: FinishMaterialInputs, text: TextLig
     return material
   }
 
-  material.colorNode = vec4(body, 1)
+  material.colorNode = vec4(bodyColor, 1)
   material.outputNode = Fn(() => {
     // The canvas stores 0..1, so what the roll-off leaves above 1 clips
     // before the composite rather than bleeding into the text's antialiased
@@ -285,4 +377,7 @@ export function writeFinish(material: MeshPhysicalNodeMaterial, body: UniformNod
   shape.edgeWidth.value = finish.edgeWidth
   shape.detailScale.value = Math.max(finish.detailScale, 0.25)
   shape.detailDepth.value = finish.detailDepth
+  shape.rimColor.value.set(finish.rimColor ?? finish.color)
+  shape.crackle.value = finish.crackle
+  shape.crackleScale.value = Math.max(finish.crackleScale, 4)
 }

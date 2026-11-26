@@ -4,18 +4,18 @@ import { useCallback, useEffect, useState, type ChangeEvent } from 'react'
 import { Button } from '../../components/system'
 import { TuningGroup, TuningPanel, TuningSlider } from '../../components/TuningPanel'
 import {
-  applyFinish,
+  applyLook,
   liveFinish,
   notifyFinishTuning,
   studio,
   subscribeFinishTuning,
   type Finish,
-  type FinishId,
+  type FinishLook,
   type LightRig,
   type StudioTuning,
 } from './materialFinishesTuning'
 
-type FinishNumber = Exclude<keyof Finish, 'color' | 'sheenColor' | 'detail'>
+type FinishNumber = Exclude<keyof Finish, 'color' | 'sheenColor' | 'rimColor' | 'detail'>
 type StudioNumber = Exclude<keyof StudioTuning, 'lightX' | 'lightY'>
 type FinishColor = 'color' | 'sheenColor'
 
@@ -42,9 +42,11 @@ const GROUPS: readonly { readonly title: string; readonly knobs: readonly Knob<F
   {
     title: 'edge and relief',
     knobs: [
-      { key: 'edgeWidth', label: 'edge width (css px)', min: 0, max: 40, step: 0.5 },
+      { key: 'edgeWidth', label: 'edge width (css px)', min: 0, max: 120, step: 0.5 },
       { key: 'detailScale', label: 'relief size (css px)', min: 0.5, max: 160, step: 0.5 },
-      { key: 'detailDepth', label: 'relief slope', min: 0, max: 0.6, step: 0.005 },
+      { key: 'detailDepth', label: 'relief slope', min: 0, max: 2, step: 0.005 },
+      { key: 'crackle', label: 'crackle', min: 0, max: 1, step: 0.01 },
+      { key: 'crackleScale', label: 'crackle size (css px)', min: 4, max: 120, step: 1 },
     ],
   },
   {
@@ -118,7 +120,7 @@ function ColorField({ name, label }: { readonly name: FinishColor; readonly labe
   )
 }
 
-export function MaterialFinishesTweaks({ finish, rig }: { readonly finish: FinishId; readonly rig: LightRig }) {
+export function MaterialFinishesTweaks({ look, rig }: { readonly look: FinishLook; readonly rig: LightRig }) {
   const [, bump] = useState(0)
   useEffect(() => subscribeFinishTuning(() => bump((n) => n + 1)), [])
 
@@ -139,7 +141,7 @@ export function MaterialFinishesTweaks({ finish, rig }: { readonly finish: Finis
       <TuningGroup title="colors" initialState="open">
         <ColorField name="color" label="Body" />
         <ColorField name="sheenColor" label="Sheen" />
-        <Button compact variant="outline" onClick={() => applyFinish(finish)}>
+        <Button compact variant="outline" onClick={() => applyLook(look)}>
           Reset finish
         </Button>
       </TuningGroup>
