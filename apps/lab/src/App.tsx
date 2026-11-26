@@ -44,6 +44,7 @@ const WhyApp = lazy(() => import('./scenes/why/Why').then(m => ({ default: m.Why
 const ArchitectureApp = lazy(() => import('./scenes/architecture/Architecture').then(m => ({ default: m.ArchitectureApp })))
 const PolymerPrototypeApp = lazy(() => import('./scenes/polymer-prototype/PolymerPrototype').then(m => ({ default: m.PolymerPrototypeApp })))
 const MaterialFinishesApp = lazy(() => import('./scenes/material-finishes/MaterialFinishes').then(m => ({ default: m.MaterialFinishesApp })))
+const FinishDemoApp = lazy(() => import('./scenes/finish-demo/FinishDemo').then(m => ({ default: m.FinishDemoApp })))
 const FrontierPrototypeApp = lazy(() => import('./scenes/frontier-prototype/FrontierPrototype').then(m => ({ default: m.FrontierPrototypeApp })))
 const BeyondPrototypeApp = lazy(() => import('./scenes/beyond-prototype/BeyondPrototype').then(m => ({ default: m.BeyondPrototypeApp })))
 const SignaturePrototypeApp = lazy(() => import('./scenes/signature-prototype/SignaturePrototype').then(m => ({ default: m.SignaturePrototypeApp })))
@@ -78,6 +79,7 @@ const LAB_SCENES = [
   'architecture',
   'polymer-prototype',
   'material-finishes',
+  'finish-demo',
   'frontier-prototype',
   'beyond-prototype',
   'signature-prototype',
@@ -141,6 +143,7 @@ const PAGE_SCENES = {
   architecture: ArchitectureApp,
   'polymer-prototype': PolymerPrototypeApp,
   'material-finishes': MaterialFinishesApp,
+  'finish-demo': FinishDemoApp,
   'frontier-prototype': FrontierPrototypeApp,
   'beyond-prototype': BeyondPrototypeApp,
   'signature-prototype': SignaturePrototypeApp,
@@ -226,6 +229,7 @@ const SITE_TITLES = {
   architecture: 'Architecture · Munari',
   'polymer-prototype': 'Polymer prototype · Munari',
   'material-finishes': 'Material finishes · Munari',
+  'finish-demo': 'Finishes in use · Munari',
   'frontier-prototype': 'Frontier prototypes · Munari',
   'beyond-prototype': 'Beyond flat UI · Munari',
   'signature-prototype': 'Signature prototypes · Munari',
@@ -236,11 +240,12 @@ const SITE_LAZY_PAGES = {
   architecture: ArchitectureApp,
   'polymer-prototype': PolymerPrototypeApp,
   'material-finishes': MaterialFinishesApp,
+  'finish-demo': FinishDemoApp,
   'frontier-prototype': FrontierPrototypeApp,
   'beyond-prototype': BeyondPrototypeApp,
   'signature-prototype': SignaturePrototypeApp,
 } as const
-const OMITS_NOTICE = new Set<SceneId>(['home', 'why', 'architecture', 'polymer-prototype', 'material-finishes', 'frontier-prototype', 'beyond-prototype', 'signature-prototype', 'marble-hand', 'plume', 'postcard'])
+const OMITS_NOTICE = new Set<SceneId>(['home', 'why', 'architecture', 'polymer-prototype', 'material-finishes', 'finish-demo', 'frontier-prototype', 'beyond-prototype', 'signature-prototype', 'marble-hand', 'plume', 'postcard'])
 
 function isSitePage(scene: SceneId): boolean {
   return scene in SITE_TITLES

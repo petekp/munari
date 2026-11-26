@@ -1,6 +1,6 @@
 // Finish card — retained HTML on a Surface whose material is a physical
-// finish, under the page's studio lights, optionally tilting toward the
-// pointer.
+// finish, lit by the page's lights at its own studio values, optionally
+// tilting toward the pointer.
 //
 // The law: the HTML owns text, focus, form state and input; the material
 // owns shading only, so the pointer still maps through the mesh UV and hit
@@ -9,16 +9,27 @@
 // pose that is drawn. The content root is transparent in the scene, so the
 // capture's alpha separates text from body; on the page it paints the body
 // color itself.
+//
+// Each card holds its own finish and studio objects, so cards with
+// different finishes share one canvas. Each material reflects the
+// environment its finish names and is lit only by the lights it is given
+// (material.lightsNode), placed and powered by its studio before it draws.
+// three's WebGPU renderer reads a light's uniforms once per frame, so cards
+// whose studios differ need their own lights: on one shared set, every card
+// drew under the studio that placed the lights last (measured 2026-11-26:
+// switching one bench card from velvet to lacquer changed 85% of the pixels
+// of two other cards). Cards that share a studio may share lights.
 
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { texture as textureNode, uniform } from 'three/tsl'
+import { lights as lightsNodeOf, texture as textureNode, uniform } from 'three/tsl'
 import {
   deformSurfaceGeometry,
   Surface,
   useSurfaceBeforeRender,
   useSurfaceNodes,
+  useSurfaceRefresh,
   useSurfaceTexture,
   type SurfaceCanvasId,
   type SurfaceRenderFrame,
@@ -26,8 +37,16 @@ import {
 import { createRawCaptureView } from './materialFinishesCaptureView'
 import { createKeySheenUniforms } from './materialFinishesKeyLight'
 import { createFinishMaterial, createFinishShapeUniforms, writeFinish, type FinishShapeUniforms } from './materialFinishesNodes'
-import { placeStudioLights, type StudioLights } from './materialFinishesStudio'
-import { liveFinish, studio, subscribeFinishTuning, type CardTilt, type LightRig, type SurfaceDetail, type TextLighting } from './materialFinishesTuning'
+import { lightsOf, placeStudioLights, type StudioEnvironments, type StudioLights } from './materialFinishesStudio'
+import {
+  subscribeFinishTuning,
+  type CardTilt,
+  type EnvironmentKind,
+  type Finish,
+  type LightRig,
+  type StudioTuning,
+  type TextLighting,
+} from './materialFinishesTuning'
 
 // The steepest tilt, and the pointer distance in CSS px that reaches it.
 // Six degrees moves a 340 px card's edge about 18 px in depth, enough to
@@ -94,17 +113,28 @@ function stepTilt(state: TiltState, shape: FinishShapeUniforms, frame: SurfaceRe
   return moving
 }
 
-interface FinishMaterialProps {
-  /** The look's relief kind and whether it has crackle; changing either rebuilds the material. */
-  readonly detail: SurfaceDetail
-  readonly hasCrackle: boolean
-  readonly text: TextLighting
-  readonly tilt: CardTilt
+/**
+ * What a card wears and how it is lit. The finish and studio objects are
+ * read before every draw, so writing one and calling notifyFinishTuning
+ * redraws the card; a write that changes the shader also rebuilds it.
+ */
+export interface FinishLighting {
+  readonly finish: Readonly<Finish>
+  readonly studio: Readonly<StudioTuning>
+  /** Which of the canvas's environments the card reflects. */
+  readonly environment: EnvironmentKind
+  readonly environments: StudioEnvironments
   readonly rig: LightRig
+  /** The lights this card's studio places; share them only between cards that share a studio. */
   readonly lights: StudioLights
 }
 
-function FinishMaterial({ detail, hasCrackle, text, tilt, rig, lights }: FinishMaterialProps) {
+interface FinishMaterialProps extends FinishLighting {
+  readonly text: TextLighting
+  readonly tilt: CardTilt
+}
+
+function FinishMaterial({ finish, studio, environment, environments, rig, lights, text, tilt }: FinishMaterialProps) {
   const capture = useSurfaceTexture()
   const surface = useSurfaceNodes()
   const view = useMemo(() => createRawCaptureView(capture), [capture])
@@ -113,67 +143,91 @@ function FinishMaterial({ detail, hasCrackle, text, tilt, rig, lights }: FinishM
   // value write keeps the built shader.
   const [captureNode] = useState(() => textureNode(view.texture))
   captureNode.value = view.texture
-  const body = useMemo(() => uniform(new THREE.Color(liveFinish.color)), [])
+  const body = useMemo(() => uniform(new THREE.Color()), [])
   const shape = useMemo(createFinishShapeUniforms, [])
   const key = useMemo(createKeySheenUniforms, [])
-  // Crossing zero on either rebuilds the material, as the crackle does.
-  const hasFilm = useSyncExternalStore(subscribeFinishTuning, () => liveFinish.iridescence > 0)
-  const hasScatter = useSyncExternalStore(subscribeFinishTuning, () => liveFinish.subsurface > 0)
-  const material = useMemo(
-    () =>
-      createFinishMaterial(
-        { capture: captureNode, cornerMask: surface.radiusMask(), size: surface.size, radii: surface.radii, body, shape, key },
-        { text, detail, crackle: hasCrackle, film: hasFilm, scatter: hasScatter },
-      ),
-    [captureNode, surface, body, shape, key, text, detail, hasCrackle, hasFilm, hasScatter],
-  )
+  // The relief kind, and a crackle, film or scatter crossing zero, change the
+  // shader, so each rebuilds the material.
+  const detail = useSyncExternalStore(subscribeFinishTuning, () => finish.detail)
+  const hasCrackle = useSyncExternalStore(subscribeFinishTuning, () => finish.crackle > 0)
+  const hasFilm = useSyncExternalStore(subscribeFinishTuning, () => finish.iridescence > 0)
+  const hasScatter = useSyncExternalStore(subscribeFinishTuning, () => finish.subsurface > 0)
+  const litBy = useMemo(() => lightsNodeOf([...lightsOf(rig, lights)]), [rig, lights])
+  const material = useMemo(() => {
+    const built = createFinishMaterial(
+      { capture: captureNode, cornerMask: surface.radiusMask(), size: surface.size, radii: surface.radii, body, shape, key },
+      { text, detail, crackle: hasCrackle, film: hasFilm, scatter: hasScatter },
+    )
+    built.lightsNode = litBy
+    return built
+  }, [captureNode, surface, body, shape, key, text, detail, hasCrackle, hasFilm, hasScatter, litBy])
   useEffect(() => () => material.dispose(), [material])
   const [tiltState] = useState<TiltState>(() => ({ pitch: 0, yaw: 0, last: performance.now() }))
 
-  const scene = useThree((state) => state.scene)
   const invalidate = useThree((state) => state.invalidate)
   useSurfaceBeforeRender((frame) => {
     view.sync()
-    writeFinish(material, body, shape, liveFinish)
-    placeStudioLights(lights, frame)
+    writeFinish(material, body, shape, finish)
+    const reflected = environments.get(environment) ?? null
+    if (material.envMap !== reflected) {
+      material.envMap = reflected
+      material.needsUpdate = true
+      invalidate()
+    }
+    material.envMapIntensity = studio.environmentIntensity
+    placeStudioLights(lights, frame, studio)
     key.position.value.copy(lights.softbox.position).applyMatrix4(frame.camera.matrixWorldInverse)
     key.radiantIntensity.value.copy(lights.softbox.color).multiplyScalar(rig === 'softbox' ? lights.point.intensity : 0)
     key.intensity.value.copy(lights.point.color).multiplyScalar(lights.point.intensity)
-    scene.environmentIntensity = studio.environmentIntensity
     if (tilt === 'pointer' && stepTilt(tiltState, shape, frame)) invalidate()
   })
 
   return <primitive object={material} attach="material" />
 }
 
-export interface FinishCardProps {
+/**
+ * Ask for a new capture when the content root's style changes. A style write
+ * is not input, so a Surface that is not `live` keeps showing the paint it
+ * has (htmlInCanvas.ts onpaint) until one is requested.
+ */
+function RecaptureOnStyle({ style }: { readonly style: CSSProperties | undefined }) {
+  const refresh = useSurfaceRefresh()
+  const styleKey = JSON.stringify(style ?? null)
+  useEffect(() => {
+    refresh()
+  }, [refresh, styleKey])
+  return null
+}
+
+export interface FinishCardProps extends FinishLighting {
   readonly canvasId: SurfaceCanvasId
   readonly inScene: boolean
-  readonly detail: SurfaceDetail
-  readonly hasCrackle: boolean
   readonly text: TextLighting
   readonly tilt: CardTilt
-  readonly rig: LightRig
-  readonly lights: StudioLights
   readonly className?: string
+  /** On the content root, which the HTML keeps wherever it is drawn: the place to set page ink such as --mf-ink. */
+  readonly style?: CSSProperties
   readonly children: ReactNode
 }
 
-export function FinishCard({ canvasId, inScene, detail, hasCrackle, text, tilt, rig, lights, className = '', children }: FinishCardProps) {
+export function FinishCard({ canvasId, inScene, text, tilt, className = '', style, children, ...lighting }: FinishCardProps) {
   const place = inScene ? 'mf-card--scene' : 'mf-card--page'
   // A tilting card bends its own plane, so it cannot share the default one.
   const geometry = tilt === 'pointer' ? <planeGeometry args={[1, 1]} /> : undefined
   return (
     <Surface.Root canvasId={canvasId} inScene={inScene}>
       <Surface.HTML>
-        <div className={`mf-card ${place} ${className}`.trim()}>{children}</div>
+        <div className={`mf-card ${place} ${className}`.trim()} style={style}>
+          <RecaptureOnStyle style={style} />
+          {children}
+        </div>
       </Surface.HTML>
       <Surface.Scene>
         <Surface.Mesh
           key={tilt}
           placement="match-dom"
           geometry={geometry}
-          material={<FinishMaterial detail={detail} hasCrackle={hasCrackle} text={text} tilt={tilt} rig={rig} lights={lights} />}
+          material={<FinishMaterial {...lighting} text={text} tilt={tilt} />}
         />
       </Surface.Scene>
     </Surface.Root>

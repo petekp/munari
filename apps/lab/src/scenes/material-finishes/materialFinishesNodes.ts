@@ -341,7 +341,7 @@ export function createFinishMaterial(inputs: FinishMaterialInputs, layers: Finis
 }
 
 /** Write a finish's values. Crossing zero on a lobe recompiles; other writes are uniform updates. */
-export function writeFinish(material: MeshPhysicalNodeMaterial, body: UniformNode<'color', THREE.Color>, shape: FinishShapeUniforms, finish: Finish): void {
+export function writeFinish(material: MeshPhysicalNodeMaterial, body: UniformNode<'color', THREE.Color>, shape: FinishShapeUniforms, finish: Readonly<Finish>): void {
   body.value.set(finish.color)
   material.roughness = finish.roughness
   material.metalness = finish.metalness

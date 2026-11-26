@@ -11,7 +11,7 @@
 // one even tint, so the key light stands a few hundred CSS px over the
 // cards, dragged or swept across them under a perspective camera.
 
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type PointerEvent } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { PMREMGenerator, WebGPURenderer } from 'three/webgpu'
@@ -23,14 +23,20 @@ import { sceneUrl } from '../../captureMode'
 import { MaterialFinishesCompare } from './MaterialFinishesCompare'
 import { familyOf, familyOfFinish } from './materialFinishesPresets'
 import { FinishCard, pagePointer } from './MaterialFinishesSurface'
-import { createStudioLights, createStudioScene, lightsOf, type StudioLights } from './materialFinishesStudio'
+import {
+  createStudioEnvironments,
+  createStudioLights,
+  createStudioScene,
+  lightsOf,
+  type StudioEnvironments,
+  type StudioLights,
+} from './materialFinishesStudio'
 import { MaterialFinishesTweaks } from './MaterialFinishesTweaks'
 import {
   applyFinish,
   applyStudio,
   FINISH_ORDER,
   FINISH_STUDIOS,
-  FINISHES,
   isFinishId,
   isLightRig,
   LIGHT_RIGS,
@@ -100,40 +106,47 @@ function compareUrl(family: string, text: TextLighting, light: LightRig): string
   return `?${new URLSearchParams({ scene: 'material-finishes', compare: family, text, light })}`
 }
 
-function StudioEnvironment({ rig, environment }: { readonly rig: LightRig; readonly environment: EnvironmentKind }) {
+const ENVIRONMENT_KINDS: readonly EnvironmentKind[] = ['even', 'gradient']
+
+/** Bake the rig's environments into `environments`, one per kind, for the canvas's cards to reflect. */
+export function StudioEnvironment({ rig, environments }: { readonly rig: LightRig; readonly environments: StudioEnvironments }) {
   const gl = useThree((state) => state.gl)
-  const scene = useThree((state) => state.scene)
   const invalidate = useThree((state) => state.invalidate)
   useEffect(() => {
     if (!(gl instanceof WebGPURenderer)) throw new Error('The material finishes environment needs the WebGPURenderer from SurfaceCanvas')
     let cancelled = false
-    let baked: THREE.RenderTarget | null = null
+    const baked: THREE.RenderTarget[] = []
     void gl.init().then(() => {
       if (cancelled) return
       const generator = new PMREMGenerator(gl)
       if (rig === 'room') {
         const room = new RoomEnvironment()
-        baked = generator.fromScene(room, ROOM_BLUR)
+        const target = generator.fromScene(room, ROOM_BLUR)
         room.dispose()
+        baked.push(target)
+        for (const kind of ENVIRONMENT_KINDS) environments.set(kind, target.texture)
       } else {
-        const built = createStudioScene(environment)
-        baked = generator.fromScene(built.scene, STUDIO_BLUR)
-        built.dispose()
+        for (const kind of ENVIRONMENT_KINDS) {
+          const built = createStudioScene(kind)
+          const target = generator.fromScene(built.scene, STUDIO_BLUR)
+          built.dispose()
+          baked.push(target)
+          environments.set(kind, target.texture)
+        }
       }
       generator.dispose()
-      scene.environment = baked.texture
       invalidate()
     })
     return () => {
       cancelled = true
-      scene.environment = null
-      baked?.dispose()
+      environments.clear()
+      for (const target of baked) target.dispose()
     }
-  }, [gl, scene, invalidate, rig, environment])
+  }, [gl, invalidate, rig, environments])
   return null
 }
 
-function TuningInvalidator() {
+export function TuningInvalidator() {
   const invalidate = useThree((state) => state.invalidate)
   useEffect(() => subscribeFinishTuning(() => invalidate()), [invalidate])
   return null
@@ -170,15 +183,16 @@ interface CardsProps {
   readonly tilt: CardTilt
   readonly rig: LightRig
   readonly lights: StudioLights
+  readonly environments: StudioEnvironments
 }
 
-function Cards({ canvasId, inScene, finish, text, tilt, rig, lights }: CardsProps) {
+function Cards({ canvasId, inScene, finish, text, tilt, rig, lights, environments }: CardsProps) {
   const [bag, setBag] = useState(0)
   const [name, setName] = useState('Morning take, room 2')
   const [saved, setSaved] = useState<string | null>(null)
   const [gain, setGain] = useState<'low' | 'mid' | 'high'>('mid')
-  const hasCrackle = useSyncExternalStore(subscribeFinishTuning, () => liveFinish.crackle > 0)
-  const card = { canvasId, inScene, detail: FINISHES[finish].detail, hasCrackle, text, tilt, rig, lights }
+  // Every card on this page wears the live finish under the live studio.
+  const card = { canvasId, inScene, finish: liveFinish, studio, environment: FINISH_STUDIOS[finish].environment, environments, text, tilt, rig, lights }
 
   return (
     <main className="mf-cards">
@@ -255,6 +269,7 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
   const [inScene, setInScene] = useState(true)
   const [sweeping, setSweeping] = useState(false)
   const [lights] = useState(createStudioLights)
+  const [environments] = useState(createStudioEnvironments)
   const handleRef = useRef<HTMLButtonElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
 
@@ -356,7 +371,7 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
           onCreated={({ gl }) => gl.setClearAlpha(0)}
           style={{ position: 'fixed', inset: 0, zIndex: 10 }}
         >
-          <StudioEnvironment rig={rig} environment={FINISH_STUDIOS[finish].environment} />
+          <StudioEnvironment rig={rig} environments={environments} />
           <TuningInvalidator />
           {tilt === 'pointer' && <PointerTracker />}
           {lightsOf(rig, lights).map((light) => (
@@ -409,7 +424,7 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
       </header>
       )}
 
-      <Cards canvasId={canvasId} inScene={showsScene} finish={finish} text={text} tilt={tilt} rig={rig} lights={lights} />
+      <Cards canvasId={canvasId} inScene={showsScene} finish={finish} text={text} tilt={tilt} rig={rig} lights={lights} environments={environments} />
 
       {supported && (
         <button

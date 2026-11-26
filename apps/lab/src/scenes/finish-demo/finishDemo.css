@@ -1,0 +1,299 @@
+/* Finish demo — a bench of finished cards between a control rail and a
+ * code rail. Each card root declares its own pixel size (docs/authoring.md);
+ * the scene's .mf-card supplies padding, radius and ink, and each card's
+ * inkStyle sets --mf-body, --mf-ink and --mf-quiet from its body color. */
+
+.fd-page {
+  --fd-ground: #dcdad5;
+  --fd-ground-dark: #17181b;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #f4f3f0;
+  color: var(--m-ink);
+  font: 400 14px/1.5 var(--m-sans);
+}
+
+.fd-page :is(h2, p, figure, ul) {
+  margin: 0;
+}
+
+/* ── shared ───────────────────────────────────────────────────────── */
+
+.fd-bar {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 56px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--m-rule);
+  background: #f4f3f0;
+}
+
+.fd-heading {
+  margin-bottom: 10px;
+  font: 700 12px/1.2 var(--m-sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--m-quiet);
+}
+
+.fd-note {
+  color: var(--m-quiet);
+  font-size: 12px;
+}
+
+.fd-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fd-finishes {
+  display: grid;
+  gap: 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.fd-finish {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: none;
+  color: var(--m-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fd-finish:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.fd-finish[aria-pressed='true'] {
+  border-color: var(--m-ink);
+}
+
+.fd-finish strong {
+  display: block;
+  font-weight: 600;
+}
+
+.fd-finish-group + .fd-finish-group {
+  margin-top: 12px;
+}
+
+.fd-finish-family {
+  margin-bottom: 4px;
+  font: 600 12px/1.2 var(--m-sans);
+  color: var(--m-quiet);
+}
+
+.fd-finish-note {
+  color: var(--m-quiet);
+  font-size: 12px;
+}
+
+.fd-swatch {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+.fd-color {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fd-color input {
+  width: 44px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--m-rule);
+  background: none;
+}
+
+.fd-code {
+  margin: 0;
+  padding: 14px 16px;
+  overflow: auto;
+  border-radius: 10px;
+  background: #1b1c1f;
+  color: #e9e6df;
+  font: 400 12px/1.6 var(--m-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  tab-size: 2;
+}
+
+.fd-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fd-context {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.fd-context figcaption {
+  color: var(--m-quiet);
+  font: 600 12px/1 var(--m-sans);
+}
+
+/* ── cards ────────────────────────────────────────────────────────── */
+
+.fd-card--settings { width: 320px; height: 280px; }
+.fd-card--product { width: 320px; height: 280px; }
+.fd-card--tile { width: 320px; height: 220px; }
+.fd-card--media { width: 320px; height: 220px; }
+
+.fd-stack {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.fd-field {
+  display: grid;
+  gap: 4px;
+}
+
+.fd-field--inline {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.fd-number {
+  width: 84px;
+}
+
+.fd-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fd-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--mf-ink);
+}
+
+.fd-row--top {
+  align-items: flex-start;
+  margin-top: 0;
+}
+
+.fd-segments--small .mf-segment {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.fd-spark {
+  width: 100%;
+  height: 48px;
+  margin-top: auto;
+  color: var(--mf-ink);
+}
+
+.fd-track {
+  font: 700 18px/1.2 var(--m-sans);
+}
+
+.fd-play {
+  min-width: 76px;
+}
+
+.fd-scrub {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--mf-ink);
+}
+
+.fd-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── bench ────────────────────────────────────────────────────────── */
+
+.fd-bench {
+  display: grid;
+  grid-template: 56px 1fr / 280px 1fr 400px;
+}
+
+.fd-bench .fd-bar {
+  grid-column: 1 / -1;
+}
+
+.fd-rail {
+  position: relative;
+  z-index: 20;
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  padding: 20px;
+  overflow: auto;
+  background: #f4f3f0;
+}
+
+.fd-rail--controls {
+  border-right: 1px solid var(--m-rule);
+}
+
+.fd-rail--controls section {
+  display: grid;
+  gap: 10px;
+}
+
+.fd-rail--code {
+  border-left: 1px solid var(--m-rule);
+  gap: 12px;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
+.fd-rail--code .fd-code {
+  align-self: start;
+  max-height: 100%;
+}
+
+.fd-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 320px);
+  align-content: center;
+  justify-content: center;
+  gap: 28px 32px;
+  padding: 24px;
+  background: var(--fd-ground);
+}
+
+.fd-page[data-page-ground='dark'] .fd-grid {
+  background: var(--fd-ground-dark);
+}
+
+.fd-page[data-page-ground='dark'] .fd-context figcaption {
+  color: #a3a3a3;
+}
+

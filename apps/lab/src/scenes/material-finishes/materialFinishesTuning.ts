@@ -319,6 +319,11 @@ const STUDIO_START: Readonly<Record<LightRig, Readonly<StudioTuning>>> = Object.
 
 export const studio: StudioTuning = { ...STUDIO_START.softbox }
 
+/** A new studio at a rig's values under a finish's own, for a card that has its own studio. */
+export function studioFor(rig: LightRig, finish: FinishId): StudioTuning {
+  return { ...STUDIO_START[rig], ...FINISH_STUDIOS[finish].studio }
+}
+
 /** Start the studio at a rig's values and a finish's, key position included. Does not notify. */
 export function startStudio(rig: LightRig, finish: FinishId): void {
   Object.assign(studio, STUDIO_START[rig], FINISH_STUDIOS[finish].studio)

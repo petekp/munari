@@ -38,7 +38,7 @@ import * as THREE from 'three'
 import { RectAreaLightNode } from 'three/webgpu'
 import { RectAreaLightTexturesLib } from 'three/examples/jsm/lights/RectAreaLightTexturesLib.js'
 import type { SurfaceRenderFrame } from '@petepetrash/munari'
-import { studio, type EnvironmentKind, type LightRig } from './materialFinishesTuning'
+import type { EnvironmentKind, LightRig, StudioTuning } from './materialFinishesTuning'
 
 RectAreaLightNode.setLTC(RectAreaLightTexturesLib.init())
 
@@ -97,7 +97,7 @@ const _below = new THREE.Vector3()
  * form factor, so the irradiance under the key is `lightPower` at any
  * world scale.
  */
-export function placeStudioLights(lights: StudioLights, frame: SurfaceRenderFrame): void {
+export function placeStudioLights(lights: StudioLights, frame: SurfaceRenderFrame, studio: StudioTuning): void {
   // SAFETY: SurfaceCanvas creates a PerspectiveCamera unless `orthographic` is requested, and this scene does not request it.
   const camera = frame.camera as THREE.PerspectiveCamera
   const rect = frame.canvas.getBoundingClientRect()
@@ -146,6 +146,17 @@ export function placeStudioLights(lights: StudioLights, frame: SurfaceRenderFram
 }
 
 // ── environment ────────────────────────────────────────────────────────
+
+/**
+ * The baked environments a canvas offers its cards, one per kind, so cards
+ * that reflect different environments can share a canvas. Empty until the
+ * canvas's StudioEnvironment has baked them.
+ */
+export type StudioEnvironments = Map<EnvironmentKind, THREE.Texture>
+
+export function createStudioEnvironments(): StudioEnvironments {
+  return new Map()
+}
 
 // Linear radiance. The walls set the fill under the key; the panels are
 // what glossy and metal cards reflect. The behind-viewer fill is a trade:
