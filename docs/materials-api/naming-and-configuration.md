@@ -2,255 +2,246 @@
 
 Part of the [materials and lighting API proposal](../materials-api.md). Status: proposal. Nothing in it is built, and code blocks marked "Sketch" show an API that does not exist yet.
 
-## 1. Naming
+## 1. Where the finish goes
 
-The question is what a developer writes to make a Surface lit, and what that
-name says about unlit content, custom shaders and copyable registry packs.
+The question is what a developer writes to make a Surface lit, and what
+that says about unlit content, custom shaders and registry packs.
 
-### A. `Surface.Material` with a `finish` prop
-
-```tsx
-// Sketch — not built.
-<Surface.Mesh material={<Surface.Material finish="lacquer" color="#1d4e89" />} />
-```
-
-`Surface.Material` replaces `Surface.LitMaterial`. The line says
-"material" twice, and the name hides that this material needs light: a
-developer who drops it on a canvas with no lights gets a black card. The
-default unlit presenter is also a material, so "the Material" names the
-wrong one. Custom shaders and registry packs keep using the same `material`
-slot, which is consistent.
-
-### B. Keep `Surface.LitMaterial` and add `finish`
+### A. A `Surface.Material` component
 
 ```tsx
-// Sketch — not built.
-<Surface.Mesh material={<Surface.LitMaterial finish="lacquer" color="#1d4e89" />} />
+// Sketch, not built.
+<Surface.Mesh material={<Surface.Material finish="lacquer-crimson" />} />
 ```
 
-"Lit" says the material needs light, and existing scenes keep working. The
-nesting is the same as A. Today's four props and the finish fields would
-share one component, so `emissiveIntensity` sits beside `clearcoat`.
+The line says "material" twice, and the default unlit presenter is also a
+material. A finish is data, and this puts it inside JSX in the slot meant
+for code.
 
-### C. A `finish` prop on the presenter
+### B. A `finish` prop on `Surface.Mesh`
 
 ```tsx
-// Sketch — not built.
-<Surface.Mesh finish="lacquer" />
-<Surface.Mesh finish={{ preset: 'lacquer', color: '#1d4e89' }} />
-<Surface canvasId="shop" finish="velvet">…</Surface>
+// Sketch, not built.
+<Surface.Mesh finish={finishes['lacquer-crimson']} />
 ```
 
-The finish is data on the mesh that draws it. A Surface reads as unlit by
-default, lit with a `finish` and drawn by your own code with `material`.
-The prop types make `finish` and `material` exclusive. The `<Surface>`
-shorthand, which today cannot be lit at all, gains one prop. Custom TSL
-shaders and registry packs stay in `material` and are unaffected. The
-finish material component still exists inside the library, loaded with the
-canvas code like `SceneLitMaterial` is today, but no page imports it.
+The finish sits on the mesh that draws it. The HTML side cannot see it,
+and a finish with a body color changes the HTML side too: the page copy
+paints the body and the captured copy must not.
+
+### C. A `finish` prop on the Root
+
+```tsx
+// Sketch, not built.
+<Surface.Root canvasId="shop" finish={finishes['lacquer-crimson']}>…</Surface.Root>
+<Surface canvasId="shop" finish={finishes['velvet-midnight']}>…</Surface>
+<SceneSurface finish={finishes['paper-kraft']}>…</SceneSurface>
+```
+
+`Surface.Root` renders only context providers (Surface.tsx:99-103), and
+its context already reaches the mesh (`SurfaceRootContext`,
+SurfaceRoot.tsx:201, provided again in SurfaceScene.tsx:58). The Root is
+the one component above both the HTML and the mesh, so both read the
+finish from it. `SceneSurface` has the same Root and shorthand forms.
 
 ### Recommendation: C
 
-C is the only option where the finish value is the whole API. It needs no component import and no nesting, and the shorthand Surface
-can carry it. It also makes "unlit" the visible default, since an unlit
-Surface is one with no `finish`. `Surface.LitMaterial` and
-`SurfaceLitMaterialProps` are removed. Its scenes move to a finish without
-a body color, which reproduces today's look (see
-[Body color](#body-color)). Munari has no outside users, so the rename
-touches only the four lab scenes, `tests/surfaceTypes.tsx`, the scene
-lookup test and one Why snippet string.
+A Surface reads as unlit by default and lit when its Root has a
+`finish`. `Surface.LitMaterial`, `SceneSurface.LitMaterial` and
+`SurfaceLitMaterialProps` are removed. 0.5.0 kept a renamed export as an
+alias for one minor release. Munari has no outside users, so this removal
+keeps no alias. The rename touches:
 
-A custom shader keeps today's path, as the lab's Analyze candidate does
-(apps/lab/src/scenes/candidates/CandidateAnalyze.tsx):
+- the scenes: `Knobs.tsx`, `Optics.tsx`, `ReviewNotesNoteMesh.tsx`,
+  `whySnippets.ts` (two snippets) and `whyData.ts`;
+- `instruments/surface-textures/lit.tsx` (two uses);
+- `tests/surfaceTypes.tsx`, `surfaceSceneLookup.tsx` and its test;
+- in packages/react, `index.ts`, `Surface.tsx`, `surfaceMaterials.tsx`,
+  `surfaceLitTexture.ts` and `surfaceSceneComponents.ts`;
+- `docs/decisions/renderer.md` and the changelog.
+
+A `LitMaterial` scene moves to a finish with `color: null`, which lights
+the whole capture as `Surface.LitMaterial` does. Knobs becomes
+`finish={{ color: null, roughness: 0.5, metalness: 0.18, emissiveIntensity: knobsTuning.lightDom }}`.
+Its canvas passes `lighting="none"`, because Knobs lights itself with its
+own point, ambient and directional lights and an environment built from
+its artwork (Knobs.tsx:476, 551-562). Under the default rig a finish would
+see only the rig. Its look will still change, for two reasons:
+
+- the finish material rolls highlights off with `neutralToneMapping`, and
+  `Surface.LitMaterial` does not;
+- the lab material writes its normal in the card's own frame, which is a
+  view-space normal only for a match-DOM mesh. `Surface.Mesh` defaults to
+  manual placement unless it is tunneled (SurfaceMesh.tsx:377).
+
+Knobs, Optics and Review notes need a visual check after the move.
+
+### Escape hatches
+
+1. Finish values cover the 17 looks.
+2. `/advanced` exports `useSurfaceFinishMaterial(inputs)`. An element in
+   the `material` slot calls it and gets the live finish material, or
+   `null` when the Root has no finish. The material arrives with its
+   capture, finish values, key light and environment already wired. The
+   caller changes it through named inputs, such as `normal` and
+   `bodyColor`, each a function from the finish's own node to a new one.
+   Munari builds the material from them, so every term that reads the
+   normal reads the changed one. Replacing `normalNode` afterwards would
+   not work: the lab feeds the same normal node to roughness filtering,
+   the key's sheen and scatter, and the film (materialFinishesNodes.ts:285-308
+   on materials-more). The full list of inputs is settled with the build.
+   A bare `createFinishMaterial()` factory would not be enough either. The lab material needs work before every draw: it syncs
+   the capture view, writes the finish, places the lights and sets the
+   key's uniforms (`FinishMaterial` in MaterialFinishesSurface.tsx).
+3. A custom material with no finish keeps today's path, as the lab's
+   Analyze candidate does (apps/lab/src/scenes/candidates/CandidateAnalyze.tsx).
+   `useSurfaceNodes()` gains `litMap`, the capture with alpha divided out
+   in encoded space and then decoded (decision #48). That read is the hard
+   part of every lit custom shader, and the lab copied it.
 
 ```tsx
-function Prism() {
-  // The capture, its CSS size, its corner radii and the corner mask.
-  const surface = useSurfaceNodes()
-  // Your own TSL node material, built from those nodes.
-  const material = useMemo(() => createPrismMaterial(surface), [surface])
-  return <primitive object={material} attach="material" />
+// Sketch, not built. emboss is a module-level function, so its identity is stable.
+const embossed = { normal: emboss }
+
+function Embossed() {
+  const finished = useSurfaceFinishMaterial(embossed)
+  return finished ? <primitive object={finished} attach="material" /> : null
 }
 
-<Surface.Mesh material={<Prism />} />
+<Surface.Root canvasId="shop" finish={finishes['paper-kraft']}>
+  <Surface.HTML>…</Surface.HTML>
+  <Surface.Scene><Surface.Mesh material={<Embossed />} /></Surface.Scene>
+</Surface.Root>
 ```
 
 ## 2. Configuration
 
-The question is how a developer picks a finish, changes part of it, and goes
-past it.
+The question is how a developer picks a finish, changes part of it, and
+goes past it.
 
-### A. One shared type, presets plus overrides
-
-```tsx
-// Sketch — not built.
-<Surface.Mesh finish="glazed-ceramic" />
-<Surface.Mesh finish={{ preset: 'glazed-ceramic', color: '#c9b48a', crackle: 0 }} />
-<Surface.Mesh finish={{ roughness: 0.4, clearcoat: 0.6 }} />
-```
-
-Every finish has the same fields: the lab's 22-field `Finish` struct, plus
-`text`, `environment`, `lightGain`, `emissiveIntensity` and `side`,
-which the lab keeps outside it or lacks. A preset is a
-named starting value, and overrides merge over it one field at a time.
-Mixing layers is allowed: a metallic lacquer is `{ preset: 'lacquer',
-metalness: 1 }`. The types cannot stop a meaningless mix, such as sheen on
-a mirror metal.
-
-### B. A type per finish
-
-```tsx
-// Sketch — not built.
-<Surface.Mesh finish={{ type: 'velvet', pile: 0.08, sheenColor: '#b8c4ff' }} />
-```
-
-Each finish exposes only the fields that mean something for it, under the
-material's own words. Autocomplete is shorter and a typo is caught. Every
-new finish adds a type and a translation to physical values, and a finish
-between two types (a coated metal, a foil) needs a new type.
-
-### C. Factory functions
-
-```tsx
-// Sketch — not built.
-import { lacquer } from '@petepetrash/munari'
-<Surface.Mesh finish={lacquer({ color: '#1d4e89' })} />
-```
-
-Each preset is a typed function. It reads well and can validate ranges at
-the call. It adds one import per finish, and a finish stored in a theme is
-a function result, opaque to a tweak panel that wants to list fields.
-
-### Recommendation: A
-
-The lab already proved one shared struct carries all five looks, and three
-draws them all through one lighting model. A gives one type to learn, one
-table to document, and plain objects that serialize, diff and sit in a URL
-or a tweak panel. The `finishes` table is exported as data so a panel can
-read preset values.
-
-### Fields, units and ranges
-
-Fields that are three properties keep three's name, unit and range, so the
-escape hatch and the three docs read the same. One exception is
-`iridescenceThickness`, a single film thickness that the lab writes as
-three's `iridescenceThicknessRange`. Fields Munari adds use CSS px, the
-unit the HTML is written in.
-
-| Field | Unit and range | Changes the shader |
+| Design | Usage | Consequence |
 |---|---|---|
-| `color` | CSS color three can parse; omitted means the HTML paints the body | omitting or giving it |
-| `text` | `'unlit'` (default) or `'lit'` | yes |
+| A. One shared type, presets plus overrides | `{ ...finishes['lacquer-crimson'], color: '#1d4e89' }` | One type to learn. Plain objects serialize, diff and sit in a tweak panel. The types cannot stop a meaningless mix, such as sheen on a mirror metal |
+| B. A type per finish | `{ type: 'velvet', pile: 0.08 }` | Shorter autocomplete. Every new finish adds a type and a translation, and a finish between two types needs a new one |
+| C. Factory functions | `lacquer({ color })` | Validates at the call. One import per finish, and a stored finish is opaque to a panel |
+
+Recommendation A. The lab carries all 17 looks in one struct, and three
+draws them through one lighting model.
+
+### Fields by layer
+
+Each layer is an object, or `null` when the finish has none. A present
+layer compiles, so its amount can move through zero with no rebuild.
+three compiles a layer whenever its node is set: `useClearcoat` returns
+`this.clearcoat > 0 || this.clearcoatNode !== null`, and sheen,
+anisotropy and iridescence follow the same form
+(MeshPhysicalNodeMaterial.js:292-331). A probe on m2 confirmed it. With
+`clearcoatNode` set to a uniform, moving the uniform from 0 to 0.6 and
+back built nothing. Setting the `clearcoat` property from 0 to 0.6 built
+the material again, and so did setting it from 0.3 back to 0. The probe is
+described in [Lighting](lighting.md#probe-lights-and-rebuilds).
+
+Flat fields with three's names also stopped matching three. On
+materials-more the lab sets `material.iridescence = 0` and feeds the
+film's values to its own film code (materialFinishesNodes.ts:357-363).
+
+| Field | Unit and range | Compiles |
+|---|---|---|
+| `color` | a color three parses, or `null`: the HTML paints the body | `null` against a color |
+| `text` | `'unlit'` (default) or `'lit'`; read only when `color` is set | yes |
 | `roughness`, `metalness` | 0–1 | no |
 | `ior` | 1.0–2.333 | no |
 | `specularIntensity` | 0–1 | no |
-| `clearcoat`, `clearcoatRoughness` | 0–1 | `clearcoat` crossing 0 |
-| `sheen`, `sheenRoughness`; `sheenColor` | 0–1; CSS color | `sheen` crossing 0 |
-| `anisotropy`; `anisotropyRotation` | 0–1; radians in the Surface's UV frame | `anisotropy` crossing 0 |
-| `iridescence`, `iridescenceIOR`, `iridescenceThickness` | 0–1, 1.0–2.333, nm | `iridescence` crossing 0 |
-| `edgeWidth` | CSS px, 0 is flat | no |
-| `detail` | `'none'`, `'orange-peel'`, `'brushed'`, `'pile'`, `'glaze'` | yes |
-| `detailScale`, `detailDepth` | CSS px; slope | no |
-| `rimColor` | CSS color or null | no |
-| `crackle`, `crackleScale` | 0–1; CSS px | `crackle` crossing 0 |
-| `emissiveIntensity` | 0 and up, as today | no |
-| `environment` | `'even'` or `'gradient'` | see [Lighting](lighting.md#3-lighting) |
-| `lightGain` | `{ key, rim }` multipliers of the rig's power, default 1 | moving away from 1 or back |
+| `coat`: `amount`, `roughness` | 0–1, 0–1 | present or `null` |
+| `sheen`: `amount`, `color`, `roughness` | 0–1, color, 0–1 | present or `null` |
+| `anisotropy`: `amount`, `rotation` | 0–1, radians in the Surface's UV frame | present or `null` |
+| `film`: `amount`, `ior`, `thickness`, `variation`, `scale` | 0–1, 1.0–2.333, nm at the thickest, fraction of the thickness, CSS px | present or `null` |
+| `scatter`: `amount` | share of the diffuse light scattering under the surface, 0–1 | present or `null` |
+| `edge`: `width`, `rimColor` | CSS px, 0 is flat; color or `null` | no |
+| `detail`: `kind`, `scale`, `depth` | kind; CSS px; slope | kind, or present or `null` |
+| `crackle`: `amount`, `scale` | 0–1, CSS px | present or `null` |
+| `emissiveIntensity` | 0 and up | no |
+| `environment` | `'even'` or `'gradient'` | see [Lighting](lighting.md) |
+| `lightGain` | multiplier of the rig's direct light, default 1 | no |
 | `side` | `'front'` or `'double'` | yes |
 
-Values are strings and numbers only, so a page can build a finish without
-importing three (see [SSR](relationships.md#ssr-and-the-page-bundle)). `side` is a string
-for the same reason: `THREE.DoubleSide` is a three import.
+The detail kinds are `orange-peel`, `brushed`, `pile`, `glaze`,
+`crumple`, `fiber`, `dots` and `honeycomb`. With `color: null` the
+whole capture is the lit body, so `text` has no effect.
 
-The rows for `text`, `detail`, `crackle` and the four layers follow the
-lab. `createFinishMaterial` takes `text`, `detail` and `hasCrackle` as
-shape inputs. three's `MeshPhysicalNodeMaterial` switches each layer on
-with `useClearcoat`, `useSheen`, `useIridescence` and `useAnisotropy`.
-The `color` and `side` rows are new, because the lab always gives a color
-and never changes the side. A change in the right column builds a new
-pipeline. Every other write is a uniform update
-and costs no compile. The types document the column, and a development
-warning fires when a shape field changes more than once in a second.
+A finish without a preset starts from neutral defaults: `color: null`,
+`text: 'unlit'`, `roughness: 0.55` (today's `Surface.LitMaterial`
+default), `metalness: 0`, `ior: 1.5`, `specularIntensity: 1`, no layers,
+`edge: { width: 0, rimColor: null }`, `emissiveIntensity: 0`,
+`environment: 'even'`, `lightGain: 1` and `side: 'front'`.
+
+A finish is plain data: strings, numbers, `null` and plain objects. A
+page can build one without importing three (see
+[SSR](relationships.md#ssr-and-the-page-bundle)). An override spreads
+one level into each layer:
+`{ ...base, coat: { ...base.coat, roughness: 0.1 } }`.
+
+A change in the right column builds a new pipeline. Every other write is
+a uniform update. The types document the column, and a development
+warning fires when a compiling field changes more than once in a second.
+
+three's `Color.setStyle` parses hex, `rgb()`, `hsl()` and color names. It
+does not parse `var()`, `oklch()` or `light-dark()`. A finish color is
+therefore a JavaScript value, and a theme switch passes a new finish.
+That is a uniform write. A development warning fires for a color three
+cannot parse.
 
 ### How the lab's knobs map
 
 | Lab control | Finish field or lighting value |
 |---|---|
-| colors group | `color`, `sheenColor` |
+| colors group | `color`, `sheen.color` |
 | base group | `roughness`, `metalness`, `ior`, `specularIntensity` |
-| edge and relief group | `edgeWidth`, `detailScale`, `detailDepth`, `crackle`, `crackleScale` |
-| clearcoat group | `clearcoat`, `clearcoatRoughness` |
-| sheen group | `sheen`, `sheenRoughness` |
-| anisotropy group | `anisotropy`, `anisotropyRotation` |
-| iridescence group | `iridescence`, `iridescenceIOR`, `iridescenceThickness` |
-| finish choice, from the preset only | `detail`, `rimColor` |
-| lit and unlit text buttons in the header | `text` |
-| light and environment group | the canvas `lighting` value, see section 3 |
+| edge and relief group | `edge.width`, `detail.scale`, `detail.depth`, `crackle` |
+| clearcoat, sheen, anisotropy groups | `coat`, `sheen`, `anisotropy` |
+| iridescence group | `film` |
+| finish and look choice | the preset, including `detail.kind` and `edge.rimColor` |
+| lit and unlit text buttons | `text` |
+| light and environment group | the canvas `lighting` value |
 
-### Body color
+### Presets
 
-A finish with a `color` paints its own body, and the HTML's transparent
-areas show it. The lab's looks work this way. A finish with no `color`
-uses the HTML's own pixels as the body. That is today's
-`Surface.LitMaterial`, so Knobs becomes
-`finish={{ roughness: 0.5, metalness: 0.18, emissiveIntensity: knobsTuning.lightDom }}`.
+Each look is a preset: a frozen finish value in a registry module,
+`registry/finishes`. Projects copy it, as they copy `registry/glass`.
+Decision #6 says scene recipes with tuned values belong in `registry/`.
+The preset values were set by eye and are still changing on
+materials-more, so a re-tune should change only the pages that copy it.
+The module also exports `inks`, the suggested text colors per preset (see
+[Text color](body-and-text.md#text-color)).
 
-A body color in the finish needs a transparent content root in the scene
-and a painted one on the page, for browsers that show the HTML. The lab
-does this by hand. Munari has no attribute or class that tells CSS where a
-Surface is presented, so every author would repeat the lab's switch. See
-[Decisions for Pete](../materials-api.md#decisions-for-pete), question 4.
-
-### Text color
-
-A finish changes the body under the text, so the text color has to follow
-it. Dark ink is unreadable on crimson lacquer. The material finishes lab
-scene sets `--mf-body` from JS on its page wrapper (`.mf-page`), and
-`--mf-ink` and `--mf-quiet` come from CSS rules keyed on its
-`data-finish` attribute. The page presentation shows the HTML with no
-canvas, so the CSS must hold the same colors.
-
-| Design | Usage | Consequence |
+| Preset | Lab finish | Lab look |
 |---|---|---|
-| A. CSS owns ink, presets carry suggested ink | `style={{ '--ink': finishes.lacquer.ink }}` beside `finish="lacquer"` | The author sees and controls every color. Page and scene match by construction. One more value to pass |
-| B. Munari writes custom properties | Munari sets `--munari-body`, `--munari-ink` and `--munari-quiet` on the content root; CSS uses `color: var(--munari-ink)` | No wiring. Munari writes styles on the author's DOM and owns a contrast rule for every custom color |
-| C. The shader recolors unlit text | none | The page presentation shows the old colors, and text contrast leaves the author's hands |
+| `lacquer-crimson` | `lacquer` | its only look |
+| `polymer-charcoal` | `satin-polymer` | its only look |
+| `aluminum-blue` | `anodized-aluminum` | its only look |
+| `ceramic-celadon` | `glazed-ceramic` | its only look |
+| `velvet-midnight` | `velvet` | its only look |
+| `foil-holographic`, `foil-oil-slick`, `foil-crumpled` | `thin-film-foil` | `holographic`, `oil-slick`, `crumpled` |
+| `paper-office`, `paper-kraft`, `paper-cold-press` | `paper` | `office`, `kraft`, `cold-press` |
+| `rubber-black`, `rubber-grip`, `rubber-silicone` | `soft-touch-rubber` | `black`, `grip`, `silicone` |
+| `wax-candle`, `wax-beeswax`, `wax-silicone` | `translucent-wax` | `candle`, `beeswax`, `silicone` |
 
-Recommended: A. `finishes` gains `ink` and `quietInk` per preset, as
-data. A theme value then feeds both the finish and the CSS, as the two
-canvases example shows. See [Decisions for Pete](../materials-api.md#decisions-for-pete),
-question 6.
-
-### Escape hatches
-
-1. Finish values cover every look the lab has made.
-2. `/advanced` exports `createFinishMaterial(nodes, finish)`, which
-   returns the `MeshPhysicalNodeMaterial` a finish builds. A caller edits
-   its nodes and puts it in `material`. This is the lab's builder, made
-   public.
-3. A custom material in the `material` slot. `useSurfaceNodes()` gains
-   `litMap`, the capture with alpha divided out in encoded space and then
-   decoded (decision #48). That read is the hard part of every lit custom
-   shader, and the lab copied it.
+Names follow `<family>-<look>`. The family is a short material noun, so
+`polymer` replaces "satin polymer", which beside `velvet` reads as a
+fabric. The longer words move into each preset's doc comment.
 
 ### Adding a finish
 
-Munari adds a finish as a preset entry when the existing fields can express
-it. A finish that needs new shading, such as paper fibers or a wax's light
-scattering under the surface, adds a `detail` kind or a field, with its
-conformance check and a decision entry. Wax may not fit the shared model at
-all. three r186 ships `MeshSSSNodeMaterial`, a subclass of the physical
-material with its own lighting model, and a wax finish built on it would
-be a second material class behind the same `finish` prop. Foil, paper,
-rubber and wax are being built in separate work, and this proposal does
-not claim they fit.
+The shared model held all nine lab finishes. Foil fits through the film
+layer and the `crumple` detail, paper through `fiber`, the grip rubber
+through `dots`, and wax through the scatter layer and `honeycomb`. A finish that needs new shading adds a layer
+or a detail kind, with its conformance check and a decision entry.
+three r186 also ships `MeshSSSNodeMaterial`, a physical material with
+its own scattering model, for a finish the scatter layer cannot reach.
 
 A developer adds a finish as a value, which needs no code:
 
 ```tsx
-// Sketch — not built.
-export const brushedBrass = { preset: 'anodized-aluminum', color: '#b5a06a', anisotropy: 0.8 } satisfies SurfaceFinish
+// Sketch, not built.
+export const brushedBrass = { ...finishes['aluminum-blue'], color: '#b5a06a', anisotropy: { amount: 0.8, rotation: 0 } } satisfies SurfaceFinish
 ```
-
-A finish that needs its own shader is a registry pack in the `material`
-slot, built on level 2 or 3 above.
