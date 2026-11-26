@@ -10,7 +10,7 @@
 // capture's alpha separates text from body; on the page it paints the body
 // color itself.
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { texture as textureNode, uniform } from 'three/tsl'
@@ -24,9 +24,10 @@ import {
   type SurfaceRenderFrame,
 } from '@petepetrash/munari'
 import { createRawCaptureView } from './materialFinishesCaptureView'
-import { createFinishMaterial, createFinishShapeUniforms, createKeySheenUniforms, writeFinish, type FinishShapeUniforms } from './materialFinishesNodes'
+import { createKeySheenUniforms } from './materialFinishesKeyLight'
+import { createFinishMaterial, createFinishShapeUniforms, writeFinish, type FinishShapeUniforms } from './materialFinishesNodes'
 import { placeStudioLights, type StudioLights } from './materialFinishesStudio'
-import { liveFinish, studio, type CardTilt, type LightRig, type SurfaceDetail, type TextLighting } from './materialFinishesTuning'
+import { liveFinish, studio, subscribeFinishTuning, type CardTilt, type LightRig, type SurfaceDetail, type TextLighting } from './materialFinishesTuning'
 
 // The steepest tilt, and the pointer distance in CSS px that reaches it.
 // Six degrees moves a 340 px card's edge about 18 px in depth, enough to
@@ -115,15 +116,16 @@ function FinishMaterial({ detail, hasCrackle, text, tilt, rig, lights }: FinishM
   const body = useMemo(() => uniform(new THREE.Color(liveFinish.color)), [])
   const shape = useMemo(createFinishShapeUniforms, [])
   const key = useMemo(createKeySheenUniforms, [])
+  // Crossing zero on either rebuilds the material, as the crackle does.
+  const hasFilm = useSyncExternalStore(subscribeFinishTuning, () => liveFinish.iridescence > 0)
+  const hasScatter = useSyncExternalStore(subscribeFinishTuning, () => liveFinish.subsurface > 0)
   const material = useMemo(
     () =>
       createFinishMaterial(
         { capture: captureNode, cornerMask: surface.radiusMask(), size: surface.size, radii: surface.radii, body, shape, key },
-        text,
-        detail,
-        hasCrackle,
+        { text, detail, crackle: hasCrackle, film: hasFilm, scatter: hasScatter },
       ),
-    [captureNode, surface, body, shape, key, text, detail, hasCrackle],
+    [captureNode, surface, body, shape, key, text, detail, hasCrackle, hasFilm, hasScatter],
   )
   useEffect(() => () => material.dispose(), [material])
   const [tiltState] = useState<TiltState>(() => ({ pitch: 0, yaw: 0, last: performance.now() }))
@@ -136,6 +138,7 @@ function FinishMaterial({ detail, hasCrackle, text, tilt, rig, lights }: FinishM
     placeStudioLights(lights, frame)
     key.position.value.copy(lights.softbox.position).applyMatrix4(frame.camera.matrixWorldInverse)
     key.radiantIntensity.value.copy(lights.softbox.color).multiplyScalar(rig === 'softbox' ? lights.point.intensity : 0)
+    key.intensity.value.copy(lights.point.color).multiplyScalar(lights.point.intensity)
     scene.environmentIntensity = studio.environmentIntensity
     if (tilt === 'pointer' && stepTilt(tiltState, shape, frame)) invalidate()
   })

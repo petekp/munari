@@ -51,13 +51,10 @@ import {
   float,
   floor,
   Fn,
-  fract,
   length,
   materialClearcoatRoughness,
   materialMetalness,
   materialRoughness,
-  materialSheen,
-  materialSheenRoughness,
   materialSpecularIntensity,
   max,
   min,
@@ -65,12 +62,10 @@ import {
   neutralToneMapping,
   normalize,
   output,
-  positionView,
   positionViewDirection,
-  pow,
+  Schlick_to_F0,
   select,
   sign,
-  sin,
   smoothstep,
   sqrt,
   sRGBTransferEOTF,
@@ -82,7 +77,11 @@ import {
   vec4,
 } from 'three/tsl'
 import { encodedOutput, premultipliedOutput } from '@petepetrash/munari'
-import type { Finish, SurfaceDetail, TextLighting } from './materialFinishesTuning'
+
+import type { Finish, SurfaceDetail, TextLighting } from './materialFinishesFinish'
+import { filmReflectance, filmThickness } from './materialFinishesFilm'
+import { keyScatter, keySheen, type KeySheenUniforms } from './materialFinishesKeyLight'
+import { fiberRelief, latticeHash, reliefIsInCoat, reliefSlope } from './materialFinishesRelief'
 
 // Below this coverage a fragment writes nothing visible; Surface.LitMaterial
 // discards at the same value.
@@ -106,69 +105,14 @@ const FILTER_KAPPA = 0.18
 // Crackle lines are this many CSS px wide where the cell borders meet.
 // By eye, unmeasured.
 const CRACKLE_LINE_PX = 0.9
+// How far the fibers and formation tint the body, per unit of relief
+// slope: kraft's 0.04 slope moves its body color by about ±10%. By eye,
+// unmeasured.
+const FIBER_TINT_PER_SLOPE = 2.5
 
 // SAFETY: three declares neutralToneMapping's layout as vec3 to vec3; its
 // published types leave the result untyped.
 const rollOff = (color: Node<'vec3'>) => neutralToneMapping(color, float(1)) as Node<'vec3'>
-
-// ── relief ─────────────────────────────────────────────────────────────
-
-const latticeHash = (cell: Node<'vec2'>) => fract(sin(dot(cell, vec2(127.1, 311.7))).mul(43758.5453))
-
-/** Value noise in −1..1 with its gradient per lattice cell: (value, ∂/∂x, ∂/∂y). */
-function valueNoise(p: Node<'vec2'>): Node<'vec3'> {
-  const cell = floor(p)
-  const f = fract(p)
-  const u = f.mul(f).mul(float(3).sub(f.mul(2)))
-  const du = f.mul(float(1).sub(f)).mul(6)
-  const a = latticeHash(cell)
-  const b = latticeHash(cell.add(vec2(1, 0)))
-  const c = latticeHash(cell.add(vec2(0, 1)))
-  const d = latticeHash(cell.add(vec2(1, 1)))
-  const k = a.sub(b).sub(c).add(d)
-  const value = a.add(b.sub(a).mul(u.x)).add(c.sub(a).mul(u.y)).add(k.mul(u.x).mul(u.y))
-  const dx = du.x.mul(b.sub(a).add(k.mul(u.y)))
-  const dy = du.y.mul(c.sub(a).add(k.mul(u.x)))
-  return vec3(value.mul(2).sub(1), dx.mul(2), dy.mul(2))
-}
-
-/**
- * The relief's slope (−∂h/∂x, −∂h/∂y) at content point `p` (CSS px, y
- * down). Each octave's slope is its cell gradient times `depth`, so a
- * feature's height grows with its size.
- */
-function reliefSlope(detail: SurfaceDetail, p: Node<'vec2'>, scale: Node<'float'>, depth: Node<'float'>): Node<'vec2'> {
-  switch (detail) {
-    case 'orange-peel': {
-      const coarse = valueNoise(p.div(scale))
-      // A second octave on a rotated lattice breaks up the grid.
-      const turned = vec2(p.x.mul(0.8).sub(p.y.mul(0.6)), p.x.mul(0.6).add(p.y.mul(0.8)))
-      const fine = valueNoise(turned.div(scale.mul(0.43)).add(17.3))
-      return coarse.yz.add(fine.yz.mul(0.6)).mul(depth)
-    }
-    case 'brushed': {
-      // Grooves along x: long in x, narrow in y, so the slope is across them.
-      const groove = valueNoise(vec2(p.x.div(scale.mul(180)), p.y.div(scale)))
-      const hairline = valueNoise(vec2(p.x.div(scale.mul(50)).add(31.7), p.y.div(scale.mul(0.55))))
-      return vec2(0, groove.z.add(hairline.z.mul(0.5)).mul(depth))
-    }
-    case 'pile': {
-      // Patches where the pile lies a different way, and fiber grain.
-      const patch = valueNoise(p.div(scale))
-      const fiber = valueNoise(p.div(1.4).add(9.1))
-      return patch.yz.add(fiber.yz.mul(0.25)).mul(depth)
-    }
-    case 'glaze':
-      return valueNoise(p.div(scale)).yz.mul(depth)
-    case 'none':
-      return vec2(0, 0)
-  }
-}
-
-/** Whether a finish's relief sits in its clear coat rather than its base. */
-function reliefIsInCoat(detail: SurfaceDetail): boolean {
-  return detail === 'orange-peel' || detail === 'glaze'
-}
 
 interface EdgeProfile {
   readonly slope: Node<'vec2'>
@@ -244,45 +188,6 @@ function filteredRoughness(roughness: Node<'float'>, normal: Node<'vec3'>): Node
   return sqrt(sqrt(alpha2))
 }
 
-// ── key sheen ──────────────────────────────────────────────────────────
-
-/**
- * The softbox key as a point light at its center, for the sheen three
- * leaves out of a RectAreaLight (PhysicalLightingModel.directRectArea at
- * r186). View space. `radiantIntensity` is the light's color times the
- * point key's intensity, so the irradiance under it is `studio.lightPower`,
- * as for the softbox; black when the key is not the softbox, whose lights
- * three already gives sheen.
- */
-export interface KeySheenUniforms {
-  readonly position: UniformNode<'vec3', THREE.Vector3>
-  readonly radiantIntensity: UniformNode<'color', THREE.Color>
-}
-
-export function createKeySheenUniforms(): KeySheenUniforms {
-  return { position: uniform(new THREE.Vector3()), radiantIntensity: uniform(new THREE.Color(0, 0, 0)) }
-}
-
-/**
- * Charlie sheen from the key, as three's BRDF_Sheen evaluates it for a
- * point light: D after Estevez and Kulla 2017, visibility after Neubelt
- * and Pettineo 2013, with the same floor on sin²θh.
- */
-function keySheen(normal: Node<'vec3'>, key: KeySheenUniforms): Node<'vec3'> {
-  const toKey = key.position.sub(positionView)
-  const distanceSquared = dot(toKey, toKey)
-  const toLight = normalize(toKey)
-  const half = normalize(toLight.add(positionViewDirection))
-  const dotNL = clamp(dot(normal, toLight), float(0), float(1))
-  const dotNV = clamp(dot(normal, positionViewDirection), float(0), float(1))
-  const dotNH = clamp(dot(normal, half), float(0), float(1))
-  const inverseAlpha = float(1).div(materialSheenRoughness.mul(materialSheenRoughness))
-  const sin2h = max(float(1).sub(dotNH.mul(dotNH)), float(0.0078125))
-  const distribution = float(2).add(inverseAlpha).mul(pow(sin2h, inverseAlpha.mul(0.5))).div(2 * Math.PI)
-  const visibility = clamp(float(1).div(float(4).mul(dotNL.add(dotNV).sub(dotNL.mul(dotNV)))), float(0), float(1))
-  return materialSheen.mul(distribution.mul(visibility).mul(dotNL)).mul(key.radiantIntensity.div(distanceSquared))
-}
-
 // ── material ───────────────────────────────────────────────────────────
 
 /** The uniforms that shape a finish's normal and pattern its body, written before each draw. */
@@ -294,6 +199,12 @@ export interface FinishShapeUniforms {
   readonly rimColor: UniformNode<'color', THREE.Color>
   readonly crackle: UniformNode<'float', number>
   readonly crackleScale: UniformNode<'float', number>
+  readonly film: UniformNode<'float', number>
+  readonly filmIor: UniformNode<'float', number>
+  readonly filmThickness: UniformNode<'float', number>
+  readonly filmVariation: UniformNode<'float', number>
+  readonly filmScale: UniformNode<'float', number>
+  readonly subsurface: UniformNode<'float', number>
   /** The card's tilt as a rotation in its own frame; identity when flat. */
   readonly tilt: UniformNode<'mat3', THREE.Matrix3>
 }
@@ -306,6 +217,12 @@ export function createFinishShapeUniforms(): FinishShapeUniforms {
     rimColor: uniform(new THREE.Color()),
     crackle: uniform(0),
     crackleScale: uniform(40),
+    film: uniform(0),
+    filmIor: uniform(1.3),
+    filmThickness: uniform(400),
+    filmVariation: uniform(0),
+    filmScale: uniform(200),
+    subsurface: uniform(0),
     tilt: uniform(new THREE.Matrix3()),
   }
 }
@@ -324,13 +241,23 @@ export interface FinishMaterialInputs {
   readonly key: KeySheenUniforms
 }
 
-/** `hasCrackle` compiles the crackle network, which costs nine cell lookups a fragment. */
-export function createFinishMaterial(
-  inputs: FinishMaterialInputs,
-  text: TextLighting,
-  detail: SurfaceDetail,
-  hasCrackle: boolean,
-): MeshPhysicalNodeMaterial {
+/**
+ * What a material compiles. Each layer costs shader work, so a finish
+ * whose value for it is zero leaves it out.
+ * - `crackle`: the crackle network, nine cell lookups a fragment.
+ * - `film`: the thin film over the base's reflectance.
+ * - `scatter`: the key's light scattering under the surface.
+ */
+export interface FinishLayers {
+  readonly text: TextLighting
+  readonly detail: SurfaceDetail
+  readonly crackle: boolean
+  readonly film: boolean
+  readonly scatter: boolean
+}
+
+export function createFinishMaterial(inputs: FinishMaterialInputs, layers: FinishLayers): MeshPhysicalNodeMaterial {
+  const { text, detail } = layers
   const { capture, cornerMask, size, radii, body, shape, key } = inputs
   const material = new MeshPhysicalNodeMaterial({ transparent: true, depthWrite: false, premultipliedAlpha: true })
   const texCoord = uv()
@@ -363,7 +290,23 @@ export function createFinishMaterial(
 
   // A glaze thins fastest near the rim, so its color shifts there most.
   const rimBody = mix(body, shape.rimColor, towardRim.mul(towardRim))
-  const bodyColor = hasCrackle ? rimBody.mul(float(1).sub(crackleLines(content, shape.crackleScale).mul(shape.crackle))) : rimBody
+  let bodyColor: Node<'vec3'> = layers.crackle ? rimBody.mul(float(1).sub(crackleLines(content, shape.crackleScale).mul(shape.crackle))) : rimBody
+  if (detail === 'fiber') {
+    const density = fiberRelief(content, shape.detailScale).x
+    bodyColor = bodyColor.mul(float(1).add(density.mul(shape.detailDepth).mul(FIBER_TINT_PER_SLOPE)))
+  }
+  if (layers.film) {
+    // A metal's body color is its reflectance, so the film over it is too.
+    const cosTheta = clamp(dot(baseNormal, positionViewDirection), float(0), float(1))
+    const thickness = filmThickness(content, shape.filmThickness, shape.filmVariation, shape.filmScale)
+    // SAFETY: Schlick_to_F0 is vec3 in and out; three's types return a bare Node.
+    const filmF0 = Schlick_to_F0(filmReflectance(cosTheta, thickness, shape.filmIor, bodyColor), float(1), cosTheta) as Node<'vec3'>
+    bodyColor = mix(bodyColor, clamp(filmF0, vec3(0), vec3(1)), shape.film)
+  }
+  if (layers.scatter) {
+    const scatter = keyScatter(baseNormal, viewNormal(vec2(0, 0)), towardRim, bodyColor, shape.subsurface, key)
+    material.emissiveNode = keySheen(baseNormal, key).add(text === 'lit' ? scatter.mul(uncovered) : scatter)
+  }
 
   if (text === 'lit') {
     material.metalnessNode = materialMetalness.mul(uncovered)
@@ -411,10 +354,14 @@ export function writeFinish(material: MeshPhysicalNodeMaterial, body: UniformNod
   material.sheenRoughness = finish.sheenRoughness
   material.anisotropy = finish.anisotropy
   material.anisotropyRotation = finish.anisotropyRotation
-  material.iridescence = finish.iridescence
-  material.iridescenceIOR = finish.iridescenceIOR
-  // Without a thickness map, three reads the range's upper bound as the film thickness.
-  material.iridescenceThicknessRange[1] = finish.iridescenceThickness
+  // The material applies the film itself, for every light.
+  material.iridescence = 0
+  shape.film.value = finish.iridescence
+  shape.filmIor.value = finish.iridescenceIOR
+  shape.filmThickness.value = finish.iridescenceThickness
+  shape.filmVariation.value = finish.filmVariation
+  shape.filmScale.value = Math.max(finish.filmScale, 1)
+  shape.subsurface.value = finish.subsurface
   shape.edgeWidth.value = finish.edgeWidth
   shape.detailScale.value = Math.max(finish.detailScale, 0.25)
   shape.detailDepth.value = finish.detailDepth

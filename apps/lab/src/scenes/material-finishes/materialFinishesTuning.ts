@@ -1,4 +1,4 @@
-// Material finishes tuning — five physical finishes as plain preset objects,
+// Material finishes tuning — nine physical finishes as plain preset objects,
 // the studio light rigs they are judged under, and the live copies the
 // tweak panel edits.
 //
@@ -9,79 +9,11 @@
 // in place and listeners invalidate the canvas, so a slider reaches the
 // material with no React render (the polymer prototype's pattern).
 
-export type FinishId = 'lacquer' | 'satin-polymer' | 'anodized-aluminum' | 'velvet' | 'glazed-ceramic'
+import { NO_LOBES, type Finish, type FinishId } from './materialFinishesFinish'
+import { FINISH_LOOKS, FOIL_HOLOGRAPHIC, PAPER_OFFICE, RUBBER_BLACK, WAX_CANDLE, type FinishLook } from './materialFinishesLooks'
 
-/** Whether the capture is lit with the body or composited over it unlit. */
-export type TextLighting = 'lit' | 'unlit'
-
-/**
- * The relief a finish carries below the edge. Each kind compiles its own
- * noise, so changing kind rebuilds the material.
- * - `orange-peel`: coat ripples of a sprayed lacquer.
- * - `brushed`: grooves along x from a brushed sheet.
- * - `pile`: velvet pile laid in patches, plus fiber grain.
- * - `glaze`: the slow waviness of a fired glaze.
- */
-export type SurfaceDetail = 'none' | 'orange-peel' | 'brushed' | 'pile' | 'glaze'
-
-export interface Finish {
-  /** Body color, sRGB hex. */
-  color: string
-  roughness: number
-  metalness: number
-  ior: number
-  /** Weight of the base layer's dielectric reflection (three's `specularIntensity`). */
-  specularIntensity: number
-  clearcoat: number
-  clearcoatRoughness: number
-  sheen: number
-  /** sRGB hex. */
-  sheenColor: string
-  sheenRoughness: number
-  anisotropy: number
-  /** Radians, in the surface's UV frame. */
-  anisotropyRotation: number
-  iridescence: number
-  iridescenceIOR: number
-  /** Film thickness in nm. */
-  iridescenceThickness: number
-  /** Width of the rounded edge, CSS px. 0 leaves the card flat to its rim. */
-  edgeWidth: number
-  detail: SurfaceDetail
-  /** Feature size of the detail, CSS px. */
-  detailScale: number
-  /** Steepest slope the detail adds to the normal. */
-  detailDepth: number
-  /** Body color at the rim, sRGB hex, where a glaze runs thin over the edge; null keeps `color`. */
-  rimColor: string | null
-  /** How far a crackle network darkens the body, 0 to 1; 0 compiles none. */
-  crackle: number
-  /** Cell size of the crackle network, CSS px. */
-  crackleScale: number
-}
-
-const NO_LOBES = {
-  metalness: 0,
-  specularIntensity: 1,
-  clearcoat: 0,
-  clearcoatRoughness: 0,
-  sheen: 0,
-  sheenColor: '#000000',
-  sheenRoughness: 1,
-  anisotropy: 0,
-  anisotropyRotation: 0,
-  iridescence: 0,
-  // KHR_materials_iridescence defaults: IOR 1.3, thickness 100–400 nm
-  // (docs/materials-research-catalog.md §1 sources).
-  iridescenceIOR: 1.3,
-  iridescenceThickness: 400,
-  detail: 'none',
-  detailScale: 1,
-  detailDepth: 0,
-  rimColor: null,
-  crackle: 0,
-  crackleScale: 40,
-} as const
+export type { Finish, FinishId, SurfaceDetail, TextLighting } from './materialFinishesFinish'
+export type { FinishLook } from './materialFinishesLooks'
 
 // Lobe values follow the MaterialX example presets (Apache-2.0) at
 // github.com/AcademySoftwareFoundation/MaterialX, resources/Materials/
@@ -182,6 +114,10 @@ export const FINISHES: Readonly<Record<FinishId, Readonly<Finish>>> = Object.fre
     crackle: 0.2,
     crackleScale: 90,
   }),
+  'thin-film-foil': FOIL_HOLOGRAPHIC,
+  paper: PAPER_OFFICE,
+  'soft-touch-rubber': RUBBER_BLACK,
+  'translucent-wax': WAX_CANDLE,
 })
 
 export const FINISH_ORDER: readonly { readonly id: FinishId; readonly label: string }[] = [
@@ -190,6 +126,10 @@ export const FINISH_ORDER: readonly { readonly id: FinishId; readonly label: str
   { id: 'anodized-aluminum', label: 'Anodized aluminum' },
   { id: 'velvet', label: 'Velvet' },
   { id: 'glazed-ceramic', label: 'Glazed ceramic' },
+  { id: 'thin-film-foil', label: 'Thin-film foil' },
+  { id: 'paper', label: 'Paper' },
+  { id: 'soft-touch-rubber', label: 'Soft-touch rubber' },
+  { id: 'translucent-wax', label: 'Translucent wax' },
 ]
 
 export function isFinishId(value: string | null): value is FinishId {
@@ -235,13 +175,35 @@ export const FINISH_STUDIOS: Readonly<Record<FinishId, FinishStudio>> = Object.f
   'anodized-aluminum': { environment: 'even' },
   velvet: { studio: Object.freeze({ environmentIntensity: 1.4, lightPower: 5, rimPower: 1.5 }), environment: 'even' },
   'glazed-ceramic': { environment: 'gradient' },
+  'thin-film-foil': { environment: 'even' },
+  paper: { environment: 'even' },
+  'soft-touch-rubber': { environment: 'even' },
+  'translucent-wax': { environment: 'even' },
 })
+
+/** The looks of a finish; a settled finish has one, its tuned values. */
+export function looksOf(finish: FinishId): readonly FinishLook[] {
+  return FINISH_LOOKS[finish] ?? [{ id: 'tuned', label: 'Tuned', intent: '', finish: FINISHES[finish], studio: FINISH_STUDIOS[finish] }]
+}
+
+/** Whether a finish has more than one look to choose between. */
+export function hasLookChoice(finish: FinishId): boolean {
+  return looksOf(finish).length > 1
+}
+
+/** A finish's look by id, or its first look. */
+export function lookOf(finish: FinishId, id: string | null | undefined): FinishLook {
+  const looks = looksOf(finish)
+  const found = looks.find((look) => look.id === id) ?? looks[0]
+  if (!found) throw new Error(`The ${finish} finish has no looks`)
+  return found
+}
 
 export const liveFinish: Finish = { ...FINISHES.lacquer }
 
-/** Load a finish's tuned values into the live copy. */
-export function applyFinish(finish: FinishId): void {
-  Object.assign(liveFinish, FINISHES[finish])
+/** Load a finish's tuned values, or one of its looks', into the live copy. */
+export function applyFinish(finish: FinishId, look?: string | null): void {
+  Object.assign(liveFinish, lookOf(finish, look).finish)
   notifyFinishTuning()
 }
 
@@ -339,15 +301,15 @@ const STUDIO_START: Readonly<Record<LightRig, Readonly<StudioTuning>>> = Object.
 
 export const studio: StudioTuning = { ...STUDIO_START.softbox }
 
-/** Start the studio at a rig's values and a finish's, key position included. Does not notify. */
-export function startStudio(rig: LightRig, finish: FinishId): void {
-  Object.assign(studio, STUDIO_START[rig], FINISH_STUDIOS[finish].studio)
+/** Start the studio at a rig's values and a finish's or look's, key position included. Does not notify. */
+export function startStudio(rig: LightRig, finish: FinishId, look?: string | null): void {
+  Object.assign(studio, STUDIO_START[rig], lookOf(finish, look).studio.studio)
 }
 
-/** Restart the studio at a rig's values and a finish's, keeping the key where it was dragged. */
-export function applyStudio(rig: LightRig, finish: FinishId): void {
+/** Restart the studio at a rig's values and a finish's or look's, keeping the key where it was dragged. */
+export function applyStudio(rig: LightRig, finish: FinishId, look?: string | null): void {
   const { lightX, lightY } = studio
-  Object.assign(studio, STUDIO_START[rig], FINISH_STUDIOS[finish].studio, { lightX, lightY })
+  Object.assign(studio, STUDIO_START[rig], lookOf(finish, look).studio.studio, { lightX, lightY })
   notifyFinishTuning()
 }
 

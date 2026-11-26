@@ -64,6 +64,10 @@ const GROUPS: readonly { readonly title: string; readonly knobs: readonly Knob<F
     ],
   },
   {
+    title: 'subsurface',
+    knobs: [{ key: 'subsurface', label: 'scatter', min: 0, max: 1, step: 0.01 }],
+  },
+  {
     title: 'anisotropy',
     knobs: [
       { key: 'anisotropy', label: 'anisotropy', min: 0, max: 1, step: 0.01 },
@@ -76,6 +80,8 @@ const GROUPS: readonly { readonly title: string; readonly knobs: readonly Knob<F
       { key: 'iridescence', label: 'iridescence', min: 0, max: 1, step: 0.01 },
       { key: 'iridescenceIOR', label: 'film ior', min: 1, max: 2.333, step: 0.01 },
       { key: 'iridescenceThickness', label: 'film thickness (nm)', min: 100, max: 1000, step: 10 },
+      { key: 'filmVariation', label: 'film thinning', min: 0, max: 1, step: 0.01 },
+      { key: 'filmScale', label: 'film pattern size (css px)', min: 10, max: 600, step: 5 },
     ],
   },
 ]
@@ -120,7 +126,7 @@ function ColorField({ name, label }: { readonly name: FinishColor; readonly labe
   )
 }
 
-export function MaterialFinishesTweaks({ finish, rig }: { readonly finish: FinishId; readonly rig: LightRig }) {
+export function MaterialFinishesTweaks({ finish, look, rig }: { readonly finish: FinishId; readonly look: string; readonly rig: LightRig }) {
   const [, bump] = useState(0)
   useEffect(() => subscribeFinishTuning(() => bump((n) => n + 1)), [])
 
@@ -141,7 +147,7 @@ export function MaterialFinishesTweaks({ finish, rig }: { readonly finish: Finis
       <TuningGroup title="colors" initialState="open">
         <ColorField name="color" label="Body" />
         <ColorField name="sheenColor" label="Sheen" />
-        <Button compact variant="outline" onClick={() => applyFinish(finish)}>
+        <Button compact variant="outline" onClick={() => applyFinish(finish, look)}>
           Reset finish
         </Button>
       </TuningGroup>
