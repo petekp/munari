@@ -350,12 +350,15 @@ export function enableSnapdomCapture(options: SnapdomCaptureOptions = {}): void 
           let regions: ReturnType<typeof createInputRegionRasterizer> | null = null
           let live = sourceOptions?.live === true
           let refreshPending = false
+          let disposed = false
           const source = createRasterizedSource(async (element, scaleX, scaleY) => {
             const invalidate = refreshPending
             refreshPending = false
-            if (!regions && element.querySelector(selector)) {
+            if (!regions && !disposed && element.querySelector(selector)) {
               const { createInputRegionRasterizer } = await import('./snapdomInputRegions')
-              regions = createInputRegionRasterizer(element, selector, rasterize)
+              // The source can be disposed while the import is pending; a rasterizer
+              // created now would have no owner to dispose its observers and listeners.
+              if (!disposed) regions = createInputRegionRasterizer(element, selector, rasterize)
             }
             if (invalidate) regions?.invalidate()
             if (live) {
@@ -368,7 +371,7 @@ export function enableSnapdomCapture(options: SnapdomCaptureOptions = {}): void 
             ...source,
             repaint(next) { refreshPending = true; regions?.invalidate(); source.repaint(next) },
             setLive(next) { live = next; regions?.invalidate(); source.setLive(next) },
-            dispose() { source.dispose(); regions?.dispose() },
+            dispose() { disposed = true; source.dispose(); regions?.dispose() },
           }
         },
       }

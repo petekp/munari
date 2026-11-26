@@ -436,24 +436,25 @@ function clampRawScale(k: number): number {
  * Where a capture canvas keeps its pixels. `'cpu'` is the 2D context's
  * `willReadFrequently` storage.
  *
- * On a software WebGPU adapter, Chrome uploads a GPU-backed canvas by
+ * On a software WebGPU adapter Chrome uploads a GPU-backed canvas by
  * reading it back through the GPU process, behind every frame still queued
  * there. One Genie upload blocked the page for 299–564 ms on a hosted Linux
  * runner, and the same upload from CPU storage took 0–6 ms (measured
  * 2026-10-09, Chrome 155, SwiftShader). On a GPU with shared memory the
- * GPU-backed upload is the cheap one: 0.1 ms against 3 ms for a 1200×800
- * canvas on an M4 Max. A context's storage is fixed when it is created, so
- * the choice has to be made before any capture canvas first draws.
+ * GPU-backed upload is cheap: 0.1 ms against 3 ms for a 1200×800
+ * canvas on an M4 Max. A context's storage is fixed at creation, so it's
+ * chosen before a capture canvas draws.
  *
- * Checked at first capture before `SurfaceCanvas` requests its adapter (in a
- * Linux container, Genie's four canvases beat the renderer by 120 ms, 2026-10-09).
+ * Checked at first capture before `SurfaceCanvas` requests its adapter (Linux
+ * container, Genie's four canvases beat the renderer by 120 ms, 2026-10-09).
  */
 type CaptureCanvasMemory = 'gpu' | 'cpu'
 
 let captureMemory: CaptureCanvasMemory | null = null
 let choosing: Promise<void> | null = null
 
-// Past this, captures take GPU storage (decisions.md #74). An adapter took 1.1 s
+// Past this, captures take GPU storage (decisions.md #74). A Linux container's
+// emulated adapter took 1.1 s (2026-10-09).
 const ADAPTER_WAIT_MS = 3000
 
 async function chooseCaptureMemory(): Promise<void> {

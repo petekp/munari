@@ -29,8 +29,21 @@ function detectFontFormat(contentType: string | null, url: string) {
 // Cache the in-flight promise so overlapping captures share one request. A
 // definitive failure (a 4xx other than 408 or 429) stays cached, so a broken
 // font URL costs one request, not one per capture. A thrown fetch, a 5xx, 408
-// or 429 is evicted so a transient outage does not poison the face for the page.
-const encodedByUrl = new Map<string, Promise<EncodedFace | null>>()
+// or 429 is transient: the first three are evicted so an outage does not poison
+// the face for the page, and later ones stay cached for a backoff. A face that
+// never loads, such as a cross-origin one without CORS headers, then costs one
+// request per backoff, not one per capture. These are the stylesheet path's
+// limits in snapdomFonts.ts (`sheetFaces`).
+const IMMEDIATE_RETRIES = 3
+const RETRY_BACKOFF_MS = 5_000
+
+interface CachedFace {
+  readonly pending: Promise<EncodedFace | null>
+  retryAt?: number
+}
+
+const encodedByUrl = new Map<string, CachedFace>()
+const transientFailuresByUrl = new Map<string, number>()
 
 function isTransientFontStatus(status: number): boolean {
   return status >= 500 || status === 408 || status === 429
@@ -38,7 +51,7 @@ function isTransientFontStatus(status: number): boolean {
 
 export function encodeFace(url: string): Promise<EncodedFace | null> {
   const cached = encodedByUrl.get(url)
-  if (cached) return cached
+  if (cached && (cached.retryAt === undefined || performance.now() < cached.retryAt)) return cached.pending
   let transientFailure = false
   const pending = (async (): Promise<EncodedFace | null> => {
     try {
@@ -61,9 +74,21 @@ export function encodeFace(url: string): Promise<EncodedFace | null> {
       return null
     }
   })().then((result) => {
-    if (!result && transientFailure && encodedByUrl.get(url) === pending) encodedByUrl.delete(url)
+    if (result) {
+      transientFailuresByUrl.delete(url)
+      return result
+    }
+    if (!transientFailure) return result
+    const failures = (transientFailuresByUrl.get(url) ?? 0) + 1
+    transientFailuresByUrl.set(url, failures)
+    if (failures <= IMMEDIATE_RETRIES) {
+      if (encodedByUrl.get(url) === entry) encodedByUrl.delete(url)
+    } else {
+      entry.retryAt = performance.now() + RETRY_BACKOFF_MS
+    }
     return result
   })
-  encodedByUrl.set(url, pending)
+  const entry: CachedFace = { pending }
+  encodedByUrl.set(url, entry)
   return pending
 }

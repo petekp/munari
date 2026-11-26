@@ -266,6 +266,21 @@ describe('fontEmbedPlugin', () => {
     expect(calls).toBe(4)
   })
 
+  it('throttles repeated retries of a font face whose fetch throws', async () => {
+    const style = document.createElement('style')
+    style.textContent = "@font-face{font-family:'BlockedFace';src:url(https://blocked.test/face.woff2)}"
+    document.head.append(style)
+    let calls = 0
+    vi.stubGlobal('fetch', async () => {
+      calls += 1
+      throw new TypeError('Failed to fetch')
+    })
+
+    const node = letter('BlockedFace')
+    for (let capture = 0; capture < 6; capture += 1) expect(await carried(node)).toBe('')
+    expect(calls).toBe(4)
+  })
+
   it.each([
     ['ttf extension', 'https://lab.test/body.ttf', undefined, 'data:font/ttf;base64,', "format('truetype')"],
     ['otf extension', 'https://lab.test/display.otf?v=2', undefined, 'data:font/otf;base64,', "format('opentype')"],
