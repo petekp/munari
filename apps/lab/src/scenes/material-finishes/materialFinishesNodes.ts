@@ -56,6 +56,8 @@ import {
   materialClearcoatRoughness,
   materialMetalness,
   materialRoughness,
+  materialSheen,
+  materialSheenRoughness,
   materialSpecularIntensity,
   max,
   min,
@@ -63,6 +65,9 @@ import {
   neutralToneMapping,
   normalize,
   output,
+  positionView,
+  positionViewDirection,
+  pow,
   select,
   sign,
   sin,
@@ -239,6 +244,45 @@ function filteredRoughness(roughness: Node<'float'>, normal: Node<'vec3'>): Node
   return sqrt(sqrt(alpha2))
 }
 
+// ── key sheen ──────────────────────────────────────────────────────────
+
+/**
+ * The softbox key as a point light at its center, for the sheen three
+ * leaves out of a RectAreaLight (PhysicalLightingModel.directRectArea at
+ * r186). View space. `radiantIntensity` is the light's color times the
+ * point key's intensity, so the irradiance under it is `studio.lightPower`,
+ * as for the softbox; black when the key is not the softbox, whose lights
+ * three already gives sheen.
+ */
+export interface KeySheenUniforms {
+  readonly position: UniformNode<'vec3', THREE.Vector3>
+  readonly radiantIntensity: UniformNode<'color', THREE.Color>
+}
+
+export function createKeySheenUniforms(): KeySheenUniforms {
+  return { position: uniform(new THREE.Vector3()), radiantIntensity: uniform(new THREE.Color(0, 0, 0)) }
+}
+
+/**
+ * Charlie sheen from the key, as three's BRDF_Sheen evaluates it for a
+ * point light: D after Estevez and Kulla 2017, visibility after Neubelt
+ * and Pettineo 2013, with the same floor on sin²θh.
+ */
+function keySheen(normal: Node<'vec3'>, key: KeySheenUniforms): Node<'vec3'> {
+  const toKey = key.position.sub(positionView)
+  const distanceSquared = dot(toKey, toKey)
+  const toLight = normalize(toKey)
+  const half = normalize(toLight.add(positionViewDirection))
+  const dotNL = clamp(dot(normal, toLight), float(0), float(1))
+  const dotNV = clamp(dot(normal, positionViewDirection), float(0), float(1))
+  const dotNH = clamp(dot(normal, half), float(0), float(1))
+  const inverseAlpha = float(1).div(materialSheenRoughness.mul(materialSheenRoughness))
+  const sin2h = max(float(1).sub(dotNH.mul(dotNH)), float(0.0078125))
+  const distribution = float(2).add(inverseAlpha).mul(pow(sin2h, inverseAlpha.mul(0.5))).div(2 * Math.PI)
+  const visibility = clamp(float(1).div(float(4).mul(dotNL.add(dotNV).sub(dotNL.mul(dotNV)))), float(0), float(1))
+  return materialSheen.mul(distribution.mul(visibility).mul(dotNL)).mul(key.radiantIntensity.div(distanceSquared))
+}
+
 // ── material ───────────────────────────────────────────────────────────
 
 /** The uniforms that shape a finish's normal and pattern its body, written before each draw. */
@@ -277,6 +321,7 @@ export interface FinishMaterialInputs {
   /** Body color in linear light; THREE.Color decodes the hex on write. */
   readonly body: UniformNode<'color', THREE.Color>
   readonly shape: FinishShapeUniforms
+  readonly key: KeySheenUniforms
 }
 
 /** `hasCrackle` compiles the crackle network, which costs nine cell lookups a fragment. */
@@ -286,7 +331,7 @@ export function createFinishMaterial(
   detail: SurfaceDetail,
   hasCrackle: boolean,
 ): MeshPhysicalNodeMaterial {
-  const { capture, cornerMask, size, radii, body, shape } = inputs
+  const { capture, cornerMask, size, radii, body, shape, key } = inputs
   const material = new MeshPhysicalNodeMaterial({ transparent: true, depthWrite: false, premultipliedAlpha: true })
   const texCoord = uv()
   // SAFETY: a texture sample is a vec4; three's types return a bare Node.
@@ -314,6 +359,7 @@ export function createFinishMaterial(
   material.clearcoatNormalNode = coatNormal
   material.roughnessNode = filteredRoughness(materialRoughness, baseNormal)
   material.clearcoatRoughnessNode = filteredRoughness(materialClearcoatRoughness, coatNormal)
+  material.emissiveNode = keySheen(baseNormal, key)
 
   // A glaze thins fastest near the rim, so its color shifts there most.
   const rimBody = mix(body, shape.rimColor, towardRim.mul(towardRim))

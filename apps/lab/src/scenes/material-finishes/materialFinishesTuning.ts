@@ -95,7 +95,7 @@ const NO_LOBES = {
 // does not divide the IORs, and the base's own 4% lobe at the base
 // roughness drew the broad wash under lacquer's and the glaze's coat
 // highlights. Coated finishes set `specularIntensity` 0 instead.
-const FINISHES: Readonly<Record<FinishId, Readonly<Finish>>> = Object.freeze({
+export const FINISHES: Readonly<Record<FinishId, Readonly<Finish>>> = Object.freeze({
   // open_pbr_carpaint: coat 1 at roughness 0.02 over a base whose IOR equals
   // the coat's. Orange peel within the catalog's 0–0.05 coat-normal range.
   lacquer: Object.freeze({
@@ -142,26 +142,24 @@ const FINISHES: Readonly<Record<FinishId, Readonly<Finish>>> = Object.freeze({
     detailDepth: 0.06,
   }),
   // standard_surface_velvet: base specular 0, sheen 1, with a sheen color
-  // far brighter and more saturated than the body (body 0.023/0/0.038
-  // linear under sheen 0.404/0.058/1); same ratio here in plum.
-  // Sheen roughness 0.7, above open_pbr_velvet's fuzz roughness 0.5 and
-  // Standard Surface's 0.3: the rougher lobe reaches nearer the view axis,
-  // so a card seen face on glows softly across its padded edge instead of
-  // a hard bright line at its last pixels, which read as foil. The wide edge
-  // is cloth wrapped over a padded panel.
+  // far brighter than the body (body 0.023/0/0.038 linear under sheen
+  // 0.404/0.058/1); here a navy body under a periwinkle sheen. Sheen
+  // roughness 0.5 is open_pbr_velvet's fuzz roughness, a lobe tight enough
+  // that the glow gathers into a bright line along the rim facing the key.
+  // The relief is the pile; the edge is cloth over a thin padded panel.
   velvet: Object.freeze({
     ...NO_LOBES,
-    color: '#3b1a3f',
+    color: '#141a3a',
     roughness: 0.9,
     ior: 1.5,
     specularIntensity: 0,
     sheen: 1,
-    sheenColor: '#aa59bc',
-    sheenRoughness: 0.7,
-    edgeWidth: 64,
+    sheenColor: '#b8c4ff',
+    sheenRoughness: 0.5,
+    edgeWidth: 48,
     detail: 'pile',
-    detailScale: 40,
-    detailDepth: 0.2,
+    detailScale: 24,
+    detailDepth: 0.08,
   }),
   // A glass glaze on a ceramic body, which physicallybased.info lists as
   // porcelain: roughness 0, IOR 1.5. Coat roughness 0.02 matches lacquer's,
@@ -198,7 +196,7 @@ export function isFinishId(value: string | null): value is FinishId {
   return FINISH_ORDER.some((item) => item.id === value)
 }
 
-// ── looks ──────────────────────────────────────────────────────────────
+// ── studio per finish ──────────────────────────────────────────────────
 
 /**
  * What a finish reflects besides the lights.
@@ -208,118 +206,42 @@ export function isFinishId(value: string | null): value is FinishId {
  */
 export type EnvironmentKind = 'even' | 'gradient'
 
-/** One way to show a finish: its values and the studio it is judged in. */
-export interface FinishLook {
-  readonly id: string
-  readonly label: string
-  /** What the look is after, in one sentence. */
-  readonly intent: string
-  readonly finish: Readonly<Finish>
-  /** Studio values this look sets over its rig's start. */
+/** The studio a finish is judged in. */
+export interface FinishStudio {
+  /** Studio values set over the rig's start. */
   readonly studio?: Readonly<Partial<StudioTuning>>
   readonly environment: EnvironmentKind
 }
 
-// Four finishes are settled and have one look each. Velvet has several to
-// choose between, built on its values above. Lobe values stay
-// inside the MaterialX presets' ranges; colors, relief and studio changes
-// are by eye, checked by blind readers on m2 captures.
+// The coated finishes, lacquer and the glaze, reflect the gradient fill, so
+// each card shows the top-to-bottom falloff of a glossy panel.
 //
 // Velvet's sheen is Charlie sheen, which three evaluates for point and
 // directional lights and the environment but not for the softbox
-// (directRectArea at r186). Its environment term is the lobe's albedo,
-// which at sheen roughness 0.7 is about 7% face on and 55% at grazing
-// (IBLSheenBRDF at r186), so a card lit by the environment glows along its
-// rounded edge and stays dark on its face. The velvet looks raise the
-// environment to 3 or more and give the sheen a color far lighter than the
-// body. On m2 (2026-11-26) that took the edge's median from sRGB 33 to 93
-// to 154 and the face's from 22 to 46 to 96.
+// (directRectArea at r186); the material adds the key's sheen itself
+// (keySheen in materialFinishesNodes). The lobe is strongest where light
+// and view both graze, so the glow sits on the rounded edge facing the key
+// and moves with it. Velvet puts most of its light in the key, which can be
+// dragged, and little in the fixed environment. On m2 (2026-11-26) dragging
+// the key from the page's lower middle to its upper left or right changed
+// velvet's card pixels by a mean of sRGB 16 to 19, against 1.4 with the
+// environment-lit sheen and 19 to 21 on lacquer. An environment of 2 to 3
+// brought back more of the environment-lit look and cut that change to 13 to 18.
 // The pile relief is what reads as cloth: with no relief blind readers
 // called the cards frosted glass, and with a grain 2 to 6 px across, leather.
-export const FINISH_LOOKS: Readonly<Record<FinishId, readonly FinishLook[]>> = Object.freeze({
-  lacquer: [
-    {
-      id: 'sky',
-      label: 'Crimson under a sky',
-      intent: 'A crimson coat that reflects a fill brightening toward the top, so each card shows the falloff of a glossy panel.',
-      finish: FINISHES.lacquer,
-      environment: 'gradient',
-    },
-  ],
-  'satin-polymer': [
-    {
-      id: 'charcoal',
-      label: 'Charcoal housing',
-      intent: 'A dark gray molded part, where the soft satin highlight stands out against the body.',
-      finish: FINISHES['satin-polymer'],
-      environment: 'even',
-    },
-  ],
-  'anodized-aluminum': [
-    {
-      id: 'blue-anodize',
-      label: 'Blue anodize',
-      intent: 'A dyed anodize, the colored brushed metal of a carabiner or a laptop lid.',
-      finish: FINISHES['anodized-aluminum'],
-      environment: 'even',
-    },
-  ],
-  velvet: [
-    {
-      id: 'emerald',
-      label: 'Emerald cushion',
-      intent: 'Deep green pile over a padded edge, lit by a bright fill, so a wide pale-mint glow rings each card.',
-      finish: Object.freeze({ ...FINISHES.velvet, color: '#0c3b2c', sheenColor: '#8fe0b8', edgeWidth: 90, detailScale: 24, detailDepth: 0.08 }),
-      studio: Object.freeze({ environmentIntensity: 3, rimPower: 3 }),
-      environment: 'even',
-    },
-    {
-      id: 'midnight',
-      label: 'Midnight rim',
-      intent: 'Navy pile with a tighter sheen lobe and a narrow edge, so a bright periwinkle line traces each rim.',
-      finish: Object.freeze({ ...FINISHES.velvet, color: '#141a3a', sheenColor: '#b8c4ff', sheenRoughness: 0.5, edgeWidth: 48, detailScale: 24, detailDepth: 0.08 }),
-      studio: Object.freeze({ environmentIntensity: 3.5, rimPower: 3 }),
-      environment: 'even',
-    },
-    {
-      id: 'plum-sky',
-      label: 'Plum under a sky',
-      intent: 'Plum pile over a wide padded edge in a fill that brightens toward the top, so the top edges glow brightest.',
-      finish: Object.freeze({ ...FINISHES.velvet, sheenColor: '#e2a6f0', edgeWidth: 110, detailScale: 24, detailDepth: 0.08 }),
-      studio: Object.freeze({ environmentIntensity: 3, rimPower: 3, rimElevation: 8 }),
-      environment: 'gradient',
-    },
-  ],
-  'glazed-ceramic': [
-    {
-      id: 'celadon',
-      label: 'Celadon',
-      intent: 'A green glaze that runs thin and pale over the rounded edge and carries a sparse, faint crackle, as old celadon does.',
-      finish: FINISHES['glazed-ceramic'],
-      environment: 'gradient',
-    },
-  ],
+export const FINISH_STUDIOS: Readonly<Record<FinishId, FinishStudio>> = Object.freeze({
+  lacquer: { environment: 'gradient' },
+  'satin-polymer': { environment: 'even' },
+  'anodized-aluminum': { environment: 'even' },
+  velvet: { studio: Object.freeze({ environmentIntensity: 1.4, lightPower: 5, rimPower: 1.5 }), environment: 'even' },
+  'glazed-ceramic': { environment: 'gradient' },
 })
-
-/** Whether a finish has more than one look to choose between. */
-export function hasLookChoice(finish: FinishId): boolean {
-  return FINISH_LOOKS[finish].length > 1
-}
-
-export function lookOf(finish: FinishId, id: string | null): FinishLook {
-  const looks = FINISH_LOOKS[finish]
-  const found = looks.find((look) => look.id === id)
-  if (found) return found
-  const first = looks[0]
-  if (!first) throw new Error(`The ${finish} finish has no looks`)
-  return first
-}
 
 export const liveFinish: Finish = { ...FINISHES.lacquer }
 
-/** Load a look's finish values into the live copy. */
-export function applyLook(look: FinishLook): void {
-  Object.assign(liveFinish, look.finish)
+/** Load a finish's tuned values into the live copy. */
+export function applyFinish(finish: FinishId): void {
+  Object.assign(liveFinish, FINISHES[finish])
   notifyFinishTuning()
 }
 
@@ -417,15 +339,15 @@ const STUDIO_START: Readonly<Record<LightRig, Readonly<StudioTuning>>> = Object.
 
 export const studio: StudioTuning = { ...STUDIO_START.softbox }
 
-/** Start the studio at a rig's values and a look's, key position included. Does not notify. */
-export function startStudio(rig: LightRig, look: FinishLook): void {
-  Object.assign(studio, STUDIO_START[rig], look.studio)
+/** Start the studio at a rig's values and a finish's, key position included. Does not notify. */
+export function startStudio(rig: LightRig, finish: FinishId): void {
+  Object.assign(studio, STUDIO_START[rig], FINISH_STUDIOS[finish].studio)
 }
 
-/** Restart the studio at a rig's values and a look's, keeping the key where it was dragged. */
-export function applyStudio(rig: LightRig, look: FinishLook): void {
+/** Restart the studio at a rig's values and a finish's, keeping the key where it was dragged. */
+export function applyStudio(rig: LightRig, finish: FinishId): void {
   const { lightX, lightY } = studio
-  Object.assign(studio, STUDIO_START[rig], look.studio, { lightX, lightY })
+  Object.assign(studio, STUDIO_START[rig], FINISH_STUDIOS[finish].studio, { lightX, lightY })
   notifyFinishTuning()
 }
 

@@ -24,9 +24,9 @@ import {
   type SurfaceRenderFrame,
 } from '@petepetrash/munari'
 import { createRawCaptureView } from './materialFinishesCaptureView'
-import { createFinishMaterial, createFinishShapeUniforms, writeFinish, type FinishShapeUniforms } from './materialFinishesNodes'
+import { createFinishMaterial, createFinishShapeUniforms, createKeySheenUniforms, writeFinish, type FinishShapeUniforms } from './materialFinishesNodes'
 import { placeStudioLights, type StudioLights } from './materialFinishesStudio'
-import { liveFinish, studio, type CardTilt, type SurfaceDetail, type TextLighting } from './materialFinishesTuning'
+import { liveFinish, studio, type CardTilt, type LightRig, type SurfaceDetail, type TextLighting } from './materialFinishesTuning'
 
 // The steepest tilt, and the pointer distance in CSS px that reaches it.
 // Six degrees moves a 340 px card's edge about 18 px in depth, enough to
@@ -99,10 +99,11 @@ interface FinishMaterialProps {
   readonly hasCrackle: boolean
   readonly text: TextLighting
   readonly tilt: CardTilt
+  readonly rig: LightRig
   readonly lights: StudioLights
 }
 
-function FinishMaterial({ detail, hasCrackle, text, tilt, lights }: FinishMaterialProps) {
+function FinishMaterial({ detail, hasCrackle, text, tilt, rig, lights }: FinishMaterialProps) {
   const capture = useSurfaceTexture()
   const surface = useSurfaceNodes()
   const view = useMemo(() => createRawCaptureView(capture), [capture])
@@ -113,15 +114,16 @@ function FinishMaterial({ detail, hasCrackle, text, tilt, lights }: FinishMateri
   captureNode.value = view.texture
   const body = useMemo(() => uniform(new THREE.Color(liveFinish.color)), [])
   const shape = useMemo(createFinishShapeUniforms, [])
+  const key = useMemo(createKeySheenUniforms, [])
   const material = useMemo(
     () =>
       createFinishMaterial(
-        { capture: captureNode, cornerMask: surface.radiusMask(), size: surface.size, radii: surface.radii, body, shape },
+        { capture: captureNode, cornerMask: surface.radiusMask(), size: surface.size, radii: surface.radii, body, shape, key },
         text,
         detail,
         hasCrackle,
       ),
-    [captureNode, surface, body, shape, text, detail, hasCrackle],
+    [captureNode, surface, body, shape, key, text, detail, hasCrackle],
   )
   useEffect(() => () => material.dispose(), [material])
   const [tiltState] = useState<TiltState>(() => ({ pitch: 0, yaw: 0, last: performance.now() }))
@@ -132,6 +134,8 @@ function FinishMaterial({ detail, hasCrackle, text, tilt, lights }: FinishMateri
     view.sync()
     writeFinish(material, body, shape, liveFinish)
     placeStudioLights(lights, frame)
+    key.position.value.copy(lights.softbox.position).applyMatrix4(frame.camera.matrixWorldInverse)
+    key.radiantIntensity.value.copy(lights.softbox.color).multiplyScalar(rig === 'softbox' ? lights.point.intensity : 0)
     scene.environmentIntensity = studio.environmentIntensity
     if (tilt === 'pointer' && stepTilt(tiltState, shape, frame)) invalidate()
   })
@@ -146,12 +150,13 @@ export interface FinishCardProps {
   readonly hasCrackle: boolean
   readonly text: TextLighting
   readonly tilt: CardTilt
+  readonly rig: LightRig
   readonly lights: StudioLights
   readonly className?: string
   readonly children: ReactNode
 }
 
-export function FinishCard({ canvasId, inScene, detail, hasCrackle, text, tilt, lights, className = '', children }: FinishCardProps) {
+export function FinishCard({ canvasId, inScene, detail, hasCrackle, text, tilt, rig, lights, className = '', children }: FinishCardProps) {
   const place = inScene ? 'mf-card--scene' : 'mf-card--page'
   // A tilting card bends its own plane, so it cannot share the default one.
   const geometry = tilt === 'pointer' ? <planeGeometry args={[1, 1]} /> : undefined
@@ -165,7 +170,7 @@ export function FinishCard({ canvasId, inScene, detail, hasCrackle, text, tilt, 
           key={tilt}
           placement="match-dom"
           geometry={geometry}
-          material={<FinishMaterial detail={detail} hasCrackle={hasCrackle} text={text} tilt={tilt} lights={lights} />}
+          material={<FinishMaterial detail={detail} hasCrackle={hasCrackle} text={text} tilt={tilt} rig={rig} lights={lights} />}
         />
       </Surface.Scene>
     </Surface.Root>

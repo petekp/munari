@@ -23,11 +23,12 @@
 // the first build's lacquer read as a dot over a broad wash. The softbox
 // key is a RectAreaLight, whose image on a coat is its rectangle; three
 // evaluates it for the base and the coat but not for sheen
-// (PhysicalLightingModel.directRectArea at r186), so sheen takes its light
-// from the rim and the environment. Charlie sheen peaks where the half
-// vector leans far from the normal, which an overhead light seen from the
-// front never gives: the rim light grazes the cards from the upper left at
-// `rimElevation` degrees.
+// (PhysicalLightingModel.directRectArea at r186), so the finish material
+// adds the key's sheen as a point at the softbox's center. Charlie sheen
+// peaks where the half vector leans far from the normal, which an overhead
+// light seen from the front gives only at the cards' rounded edges: the
+// rim light also grazes the cards from the upper left at `rimElevation`
+// degrees.
 //
 // Ownership: this module owns the rig's objects, the studio environment
 // scene and their placement. MaterialFinishes mounts the lights the rig

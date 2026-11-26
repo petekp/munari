@@ -4,13 +4,13 @@ import { useCallback, useEffect, useState, type ChangeEvent } from 'react'
 import { Button } from '../../components/system'
 import { TuningGroup, TuningPanel, TuningSlider } from '../../components/TuningPanel'
 import {
-  applyLook,
+  applyFinish,
   liveFinish,
   notifyFinishTuning,
   studio,
   subscribeFinishTuning,
   type Finish,
-  type FinishLook,
+  type FinishId,
   type LightRig,
   type StudioTuning,
 } from './materialFinishesTuning'
@@ -120,7 +120,7 @@ function ColorField({ name, label }: { readonly name: FinishColor; readonly labe
   )
 }
 
-export function MaterialFinishesTweaks({ look, rig }: { readonly look: FinishLook; readonly rig: LightRig }) {
+export function MaterialFinishesTweaks({ finish, rig }: { readonly finish: FinishId; readonly rig: LightRig }) {
   const [, bump] = useState(0)
   useEffect(() => subscribeFinishTuning(() => bump((n) => n + 1)), [])
 
@@ -141,7 +141,7 @@ export function MaterialFinishesTweaks({ look, rig }: { readonly look: FinishLoo
       <TuningGroup title="colors" initialState="open">
         <ColorField name="color" label="Body" />
         <ColorField name="sheenColor" label="Sheen" />
-        <Button compact variant="outline" onClick={() => applyLook(look)}>
+        <Button compact variant="outline" onClick={() => applyFinish(finish)}>
           Reset finish
         </Button>
       </TuningGroup>
