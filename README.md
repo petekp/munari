@@ -112,7 +112,10 @@ the server. The canvas lights every finish with one key light, a rim light and
 an environment. A finish with a `color` paints the body in the scene, and
 Munari sets that color as `--munari-body` on the page copy. Give the content
 `background: var(--munari-body)` so it shows the color on the page and stays
-transparent in the capture. You set the text color in your own CSS.
+transparent in the capture. A finish's `pageLook` adds a CSS gradient and
+shadow that stand in for the lighting until the scene is ready, as
+`--munari-body-image` and `--munari-body-shadow`. You set the text color
+in your own CSS.
 
 ```tsx
 import { Surface, SurfaceCanvas, createSurfaceLight, type SurfaceFinish } from '@petepetrash/munari'

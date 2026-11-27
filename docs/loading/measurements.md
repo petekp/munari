@@ -292,3 +292,5 @@ overlapping promise waits, not decode work. On Bench they summed to
 loads and 288 ms in the third. Warm Bench loads decode the 17 images
 again, summing to 372–525 ms. Whether decodes stopped frames was not
 separated from the pipeline builds.
+
+The branch measured against this baseline is in [After the loading build](measurements-after-build.md).

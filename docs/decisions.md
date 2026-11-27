@@ -97,3 +97,5 @@ Changing a rule needs evidence and matching changes to its owning tests (#2). Br
 | <a id="77"></a>[#77](decisions/handoff.md#77) | A capture transition applies each update once, behind its cover, within a bound |
 | <a id="78"></a>[#78](decisions/input.md#78) | A nearer scene mesh takes the pointer from the Surface behind it |
 | <a id="79"></a>[#79](decisions/renderer.md#79) | A finish is data on the Surface, and the canvas lights it |
+| <a id="80"></a>[#80](decisions/renderer.md#80) | A SurfaceCanvas draws nothing whose pipelines are not built |
+| <a id="81"></a>[#81](decisions/surface.md#81) | `<Loading>` reports when a scene is complete, and time is only a notice |

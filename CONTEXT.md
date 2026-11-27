@@ -113,6 +113,11 @@ its source identity and lifetime, not as a number shared across sources.
 A named content region measured with the successful paint that supplies its
 pixels. A current layout box beside an older raster is not paint-matched.
 
+**Loading boundary**:
+A `<Loading>` element and the entries inside it: Surfaces, canvases, app
+waits and nested boundaries. It loads once every entry is complete.
+_Avoid_: Readiness, which covers one Surface's presenters.
+
 **Readiness**:
 Evidence that the declared parts have presenters and their first eligible
 draws. Readiness alone does not establish screen presentation.

@@ -1,8 +1,9 @@
 <!-- review-gate author: claude-opus-5-5 -->
 # Loading Munari's effects
 
-Status: proposal, unbuilt, 2026-11-26. Nothing here describes current
-behavior unless it cites code or a measurement.
+Status: built, 2026-11-26. Decisions #80 and #81 state the current
+behavior; this page keeps the design and its reasons. The finish API it
+mentions as a proposal has since landed (decision #79).
 
 Users notice loading on a first visit because shader pipelines compile
 with blocking calls while the page is on screen. On m2, each scene
@@ -21,6 +22,7 @@ after it.
 |---|---|
 | [Inventory](inventory.md) | Every asynchronous or costly step, with its code |
 | [Measurements](measurements.md) | Cold and warm timings on m2, and what the probes can show |
+| [After the loading build](measurements-after-build.md) | The same cells measured on the branch against its base |
 | [Browser precedents](browser-precedents.md) | How images, fonts, CSS, view transitions and paint holding hide their costs |
 | [Decisions](decisions.md) | The choices Pete needs to make, with options and costs |
 | [Review](REVIEW-loading.md) | The independent review of these files |

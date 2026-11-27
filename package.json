@@ -51,6 +51,7 @@
     "deploy:demo": "npm run build -w @munari/lab && VERCEL_ORG_ID=team_d8NmNbma8pPIVCBkDXUnfpMa VERCEL_PROJECT_ID=prj_pe759NtaVMScHyupOSFSJ41NQiz7 vercel deploy --prod --yes --cwd apps/lab/dist",
     "probe:postcard": "node instruments/api-all-demos/run.mjs",
     "probe:light": "node instruments/light/run.mjs",
+    "probe:loading-matrix": "node instruments/loading-matrix/run.mjs",
     "probe:light-headline": "node instruments/light-headline/run.mjs",
     "probe:light-opening": "node instruments/light-opening/run.mjs",
     "probe:heading-edges": "node instruments/light/text-edges.mjs",

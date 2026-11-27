@@ -65,3 +65,15 @@ A draw that shows nothing issues no draw or presentation receipt. `FrameSurface`
 `SurfaceCanvas` requests the adapter's `maxTextureDimension2D` for its WebGPU device and records `MAX_TEXTURE_SIZE` on the WebGL fallback. `FrameSurface` neither uploads nor issues receipts for a source over that limit, and reports it once in development. DOM captures stop at `MAX_TEXTURE_EDGE` (#21).
 
 `FrameSurface` replaces a tainted source canvas with a blank stand-in. It checks when the runtime is created and at the first publish after each allocation, because a check on every publish costs a readback. `Surface` needs no origin check, because neither capture engine taints its canvas (platform.md #34).
+
+## #81 — `<Loading>` reports when a scene is complete, and time is only a notice
+
+`<Loading onLoaded>` calls `onLoaded` once, from a page animation frame, when every entry inside it is complete. The entries are each `Surface`, `SceneSurface` and `SurfaceCanvas`, each `useLoadingWait` or `LoadingPending`, and each nested `<Loading>` that is not `independent`. A Surface is complete when it is shown on the scene or has settled on its page presentation. A canvas is complete when it has drawn a frame that held nothing back (#80). The boundary finishes only when two checks one frame apart agree and nothing joined, left or changed between them, which catches a wait added by passive effects (#57). An app wait set to an `Error` holds the boundary until the wait changes. `useLoadingStatus` reads the nearest boundary's entries.
+
+Time never finishes a load. Past `late.afterMs` of frame time the boundary calls `late.onLate` once and keeps waiting; the app decides what a late load shows. There is no Suspense integration and no timer in the library.
+
+`<Surface loading="lazy">` prepares its scene presentation only once its page presentation comes within half a viewport of the viewport. Until then its entry is `deferred` and does not hold the boundary, as a lazy image does not hold the page's `load`. The default, `eager`, prepares at mount.
+
+The page presentation is the first frame and stays until the lift. A finish can carry a `pageLook`: CSS background-image layers and a box-shadow that Munari writes as `--munari-body-image` and `--munari-body-shadow` on the page copy, and as `none` in the capture. A `SceneSurface` has no page presentation (#43), so the app places its own placeholder until the boundary loads. Plans and measurements: [docs/loading/](../loading/README.md).
+
+Not yet built from [the loading spec](../loading-spec.md): the capture and `FrameSurface` entries, the `CaptureStatus` rename, the renderer-status fallback reason, and `gate:loading`.
