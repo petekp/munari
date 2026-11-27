@@ -2,9 +2,10 @@
 
 Measured 2026-11-26 on branch `softbox-size`, which keeps the probes and the
 prototype of every option. Main ships the 64 × 64 half-float tables, written by
-`packages/react/scripts/ltc-tables.mjs`.
+`packages/react/scripts/ltc-tables.mjs`. In this record, "today" means three's
+own tables, which main loaded before that change.
 
-The softbox light loads three's area-light tables, a 102 kB gzip chunk. Half-float
+The softbox light loaded three's area-light tables, a 102 kB gzip chunk. Half-float
 64 × 64 tables draw the same picture at 36% of that size, or 44% under brotli.
 Their largest difference from today is 5/255 on one channel, and no card has more
 than 0.04% of its pixels over 2/255. They also load in 4.8 ms instead of 8.0 ms.

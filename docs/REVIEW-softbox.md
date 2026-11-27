@@ -35,6 +35,8 @@ sessions.
 13. The 32 × 32 fit's 640% relative error was missing. Added.
 14. Two later wording edits were reviewed: one word ("aluminum") and the brotli wording in the method list. The reviewer corrected the method-list sentence, and it was applied verbatim.
 
+15. When main took the 64 × 64 tables, the doc gained a line naming that change and the generator. A second reviewer, a Sonnet subagent, found that the first paragraph still described three's tables in the present tense. The doc now defines "today" as three's tables, which main loaded before the change, and the reviewer confirmed both edits.
+
 ## What the reviewer checked and found sound
 
 - Every cell of the results table and every number in the bullet lists against `results.json`.
@@ -51,8 +53,8 @@ sessions.
 - The base payload log records no commit hash. It came from `git checkout 608c147 -- packages/react` on m2.
 
 <!-- review-gate
-reviewed: softbox-size.md sha256:a6fc1bb874a70461b0d0fdfc93906bb90ab310c5de0368e6dfe19c33781b0cc2
-reviewer: claude-opus-5-5 (independent subagent, separate session)
+reviewed: softbox-size.md sha256:abd84dfc1b5f7dd2f3d947589afc381a7d546fd2cc37572c977e413da459919b
+reviewer: claude-opus-5-5 (independent subagent, separate session); claude-sonnet-5-5 (second subagent, for finding 15)
 covers: acquisition, transformation, results
 finding 1: fixed
 finding 2: fixed
@@ -68,4 +70,5 @@ finding 11: fixed
 finding 12: fixed
 finding 13: fixed
 finding 14: fixed
+finding 15: fixed
 -->

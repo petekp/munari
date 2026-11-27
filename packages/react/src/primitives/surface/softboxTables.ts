@@ -12,8 +12,8 @@
 // screen difference across the 17 finish presets was 5/255 (m2, 2026-11-26,
 // docs/softbox-size.md).
 //
-// Ownership: this module decodes. The rig decides when to load it, and it
-// imports nothing but three so it stays its own chunk.
+// Ownership: this module decodes. The rig imports it dynamically on the first
+// softbox key, so it and its data stay out of the eager bundle.
 
 import * as THREE from 'three'
 import type { RectAreaLightTexturesLib } from 'three/webgpu'

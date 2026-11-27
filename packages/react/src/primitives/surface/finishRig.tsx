@@ -29,7 +29,7 @@
 //
 // The costs a finish pays before its first frame live here: one PMREM bake
 // per environment kind the canvas uses, after the renderer initializes, and
-// for a softbox key, three's LTC tables, loaded on first use.
+// for a softbox key, the LTC tables (softboxTables.ts), loaded on first use.
 //
 // Ownership: this module owns the light objects, the environment bakes and
 // their placement. It loads with the finish code, and finishLoader.tsx gives
@@ -133,8 +133,8 @@ function disposeScene(scene: THREE.Scene): void {
 
 // three's RectAreaLight needs its LTC tables, 2 × 64² half-float texels
 // (softboxTables.ts), before a softbox key compiles. Loaded once per page, on
-// the first softbox key. A load that fails leaves the key a point light rather than holding a
-// finish that waits for it.
+// the first softbox key. A load that fails leaves the key a point light
+// rather than holding a finish that waits for it.
 let ltcLoad: Promise<void> | null = null
 let ltcLoaded = false
 let ltcFailed = false
