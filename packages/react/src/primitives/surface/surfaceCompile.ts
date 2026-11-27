@@ -1,13 +1,17 @@
-// Surface compile — a presenter's render pipelines, built asynchronously
-// before its first draw.
+// Surface compile — the render pipelines of everything a SurfaceCanvas draws,
+// built asynchronously before the draw that needs them.
 //
-// The law: a presenter stays out of three's render path until every pipeline
+// The law: an object stays out of three's render path until every pipeline
 // it will draw with has been built with `createRenderPipelineAsync` and sits
-// in three's pipeline cache. three 0.186 builds a pipeline it lacks at the
-// draw, with the blocking `createRenderPipeline`, and Chrome's Dawn runs that
-// call on the GPU process's main thread, where the Metal compile stops raster
-// and compositing until it returns. The asynchronous call compiles on a Dawn
-// worker instead.
+// in three's pipeline cache. A Surface presenter is held before its first
+// draw (`useSurfaceCompiled`); every other object in a canvas draw is held
+// by the canvas (`hold`), which draws it with nothing until its first
+// pipelines are built, and with its last built look while a changed
+// material builds (decisions.md #80). three 0.186 builds a pipeline it
+// lacks at the draw, with the blocking `createRenderPipeline`, and Chrome's
+// Dawn runs that call on the GPU process's main thread, where the Metal
+// compile stops raster and compositing until it returns, for every canvas
+// on the page. The asynchronous call compiles on a Dawn worker instead.
 //
 // The fault, 2026-11-22 (instruments/genie-first-flight): with shaders no cache
 // held, Genie's first flight after load froze frames for 183-250 ms and its
@@ -46,19 +50,31 @@
 //   pipeline again with the blocking call. So while a build is pending, the
 //   renderer rests in the draw's output settings, and its own are put back
 //   around each canvas draw (`draw`).
+// - A pipeline built asynchronously once is cheap to build again: measured
+//   2026-11-26 on m2 (Chrome 159), a blocking build of a descriptor whose
+//   asynchronous build had finished cost 0.2-1 ms on the GPU process, against
+//   53-570 ms cold, even after the asynchronous pipeline was dropped and with
+//   a new shader module. So a look held back while its replacement builds,
+//   or a bake whose renders were built ahead (`prebuildPipelines`), blocks
+//   nothing when three later builds the same descriptor itself.
 //
-// decisions.md #76 states the rule.
+// decisions.md #76 and #80 state the rule.
 //
-// Ownership: this module builds pipelines and says when they are built. A
-// build three could not finish still resolves (it logs the failure); whether
-// a draw put pixels on screen stays with surfacePass's primitive count.
+// Ownership: this module builds pipelines, says when they are built, and
+// holds back what is not. A build three could not finish still resolves (it
+// logs the failure); whether a draw put pixels on screen stays with
+// surfacePass's primitive count. Renders into a target are not held: a bake
+// drawn once with something missing would keep the gap for good, so a bake
 
-import { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { useFrame, useThree, type RootState } from '@react-three/fiber'
 import type { WebGPURenderer } from 'three/webgpu'
 import { surfaceBelongsToScene } from './surfaceFrame'
-import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
+import { passMaterials, type Drawable, drawableOf, startBuild, settle } from './surfaceCompileBuild'
+import { pipelineKey, sharedKey, sceneKey } from './surfacePipelineKey'
+import { createOutputRest } from './surfaceOutputRest'
+import { type Look, type HeldObject, NOTHING, CHURN_CHANGES, CHURN_WINDOW_MS, CHURN_REST_MS, UNSEEN_MS, release, snapshotOf } from './surfaceHold'
+
+export { installSurfaceCompiler, surfaceCompilerOf, useSurfaceCompiled } from './surfaceCompiled'
 
 export interface SurfaceCompilation {
   /**
@@ -75,246 +91,263 @@ export interface SurfaceCompiler {
   compile(mesh: THREE.Mesh, material: THREE.Material): SurfaceCompilation
   /** Start every queued compilation whose mesh is in `scene`, under the renderer state of this draw. */
   start(scene: THREE.Object3D, camera: THREE.Camera): void
+  /**
+   * Hold back, for one canvas draw of `scene`, every object whose pipelines
+   * are not built, starting their builds. Returns the undo, to run after the draw.
+   */
+  hold(scene: THREE.Object3D, camera: THREE.Camera): () => void
+  /** A presenter now draws with `compilation`'s pipelines; the canvas holds its later looks. */
+  adopt(mesh: THREE.Mesh, compilation: SurfaceCompilation): void
+  /** Objects the last canvas draw held back, and builds still running. */
+  holding(): number
   /** Run one canvas draw with the renderer's own output settings. */
   draw(render: () => void): void
   dispose(): void
 }
 
-interface OutputSettings {
-  toneMapping: THREE.ToneMapping
-  outputColorSpace: string
-}
 
-interface WriteFlags {
-  readonly colorWrite: boolean
-  readonly depthWrite: boolean
-  readonly stencilWrite: boolean
-}
-
-const WRITE_FREE: WriteFlags = { colorWrite: false, depthWrite: false, stencilWrite: false }
-
-const flagsKey = (flags: WriteFlags) => `${flags.colorWrite}${flags.depthWrite}${flags.stencilWrite}`
-
-/** One clone per pipeline the material's draws can use. */
-export function passMaterials(material: THREE.Material): THREE.Material[] {
-  const authored: WriteFlags = { colorWrite: material.colorWrite, depthWrite: material.depthWrite, stencilWrite: material.stencilWrite }
-  const flagSets = new Map<string, WriteFlags>()
-  for (const flags of [authored, { ...authored, colorWrite: true }, WRITE_FREE]) flagSets.set(flagsKey(flags), flags)
-  const twoPass = material.transparent && material.side === THREE.DoubleSide && !material.forceSinglePass
-  const sides = twoPass ? [THREE.BackSide, THREE.FrontSide] : [material.side]
-  return [...flagSets.values()].flatMap((flags) =>
-    sides.map((side) => {
-      const clone = material.clone()
-      clone.colorWrite = flags.colorWrite
-      clone.depthWrite = flags.depthWrite
-      clone.stencilWrite = flags.stencilWrite
-      clone.side = side
-      return clone
-    }),
-  )
-}
-
-/**
- * Begin one build. Everything up to `compileAsync`'s first await runs here,
- * inside the caller's draw. A scene background would be collected ahead of
- * the stand-in and build first, pushing the stand-in's node build past that
- * await, so the background is lifted for the synchronous part only.
- */
-function startBuild(renderer: WebGPURenderer, scene: THREE.Scene, camera: THREE.Camera, mesh: THREE.Mesh, material: THREE.Material): Promise<void> {
-  const standIn = mesh.clone(false)
-  standIn.material = material
-  standIn.matrixAutoUpdate = false
-  standIn.matrix.copy(mesh.matrixWorld)
-  standIn.matrixWorld.copy(mesh.matrixWorld)
-  standIn.visible = true
-  standIn.frustumCulled = false
-  let collected = false
-  standIn.onBeforeRender = () => {
-    collected = true
-  }
-  const { background, backgroundNode } = scene
-  scene.background = null
-  scene.backgroundNode = null
-  let built: Promise<void>
-  try {
-    built = renderer.compileAsync(standIn, camera, scene)
-  } finally {
-    scene.background = background
-    scene.backgroundNode = backgroundNode
-  }
-  if (collected) return built
-  return built.then(() => {
-    throw new Error('the mesh was not collected for the compile; check its layers against the camera')
-  })
-}
-
-interface QueuedCompilation {
-  readonly mesh: THREE.Mesh
-  readonly materials: THREE.Material[]
-  readonly resolve: () => void
-}
-
-function settle(builds: Promise<void>[], resolve: () => void): void {
-  void Promise.allSettled(builds).then((results) => {
-    for (const result of results) {
-      if (result.status === 'rejected' && isDevelopmentRuntime()) {
-        console.error('[munari] a Surface presenter could not build a pipeline before its first draw, so it draws as three builds it.', result.reason)
-      }
-    }
-    resolve()
-  })
-}
+// ── the canvas hold ────────────────────────────────────────────────────
+type SceneState = { readonly signature: string; readonly environment: THREE.Texture | null; readonly fog: THREE.Scene['fog']; readonly lights: ReadonlySet<THREE.Light> }
+type CompilationRecord = { readonly materials: THREE.Material[]; adopted: boolean; builtUnder: SceneState | null }
+const compilationMaterials = new WeakMap<SurfaceCompilation, CompilationRecord>()
 
 export function createSurfaceCompiler(renderer: WebGPURenderer, invalidate: () => void): SurfaceCompiler {
+  interface QueuedCompilation {
+    readonly mesh: THREE.Mesh
+    readonly materials: THREE.Material[]
+    readonly resolve: () => void
+    readonly owned: CompilationRecord
+  }
   const queue = new Set<QueuedCompilation>()
-  let pendingBuilds = 0
-  // The renderer's own output settings while it rests in the draw's.
-  let own: OutputSettings | null = null
-  const restInDrawSettings = () => {
-    renderer.toneMapping = THREE.NoToneMapping
-    renderer.outputColorSpace = THREE.ColorManagement.workingColorSpace
+  const records = new Map<THREE.Object3D, HeldObject>()
+  let held = 0
+  // The environment and fog every drawn look was built under.
+  let drawnScene: SceneState | null = null
+  const stateOf = (scene: THREE.Scene): SceneState => {
+    const lights: THREE.Light[] = []
+    scene.traverseVisible((object) => {
+      if (object instanceof THREE.Light) lights.push(object)
+    })
+    return { signature: sceneKey(scene, lights, renderer.shadowMap.enabled), environment: scene.environment, fog: scene.fog, lights: new Set(lights) }
   }
-  // A write made while the renderer rests is the caller's new setting. A
-  // write of the resting value itself cannot be told apart and is lost.
-  const takeWrites = (settings: OutputSettings) => {
-    if (renderer.toneMapping !== THREE.NoToneMapping) settings.toneMapping = renderer.toneMapping
-    if (renderer.outputColorSpace !== THREE.ColorManagement.workingColorSpace) settings.outputColorSpace = renderer.outputColorSpace
+  let lastSweep = 0
+  const rest = createOutputRest(renderer)
+  // three caches a node build when it finishes, so builds of equal keys
+  // started together each build in full: 35 of Knobs' meshes built one
+  // material's graph at once, 700 ms of main thread (m2, 2026-11-26). A
+  // build waits on the running one of its key instead.
+  const running = new Map<string, Promise<void>>()
+  const build = (scene: THREE.Scene, camera: THREE.Camera, object: THREE.Object3D, materials: THREE.Material[], signature: string, resolve: () => void) => {
+    const builds = materials.map((material) => {
+      const key = sharedKey(object, material, signature, false)
+      const shared = running.get(key)
+      if (shared) return shared
+      rest.started()
+      let started: Promise<void>
+      try {
+        started = startBuild(renderer, scene, camera, object, material)
+      } catch (error) {
+        started = Promise.reject(error)
+      }
+      const done: Promise<void> = started.finally(() => {
+        rest.settled()
+        if (running.get(key) === done) running.delete(key)
+      })
+      running.set(key, done)
+      return done
+    })
+    settle(builds, resolve)
   }
-  const buildSettled = () => {
-    pendingBuilds--
-    if (pendingBuilds > 0 || !own) return
-    takeWrites(own)
-    renderer.toneMapping = own.toneMapping
-    renderer.outputColorSpace = own.outputColorSpace
-    own = null
+  const lookFor = (scene: THREE.Scene, camera: THREE.Camera, object: Drawable, key: string, presenter: boolean, signature: string): Look => {
+    const look: Look = { key, signature, materials: passMaterials(object.material, presenter), built: false }
+    build(scene, camera, object, look.materials, signature, () => {
+      look.built = true
+      invalidate()
+    })
+    return look
+  }
+  const sweep = (now: number) => {
+    if (now - lastSweep < UNSEEN_MS) return
+    lastSweep = now
+    for (const [object, record] of records) {
+      if (now - record.seen < UNSEEN_MS) continue
+      release(record.drawn)
+      release(record.pending)
+      records.delete(object)
+    }
+  }
+  /** What an object draws while its new look builds, under the scene with `signature`. */
+  const standIn = (object: Drawable, record: HeldObject | undefined, signature: string): THREE.Material =>
+    record?.drawn?.signature === signature ? snapshotOf(record.drawn, object.material) : NOTHING
+  /** Whether the object draws as it is now; otherwise what it draws instead. */
+  const consult = (object: Drawable, record: HeldObject, key: string, signature: string, scene: THREE.Scene, camera: THREE.Camera, now: number): THREE.Material | null => {
+    // An adopted presenter's look was built for the material it wears now.
+    if (record.drawn?.key === '') record.drawn = { ...record.drawn, key, signature }
+    if (record.drawn?.key === key) {
+      release(record.pending)
+      record.pending = null
+      return null
+    }
+    if (record.pending?.key === key) {
+      if (!record.pending.built) return standIn(object, record, signature)
+      release(record.drawn)
+      record.drawn = record.pending
+      record.pending = null
+      return null
+    }
+    if (now < record.churnUntil) return null
+    record.changes = record.changes.filter((time) => now - time < CHURN_WINDOW_MS)
+    record.changes.push(now)
+    release(record.pending)
+    record.pending = null
+    if (record.drawn && record.changes.length >= CHURN_CHANGES) {
+      record.churnUntil = now + CHURN_REST_MS
+      return null
+    }
+    record.pending = lookFor(scene, camera, object, key, record.presenter, signature)
+    return standIn(object, record, signature)
   }
   return {
     compile(mesh, material) {
       const materials = passMaterials(material)
+      const owned: CompilationRecord = { materials, adopted: false, builtUnder: null }
       let released = false
       let queued: QueuedCompilation | null = null
       const ready = new Promise<void>((resolve) => {
-        queued = { mesh, materials, resolve }
+        queued = { mesh, materials, resolve, owned }
         queue.add(queued)
         invalidate()
       })
-      return {
+      const compilation: SurfaceCompilation = {
         ready,
         release() {
-          if (released) return
+          if (released || owned.adopted) return
           released = true
           if (queued) queue.delete(queued)
           for (const clone of materials) clone.dispose()
         },
       }
+      compilationMaterials.set(compilation, owned)
+      return compilation
     },
     start(scene, camera) {
       if (queue.size === 0 || !(scene instanceof THREE.Scene)) return
       for (const entry of [...queue]) {
         if (!surfaceBelongsToScene(entry.mesh, scene)) continue
         queue.delete(entry)
-        const builds = entry.materials.map((material) => {
-          pendingBuilds++
-          let build: Promise<void>
-          try {
-            build = startBuild(renderer, scene, camera, entry.mesh, material)
-          } catch (error) {
-            build = Promise.reject(error)
-          }
-          return build.finally(buildSettled)
-        })
-        settle(builds, entry.resolve)
+        const state = stateOf(scene)
+        entry.owned.builtUnder = state
+        build(scene, camera, entry.mesh, entry.materials, state.signature, entry.resolve)
       }
     },
-    // Builds start inside `render`, where the renderer already has the draw's
-    // settings, so its own are read after the draw has put them back.
-    draw(render) {
-      if (own) {
-        takeWrites(own)
-        renderer.toneMapping = own.toneMapping
-        renderer.outputColorSpace = own.outputColorSpace
-      }
-      try {
-        render()
-      } finally {
-        if (pendingBuilds > 0) {
-          own = { toneMapping: renderer.toneMapping, outputColorSpace: renderer.outputColorSpace }
-          restInDrawSettings()
-        } else {
-          own = null
+    hold(scene, camera) {
+      if (!(scene instanceof THREE.Scene)) return () => {}
+      const now = performance.now()
+      const drawables: Drawable[] = []
+      const lights: THREE.Light[] = []
+      scene.traverseVisible((object) => {
+        if (object instanceof THREE.Light) {
+          lights.push(object)
+          return
         }
+        const drawable = drawableOf(object)
+        if (drawable && drawable.material.visible && object.layers.test(camera.layers)) drawables.push(drawable)
+      })
+      const signature = sceneKey(scene, lights, renderer.shadowMap.enabled)
+      const objectRecords = drawables.map((object) => {
+        let record = records.get(object)
+        if (!record) {
+          record = { presenter: false, drawn: null, pending: null, changes: [], churnUntil: 0, seen: now }
+          records.set(object, record)
+        }
+        record.seen = now
+        return record
+      })
+      const swaps: [Drawable, THREE.Material][] = []
+      const swap = (object: Drawable, instead: THREE.Material) => {
+        swaps.push([object, object.material])
+        object.material = instead
+      }
+      // A new environment, fog or light changes every object's pipeline,
+      // and a look built under the old scene blocks if drawn under the new.
+      // So the draw keeps the old scene, and every object its old look,
+      // until every new look is built.
+      const sceneChanged = drawnScene !== null && drawnScene.signature !== signature && objectRecords.some((record) => record.drawn)
+      let rollback = false
+      if (sceneChanged) {
+        drawables.forEach((object, index) => {
+          const record = objectRecords[index]
+          if (!record) return
+          const key = pipelineKey(object, signature, record.presenter)
+          if (record.drawn?.key === key) return
+          if (record.pending?.key !== key) {
+            release(record.pending)
+            record.pending = lookFor(scene, camera, object, key, record.presenter, signature)
+          }
+          if (!record.pending.built) rollback = true
+        })
+      }
+      let restoreScene = () => {}
+      if (rollback && drawnScene) {
+        const { environment, fog } = scene
+        const { lights: drawnLights, signature: drawnSignature } = drawnScene
+        // A light that arrived since is hidden; one that left cannot be
+        // brought back, and a look drawn without it blocks.
+        const arrived = lights.filter((light) => !drawnLights.has(light))
+        scene.environment = drawnScene.environment
+        scene.fog = drawnScene.fog
+        for (const light of arrived) light.visible = false
+        restoreScene = () => {
+          scene.environment = environment
+          scene.fog = fog
+          for (const light of arrived) light.visible = true
+        }
+        drawables.forEach((object, index) => {
+          const record = objectRecords[index]
+          swap(object, standIn(object, record, drawnSignature))
+        })
+      } else {
+        drawnScene = { signature, environment: scene.environment, fog: scene.fog, lights: new Set(lights) }
+        drawables.forEach((object, index) => {
+          const record = objectRecords[index]
+          if (!record) return
+          const instead = consult(object, record, pipelineKey(object, signature, record.presenter), signature, scene, camera, now)
+          if (instead) swap(object, instead)
+        })
+      }
+      held = swaps.length
+      sweep(now)
+      return () => {
+        for (const [object, material] of swaps) object.material = material
+        restoreScene()
       }
     },
+    adopt(mesh, compilation) {
+      const owned = compilationMaterials.get(compilation)
+      const drawable = drawableOf(mesh)
+      if (!owned || owned.adopted || !drawable) return
+      owned.adopted = true
+      const previous = records.get(mesh)
+      release(previous?.drawn ?? null)
+      release(previous?.pending ?? null)
+      // The look was built under the scene as it stood then. When it has
+      // changed since, the next draw rolls back to that scene until the
+      // look for the new one is built.
+      const builtUnder = owned.builtUnder
+      const key = builtUnder ? pipelineKey(drawable, builtUnder.signature, true) : ''
+      drawnScene ??= builtUnder
+      records.set(mesh, { presenter: true, drawn: { key, signature: builtUnder?.signature ?? '', materials: owned.materials, built: true }, pending: null, changes: [], churnUntil: 0, seen: performance.now() })
+    },
+    holding: () => held + rest.pending(),
+    draw: rest.draw,
     dispose() {
       queue.clear()
-      if (own) {
-        takeWrites(own)
-        renderer.toneMapping = own.toneMapping
-        renderer.outputColorSpace = own.outputColorSpace
-        own = null
+      for (const record of records.values()) {
+        release(record.drawn)
+        release(record.pending)
       }
+      records.clear()
+      rest.dispose()
     },
   }
-}
-
-const compilers = new WeakMap<RootState['gl'] | WebGPURenderer, SurfaceCompiler>()
-
-/** Install the compiler SurfaceCanvas runs for its renderer. Returns the uninstall. */
-export function installSurfaceCompiler(renderer: WebGPURenderer, compiler: SurfaceCompiler): () => void {
-  compilers.set(renderer, compiler)
-  return () => {
-    if (compilers.get(renderer) === compiler) compilers.delete(renderer)
-    compiler.dispose()
-  }
-}
-
-/** The compiler for a renderer a SurfaceCanvas created; null for any other. */
-export function surfaceCompilerOf(renderer: RootState['gl'] | WebGPURenderer): SurfaceCompiler | null {
-  return compilers.get(renderer) ?? null
-}
-
-/**
- * Whether `mesh` may draw: false until every pipeline its current material
- * draws with is built. Outside a SurfaceCanvas there is no compiler and the
- * answer is true at once. With `wait` false the mesh draws at once too.
- *
- * Only a presenter's first material is held back, and only when `wait` held
- * at its first frame. Hiding a mesh that has already drawn would take pixels
- * off a screen the page no longer covers, so a material replaced after that
- * draws as three builds it.
- */
-export function useSurfaceCompiled(mesh: THREE.Mesh | null, wait = true): boolean {
-  const gl = useThree((state) => state.gl)
-  const [compiledMesh, setCompiledMesh] = useState<THREE.Mesh | null>(null)
-  const pending = useRef<{ readonly mesh: THREE.Mesh; readonly material: THREE.Material; readonly compilation: SurfaceCompilation } | null>(null)
-  const compiled = mesh !== null && compiledMesh === mesh
-
-  useFrame(() => {
-    if (!mesh || compiled) return
-    const material = mesh.material
-    const current = pending.current
-    if (current?.mesh === mesh && current.material === material) return
-    current?.compilation.release()
-    pending.current = null
-    const compiler = surfaceCompilerOf(gl)
-    if (!wait || !compiler || Array.isArray(material)) {
-      setCompiledMesh(mesh)
-      return
-    }
-    const compilation = compiler.compile(mesh, material)
-    const record = { mesh, material, compilation }
-    pending.current = record
-    void compilation.ready.then(() => {
-      if (pending.current === record) setCompiledMesh(mesh)
-    })
-  })
-
-  useEffect(
-    () => () => {
-      pending.current?.compilation.release()
-      pending.current = null
-    },
-    [],
-  )
-  return compiled || !wait
 }

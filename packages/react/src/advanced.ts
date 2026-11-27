@@ -50,6 +50,7 @@ export { inspectCapture } from './primitives/capture'
 // finish's normal or changes its body color before it is lit.
 export { useSurfaceFinishMaterial } from './primitives/surface/useSurfaceFinishMaterial'
 export type { SurfaceFinishMaterialInputs } from './primitives/surface/SurfaceFinishMaterial'
+export { waitForDrawPipelines, prebuildPipelines, type DrawPipelineWait } from './primitives/surface/surfaceDrawPipelines'
 export type { FinishShadingInputs } from './primitives/surface/finishNodes'
 
 // The canvas side of a capture transition. Provisional: its shape may change

@@ -46,6 +46,7 @@ import type { KeySheenUniforms } from './finishKeyLight'
 import type { FinishValues } from './surfaceFinish'
 import { attachSurfaceLight, isSurfaceLight, KEY_HEIGHT_PX, KEY_REST_Y, type KeyLight, type SurfaceLight, type SurfaceLighting } from './surfaceLight'
 import type { SurfaceRenderFrame } from './surfaceFrame'
+import { prebuildPipelines } from './surfaceDrawPipelines'
 
 // ── studio values ──────────────────────────────────────────────────────
 
@@ -258,12 +259,21 @@ export function createFinishRig(renderer: WebGPURenderer, invalidate: () => void
     if (bakes.has(kind)) return
     bakes.set(kind, null)
     const born = generation
-    renderer
-      .init()
+    const generator = new PMREMGenerator(renderer)
+    const scene = studioScene(kind)
+    // The bake draws about 20 passes, each a blocking pipeline build when
+    // drawn cold, so they are built ahead (surfaceCompile.ts).
+    let rehearsal: THREE.RenderTarget | null = null
+    prebuildPipelines(renderer, () => {
+      rehearsal = generator.fromScene(scene, STUDIO_BLUR)
+    })
       .then(() => {
-        if (born !== generation) return
-        const generator = new PMREMGenerator(renderer)
-        const scene = studioScene(kind)
+        rehearsal?.dispose()
+        if (born !== generation) {
+          disposeScene(scene)
+          generator.dispose()
+          return
+        }
         const target = generator.fromScene(scene, STUDIO_BLUR)
         disposeScene(scene)
         generator.dispose()

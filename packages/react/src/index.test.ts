@@ -30,6 +30,10 @@ const ROOT_ENTRY = [
   'SURFACE_ANCHOR_ATTRIBUTE',
   'SURFACE_FOCUS_ATTRIBUTE',
   'SurfaceCanvas',
+  'Loading',
+  'LoadingPending',
+  'useLoadingWait',
+  'useLoadingStatus',
   'createSurface',
   'createSurfaceLight',
   'deformSurfaceGeometry',
@@ -77,6 +81,8 @@ const ADVANCED_ADDITIONS = [
   'useSurfaceOutput',
   'passMaterial',
   'useSurfaceFinishMaterial',
+  'prebuildPipelines',
+  'waitForDrawPipelines',
 ]
 
 describe('the published entries', () => {

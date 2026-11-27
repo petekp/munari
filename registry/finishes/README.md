@@ -44,6 +44,24 @@ Paint the content root's background with `var(--munari-body)`. Munari sets
 it to the finish's `color` on the page and to `transparent` in the canvas,
 where the material draws the body.
 
+## While the scene prepares
+
+Until its canvas has built the finish, a Surface shows its page copy. Each
+preset's `pageLook` gives that copy a light gradient and edge shading close
+to the lit card, so the card is complete from the first frame. Munari sets
+them as `--munari-body-image` and `--munari-body-shadow` on the page and
+`none` in the canvas. Use both:
+
+```css
+.card {
+  background: var(--munari-body);
+  background-image: var(--munari-body-image, none);
+  box-shadow: var(--munari-body-shadow, none);
+}
+```
+
+The looks were matched by eye and are approximate under a moving light.
+
 ## What the tests check
 
 `tests/registry/finishesPack.test.ts` checks that this file is

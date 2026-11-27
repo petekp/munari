@@ -28,6 +28,8 @@ export type { CaptureHandle, CaptureFrame, CaptureStatus } from './primitives/ca
 // effect that draws it is provisional and lives in /advanced.
 export { useCaptureTransition, type CaptureTransition } from './primitives/captureTransition'
 export { SurfaceCanvas, type SurfaceCanvasProps } from './primitives/surface/SurfaceCanvas'
+export { Loading, LoadingPending, useLoadingWait, useLoadingStatus } from './primitives/loading'
+export type { LoadingProps, LoadingStatus, LoadingReport, LoadingEntry, LoadingEntryKind, LoadingEntryState, LoadingWaitReason, LoadingFallbackReason } from './primitives/loading'
 export type { SurfaceCanvasId } from './primitives/surface/surfaceHostRegistry'
 export type { SurfaceIdentityProps } from './primitives/surface/SurfaceRoot'
 export type { SurfacePointerEvents, SurfaceRadius, SurfaceMeshProps } from './primitives/surface/SurfaceMesh'

@@ -36,7 +36,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { Canvas, useFrame, useThree, type CanvasProps, type RootState } from '@react-three/fiber'
-import { Color, NoToneMapping, PCFShadowMap, RenderTarget, Scene, type Camera, type Object3D } from 'three'
+import { NoToneMapping, PCFShadowMap, type Object3D } from 'three'
 import { DirectRenderPipeline, WebGPURenderer, type WebGPURendererParameters } from 'three/webgpu'
 import {
   createSurfaceHost,
@@ -56,6 +56,8 @@ import { createSurfaceCompiler, installSurfaceCompiler } from './surfaceCompile'
 import { prebuildMipmapPasses } from './surfaceMipmapPrebuild'
 import { RendererStartBoundary, RendererStartError } from './surfaceRendererStart'
 import { FinishRigProvider } from './finishLoader'
+import { useCanvasLoading, type CanvasDrawReport } from './surfaceCanvasLoading'
+import { renderWithObservedClear } from './surfaceObservedClear'
 import type { SurfaceLighting } from './surfaceLight'
 
 /**
@@ -219,37 +221,6 @@ export function settleFrameloop(
   if (state.frameloop !== mode) state.setFrameloop(mode)
 }
 
-function discardClearedTarget(host: SurfaceHost, renderer: WebGPURenderer, scene: Object3D, target = renderer.getRenderTarget()) {
-  if (!target || !renderer.autoClearColor) return
-  const backgroundClears = scene instanceof Scene && scene.background instanceof Color && !scene.backgroundNode
-  if (renderer.autoClear || backgroundClears) host.discardTargetPresentations(target)
-}
-
-function renderWithObservedClear(host: SurfaceHost, renderer: WebGPURenderer, render: WebGPURenderer['render'], scene: Object3D, camera: Camera) {
-  if (!(scene instanceof Scene)) {
-    discardClearedTarget(host, renderer, scene)
-    render(scene, camera)
-    return
-  }
-  const before = scene.onBeforeRender
-  const ownedBefore = Object.prototype.hasOwnProperty.call(scene, 'onBeforeRender')
-  const observe: Scene['onBeforeRender'] = function (this: Scene, ...args) {
-    before.apply(this, args)
-    // Scene supplies a fixed target here; Object3D types instead describe geometry.
-    const target: unknown = args[3]
-    if (target === null || target instanceof RenderTarget) discardClearedTarget(host, renderer, scene, target)
-  }
-  scene.onBeforeRender = observe
-  try {
-    render(scene, camera)
-  } finally {
-    if (scene.onBeforeRender === observe) {
-      if (ownedBefore) scene.onBeforeRender = before
-      else Reflect.deleteProperty(scene, 'onBeforeRender')
-    }
-  }
-}
-
 /**
  * The renderer half of the host, mounted inside the Canvas.
  *
@@ -265,12 +236,14 @@ function SurfaceHostBridge({
   onRendererLost,
   onDisplayScale,
   displaySized,
+  drawReport,
 }: {
   host: SurfaceHost
   frameloop: CanvasProps['frameloop']
   onRendererLost: () => void
   onDisplayScale: (scale: number) => void
   displaySized:boolean
+  drawReport: CanvasDrawReport
 }) {
   const gl = useThree((s) => s.gl)
   const invalidate = useThree((s) => s.invalidate)
@@ -357,19 +330,35 @@ function SurfaceHostBridge({
     }
     gl.clear = clear
     const pipeline = new DirectRenderPipeline(gl)
-    // Presenters' pipeline builds start in the draw of the scene that holds
-    // them, under that draw's target and output state (surfaceCompile.ts).
+    // Pipeline builds start in the draw of the scene that holds their
+    // objects, under that draw's target and output state, and every object
+    // whose pipelines are not built is held back from it (surfaceCompile.ts).
     const compiler = createSurfaceCompiler(gl, invalidate)
     const uninstallCompiler = installSurfaceCompiler(gl, compiler)
     // The pipeline's own render() calls gl.render; that inner call draws.
     let piping = false
+    let nestedRenders = 0
     let notifying = false
     let warnedToneMapping = false
     let lastGlslScan = -Infinity
     gl.render = (scene, camera) => {
       if (piping) {
+        // Queued builds start before the hold rolls the scene back, so
+        // they are built for the scene as it is.
         compiler.start(scene, camera)
-        return renderWithObservedClear(host, gl, original, scene, camera)
+        // Only the canvas scene's own draw is held. A render nested in it,
+        // such as the PMREM bake three runs from a material's updateBefore,
+        // draws into a target; held, it replaced the record of the scene the
+        // canvas draw is held against, and three's render list emptied under
+        // the outer draw (workspace, 2026-11-26).
+        const restore = nestedRenders === 0 ? compiler.hold(scene, camera) : () => {}
+        nestedRenders++
+        try {
+          return renderWithObservedClear(host, gl, original, scene, camera)
+        } finally {
+          nestedRenders--
+          restore()
+        }
       }
       if (isDevelopmentRuntime() && performance.now() - lastGlslScan > GLSL_SCAN_INTERVAL_MS) {
         lastGlslScan = performance.now()
@@ -402,6 +391,7 @@ function SurfaceHostBridge({
         if (target === null) {
           piping = true
           try { compiler.draw(() => pipeline.render(scene, camera)) } finally { piping = false }
+          drawReport.drew(compiler.holding())
         } else {
           compiler.start(scene, camera)
           renderWithObservedClear(host, gl, original, scene, camera)
@@ -420,7 +410,7 @@ function SurfaceHostBridge({
       // whatever deferred to this tail is discarded rather than proven.
       host.discardFrameTail()
     }
-  }, [gl, host, invalidate])
+  }, [gl, host, invalidate, drawReport])
 
   // Three reports a lost WebGPU device and a lost WebGL 2 context through
   // `onDeviceLost`, and that renderer draws nothing again: it has no restore
@@ -535,6 +525,8 @@ export function SurfaceCanvas({
   const [rendererMount, setRendererMount] = useState(0)
   const replacement = useRef<{ readonly createdAt: number } | null>(null)
 
+  const drawReport = useCanvasLoading(id, created, rendererLost)
+
   useEffect(() => {
     const mount = mountSurfaceHost(candidate)
     setMounted({ candidate, host: mount.host })
@@ -581,12 +573,13 @@ export function SurfaceCanvas({
   const onRendererLostRef = useLatest(onRendererLost)
   const handleRendererLost = useCallback(() => {
     setRendererLost(true)
+    drawReport.reset()
     onRendererLostRef.current?.()
     const previous = replacement.current
     if (previous && performance.now() - previous.createdAt < REPEATED_LOSS_MS) return
     replacement.current = { createdAt: Number.POSITIVE_INFINITY }
     setRendererMount((mount) => mount + 1)
-  }, [onRendererLostRef])
+  }, [onRendererLostRef, drawReport])
 
   const showFallback = fallback !== undefined && (rendererLost || !created)
 
@@ -627,6 +620,7 @@ export function SurfaceCanvas({
               onRendererLost={handleRendererLost}
               onDisplayScale={setDisplayScale}
               displaySized={resize?.offsetSize!==true}
+              drawReport={drawReport}
             />
             <FinishRigProvider lighting={lighting}>
               {children}

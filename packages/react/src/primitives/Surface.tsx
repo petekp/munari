@@ -14,9 +14,12 @@ import { PageBinding } from './surface/SurfacePageBinding'
 import { SceneContribution } from './surface/SurfaceSceneContribution'
 import { SurfaceRootContext, DEFAULT_PART } from './surface/surfaceContext'
 import { surfaceStoreOf, useSurfaceHandle, type SurfaceHandle } from './surface/surfaceHandle'
-import { surfaceViewPresentation, type SurfaceViewPresentation, type SurfaceViewDestination } from './surface/surfaceStatus'
-import { type SurfaceSize, type SurfaceSourceRuntime, type SurfaceResolution, type SurfacePartPublication } from './surface/surfaceSourceRuntime'
+import { type SurfaceViewPresentation, type SurfaceViewDestination } from './surface/surfaceStatus'
+import { type SurfaceSize, type SurfaceSourceRuntime, type SurfaceResolution } from './surface/surfaceSourceRuntime'
 import { useLatest } from './useLatest'
+import { useNearViewport, useSceneSurfaceLoading, useSurfaceLoading } from './surface/surfaceLoading'
+import { dockCaptureHost, matchingRuntime } from './surface/surfaceCaptureDock'
+import { useViewCallbacks } from './surface/surfaceViewCallbacks'
 import { usePageTargetAttachment, type PageTarget } from './pageTarget'
 import { useCaptureSupport } from './surface/surfaceSupport'
 import { surfaceChromeElement } from './surface/surfaceChromeElement'
@@ -25,7 +28,7 @@ import { watchSurfacePlacement } from './surface/surfacePlacement'
 import { claimSourcePointer, releaseSourcePointer } from './surface/surfacePointerOwnership'
 import { registerHostSpace, hostSpace, boxInHostSpace, hostSpaceScale, hostSpaceUpright } from './surface/surfaceHostSpace'
 import { createSurfacePageClip } from './surface/surfacePageClip'
-import { insertRetained, moveRetained } from './retainedMove'
+import { moveRetained } from './retainedMove'
 import { applyCopyScrolls } from './elementCapture'
 import { placeholderCopy, snapshotPageContent as snapshot, sourceNeedsLiveNode, unsupportedSnapshot } from './surface/surfacePageSnapshot'
 import { readSurfaceDevicePixelRatio } from './surface/surfaceDevicePixelRatio'
@@ -56,15 +59,24 @@ export type SurfaceRootProps = SurfaceControls & SurfaceIdentityProps & {
    * Surface.Mesh with its own `material` ignores the finish.
    */
   finish?: SurfaceFinish
+  /**
+   * When the Surface prepares its scene presentation. `'eager'` (default)
+   * prepares at mount. `'lazy'` waits until its page presentation comes
+   * within half a viewport of the viewport, and until then does not hold an
+   * enclosing `<Loading>`, as a lazy image does not hold the page's `load`.
+   */
+  loading?: 'eager' | 'lazy'
   children: ReactNode
 }
 const SurfaceContentContext = createContext<{
   handle: SurfaceHandle
   canEnter: boolean
+  lazy: boolean
   reportSupport(part: SurfacePartId, reason: string | null | undefined): void
+  reportNear(): void
 } | null>(null)
 
-function SurfaceRoot({ inScene, surface, canvasId, name, finish, children, ...controls }: SurfaceRootProps) {
+function SurfaceRoot({ inScene, surface, canvasId, name, finish, loading = 'eager', children, ...controls }: SurfaceRootProps) {
   const own = useSurfaceHandle(name)
   const handle = surface ?? own
   const browserSupported = useCaptureSupport()
@@ -79,9 +91,15 @@ function SurfaceRoot({ inScene, surface, canvasId, name, finish, children, ...co
     })
   }, [])
   const reason = [...reasons.values()].find(value => value !== null) ?? null
-  const canEnter = inScene && browserSupported && !reason
+  const lazy = loading === 'lazy'
+  // Latched: a lazy Surface that has started preparing keeps what it built.
+  const [near, setNear] = useState(false)
+  const reportNear = useCallback(() => setNear(true), [])
+  const deferred = lazy && !near
+  const canEnter = inScene && !deferred && browserSupported && !reason
   const callbacks = useViewCallbacks(controls)
-  const context = useMemo(() => ({ handle, canEnter, reportSupport }), [handle, canEnter, reportSupport])
+  const context = useMemo(() => ({ handle, canEnter, lazy, reportSupport, reportNear }), [handle, canEnter, lazy, reportSupport, reportNear])
+  useSurfaceLoading(surfaceStoreOf(handle), { inScene, deferred, browserSupported, reason })
   return <SurfaceContentContext value={context}>
     <SurfaceController surface={handle} canvasId={canvasId} renderIn={canEnter ? 'canvas' : 'page'} authorIntent={{ requestedInScene: inScene, reason }} {...controls} {...callbacks}>
       <SurfaceFinishContext value={finish ?? null}>{children}</SurfaceFinishContext>
@@ -112,20 +130,6 @@ export type SurfaceHTMLProps = {
   pageStyle?: Omit<CSSProperties, 'visibility' | 'pointerEvents' | 'display'> & CustomProperties
 } & ({ hidden?: false; size?: SurfaceSize } | { hidden: boolean; size: SurfaceSize })
 
-function matchingRuntime(publication: SurfacePartPublication | null, element: HTMLElement | null): SurfaceSourceRuntime | null {
-  return publication?.captureRoot === element ? publication?.runtime ?? null : null
-}
-// Chrome's renderer crashes when `moveBefore` puts two fixed-position
-// elements, such as these parked capture canvases, inside an absolutely
-// positioned size container and a font face arrives in the same task;
-// `insertBefore` does not crash (platform.md #35). The insert
-// restarts the CSS animations of whatever the host holds, so the caller puts
-// the held copy back at the live node's pose.
-function dockCaptureHost(host: HTMLElement, dock: HTMLElement): boolean {
-  if (host.parentElement === dock) return false
-  insertRetained(host, dock)
-  return true
-}
 
 function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, live, onChrome, hidden, pageClassName, pageStyle, target, as: Tag = 'div', layout = 'preserve' }: SurfaceHTMLProps) {
   if (size) validateSurfaceSize(size)
@@ -148,6 +152,8 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   const [liveRoot,setLiveRoot] = useState<HTMLElement|null>(null)
   useLayoutEffect(()=>{const root=document.createElement(Tag);root.style.display='block';root.dataset.munariSourceHost='';root.dataset.munariInstance='source';setCaptureRoot(root)},[Tag])
   const [page, setPage] = useState<HTMLElement | null>(null)
+  const { lazy, reportNear } = root
+  useNearViewport(lazy ? page : null, reportNear)
   const pageContent = useCallback(() => {
     const content = page?.firstElementChild
     return content instanceof HTMLElement ? surfaceChromeElement(content, false) : page
@@ -424,13 +430,6 @@ export const Surface = Object.assign(BasicSurface, {
   Prewarm: ScenePrewarm,
 })
 
-function useViewCallbacks(controls: SurfaceControls) {
-  const latest = useLatest(controls)
-  return useMemo(() => ({
-    onPresentationChange: (presentation: import('./surface/surfaceHandle').SurfacePresentation) => latest.current.onPresentationChange?.(surfaceViewPresentation(presentation)),
-    onMotionComplete: (destination: import('./surface/surfaceHandle').SurfaceDestination) => latest.current.onMotionComplete?.(destination === 'canvas' ? 'scene' : 'page'),
-  }), [latest])
-}
 
 export type SceneSurfaceRootProps = SurfaceControls & SurfaceIdentityProps & {
   children: ReactNode
@@ -442,6 +441,7 @@ function SceneSurfaceRoot({ children, name, surface, canvasId, finish, ...contro
   const own = useSurfaceHandle(name)
   const handle = surface ?? own
   const callbacks = useViewCallbacks(controls)
+  useSceneSurfaceLoading(surfaceStoreOf(handle))
   return <SurfaceController surface={handle} canvasId={canvasId} renderIn="canvas" authorIntent={{ requestedInScene: true, reason: null }} {...controls} {...callbacks}>
     <SurfaceFinishContext value={finish ?? null}>{children}</SurfaceFinishContext>
   </SurfaceController>

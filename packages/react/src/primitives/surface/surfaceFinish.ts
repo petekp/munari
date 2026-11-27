@@ -65,6 +65,14 @@ export interface FinishValues {
   /** Scales the direct lights on this finish, 0 or more; the environment and emission do not scale. */
   lightGain: number
   side: 'front' | 'double'
+  /**
+   * How the page copy stands in for the lit body while the scene prepares:
+   * `image` is CSS background-image layers over the body color, `shadow` a
+   * box-shadow. Munari writes them as `--munari-body-image` and
+   * `--munari-body-shadow` on the page copy and `none` in the capture.
+   * Read only when `color` is set.
+   */
+  pageLook: { image: string; shadow: string } | null
 }
 
 /** A finish: any of FinishValues, each missing field at its neutral default. */
@@ -91,6 +99,7 @@ export const NEUTRAL_FINISH: Readonly<FinishValues> = Object.freeze({
   environment: 'even',
   lightGain: 1,
   side: 'front',
+  pageLook: null,
 })
 
 /** Every field of a finish, the missing ones at their neutral defaults. */

@@ -1,9 +1,13 @@
 // Surface body color — `--munari-body`, the finish's color on the page copy
-// and `transparent` in the capture.
+// and `transparent` in the capture, with the finish's page look beside it.
 //
 // The law: a finish with a color paints the body in the scene, so content
 // that styles its background with `var(--munari-body, …)` shows the color on
 // the page and the lit body in the scene. The page element holds the color.
+// A finish's `pageLook` stands in for its lighting on the page while the
+// scene prepares, as `--munari-body-image` and `--munari-body-shadow`; the
+// capture holds `none` for both, so the lit scene is the same with or
+// without one.
 // The capture root holds `transparent`, except while the page still holds
 // and the capture root stands in the page copy's place, as it does for a
 // focused field ahead of a crossing: then it is on screen as the page and
@@ -16,18 +20,39 @@
 // source runtime repaints the capture.
 
 import { use, useCallback, useLayoutEffect, useMemo, useRef, type CSSProperties } from 'react'
-import { SurfaceFinishContext } from './surfaceFinish'
+import { SurfaceFinishContext, type FinishValues } from './surfaceFinish'
 import type { SurfaceSourceRuntime } from './surfaceSourceRuntime'
 
 export type CustomProperties = { [property: `--${string}`]: string | number | undefined }
 type PageStyle = Omit<CSSProperties, 'visibility' | 'pointerEvents' | 'display'> & CustomProperties
 
-function writeCaptureBody(captureRoot: HTMLElement, bodyColor: string | null, shownAsPage: boolean, runtime: SurfaceSourceRuntime | null): void {
-  const next = bodyColor === null ? '' : shownAsPage ? bodyColor : 'transparent'
-  if (captureRoot.style.getPropertyValue('--munari-body') === next) return
-  if (next === '') captureRoot.style.removeProperty('--munari-body')
-  else captureRoot.style.setProperty('--munari-body', next)
-  runtime?.source.repaint()
+interface BodyProperties {
+  readonly '--munari-body': string
+  readonly '--munari-body-image': string
+  readonly '--munari-body-shadow': string
+}
+
+interface Body {
+  readonly color: string | null
+  readonly look: FinishValues['pageLook']
+}
+
+/** The body's custom properties on the page, or in the capture; '' leaves one unset. */
+function bodyProperties({ color, look }: Body, onPage: boolean): BodyProperties {
+  if (color === null) return { '--munari-body': '', '--munari-body-image': '', '--munari-body-shadow': '' }
+  if (!onPage) return { '--munari-body': 'transparent', '--munari-body-image': look ? 'none' : '', '--munari-body-shadow': look ? 'none' : '' }
+  return { '--munari-body': color, '--munari-body-image': look?.image ?? '', '--munari-body-shadow': look?.shadow ?? '' }
+}
+
+function writeCaptureBody(captureRoot: HTMLElement, body: Body, shownAsPage: boolean, runtime: SurfaceSourceRuntime | null): void {
+  let changed = false
+  for (const [property, next] of Object.entries(bodyProperties(body, shownAsPage))) {
+    if (captureRoot.style.getPropertyValue(property) === next) continue
+    changed = true
+    if (next === '') captureRoot.style.removeProperty(property)
+    else captureRoot.style.setProperty(property, next)
+  }
+  if (changed) runtime?.source.repaint()
 }
 
 export interface BodyColor {
@@ -42,18 +67,25 @@ export interface BodyColor {
  * the value follows the live node through every handoff.
  */
 export function useBodyColor(pageStyle: PageStyle | undefined, captureRoot: HTMLElement | null, runtime: SurfaceSourceRuntime | null): BodyColor {
-  const bodyColor = use(SurfaceFinishContext)?.color ?? null
+  const finish = use(SurfaceFinishContext)
+  const color = finish?.color ?? null
+  const look = finish?.pageLook ?? null
+  const body = useMemo<Body>(() => ({ color, look }), [color, look])
   const shownAsPage = useRef(false)
   useLayoutEffect(() => {
-    if (captureRoot) writeCaptureBody(captureRoot, bodyColor, shownAsPage.current, runtime)
-  }, [captureRoot, bodyColor, runtime])
+    if (captureRoot) writeCaptureBody(captureRoot, body, shownAsPage.current, runtime)
+  }, [captureRoot, body, runtime])
   const asPage = useCallback(
     (shown: boolean) => {
       shownAsPage.current = shown
-      if (captureRoot) writeCaptureBody(captureRoot, bodyColor, shown, runtime)
+      if (captureRoot) writeCaptureBody(captureRoot, body, shown, runtime)
     },
-    [captureRoot, bodyColor, runtime],
+    [captureRoot, body, runtime],
   )
-  const style = useMemo(() => (bodyColor === null ? pageStyle : { ...pageStyle, '--munari-body': bodyColor }), [pageStyle, bodyColor])
+  const style = useMemo(() => {
+    if (body.color === null) return pageStyle
+    const onPage = Object.fromEntries(Object.entries(bodyProperties(body, true)).filter(([, value]) => value !== ''))
+    return { ...pageStyle, ...onPage }
+  }, [pageStyle, body])
   return { style, asPage }
 }

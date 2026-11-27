@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { passMaterials } from './surfaceCompile'
+import { passMaterials } from './surfaceCompileBuild'
 
 const drawState = (material: THREE.Material) => ({
   colorWrite: material.colorWrite,
