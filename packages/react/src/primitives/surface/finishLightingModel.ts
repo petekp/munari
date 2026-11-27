@@ -83,11 +83,11 @@ function ggx(lightDirection: Node<'vec3'>, lobe: AreaLobe): Node<'vec3'> {
   const dotVH = clamp(dot(positionViewDirection, half), 0, 1)
   // SAFETY: F_Schlick returns f0's type, a vec3 or color, and V and D return
   // floats; the published types call each an OperatorNode.
-  const fresnel = F_Schlick({ f0: lobe.f0, f90: lobe.f90, dotVH }) as unknown as Node<'vec3'>
+  const fresnel = F_Schlick({ f0: lobe.f0, f90: lobe.f90, dotVH }) as Node<'vec3'>
   // SAFETY: as above.
-  const visibility = V_GGX_SmithCorrelated({ alpha, dotNL, dotNV }) as unknown as Node<'float'>
+  const visibility = V_GGX_SmithCorrelated({ alpha, dotNL, dotNV }) as Node<'float'>
   // SAFETY: as above.
-  const distribution = D_GGX({ alpha, dotNH }) as unknown as Node<'float'>
+  const distribution = D_GGX({ alpha, dotNH }) as Node<'float'>
   return fresnel.mul(visibility).mul(distribution)
 }
 
@@ -168,7 +168,7 @@ class GainedLightingModel extends PhysicalLightingModel {
     const lit = select(cross(p1.sub(p0), p3.sub(p0)).dot(P.sub(p0)).greaterThanEqual(0), float(1), float(0))
     const identity = mat3(1, 0, 0, 0, 1, 0, 0, 0, 1)
     // SAFETY: LTC_Evaluate is declared with a vec3 result (LTC.js setLayout); the published types lose it.
-    const formFactor = LTC_Evaluate({ N: normalView, V: positionViewDirection, P, mInv: identity, p0, p1, p2, p3 }) as unknown as Node<'vec3'>
+    const formFactor = LTC_Evaluate({ N: normalView, V: positionViewDirection, P, mInv: identity, p0, p1, p2, p3 }) as Node<'vec3'>
     accumulator(reflectedLight.directDiffuse).addAssign(luminance.mul(diffuseContribution).mul(formFactor))
     accumulator(reflectedLight.directSpecular).addAssign(
       representativeSpecular(key, luminance, lit, { normal: normalView, roughness, f0: specularColorBlended, f90: float(1) }),
