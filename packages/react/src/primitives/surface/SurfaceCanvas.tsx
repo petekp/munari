@@ -55,7 +55,7 @@ import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 import { createSurfaceCompiler, installSurfaceCompiler } from './surfaceCompile'
 import { prebuildMipmapPasses } from './surfaceMipmapPrebuild'
 import { RendererStartBoundary, RendererStartError } from './surfaceRendererStart'
-import { FinishRigProvider } from './finishRig'
+import { FinishRigProvider } from './finishLoader'
 import type { SurfaceLighting } from './surfaceLight'
 
 /**
@@ -112,8 +112,8 @@ export interface SurfaceCanvasProps
   /**
    * How the Surface finishes on this canvas are lit. Default `studio`: the
    * studio key, rim and environments. `none` lights finishes with the
-   * scene's own lights and `scene.environment`. The rig lights finish
-   * materials only; the scene's other materials never see it.
+   * scene's own lights and `scene.environment`. Only finish materials
+   * see the rig's lights.
    */
   lighting?: SurfaceLighting
 }

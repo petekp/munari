@@ -99,6 +99,12 @@ export function SurfaceSourceHost({
 }: SurfaceSourceHostProps) {
   const [sourceHostId] = useState(() => `source-${sourceHostSequence++}`)
   const [runtime, setRuntime] = useState<SurfaceSourceRuntime | null>(null)
+  // Published with the part, not read off the runtime by its readers: the
+  // chrome is measured after the first paint, and a presenter that read it
+  // during its own render kept what it saw before. Under radius="auto" a
+  // finish whose code loaded late drew square corners (m2, 2026-11-26).
+  const [measuredChrome, setMeasuredChrome] = useState<{ readonly runtime: SurfaceSourceRuntime; readonly chrome: SurfaceChrome } | null>(null)
+  const chrome = measuredChrome?.runtime === runtime ? measuredChrome.chrome : null
   // Read off the engine this part's source was built with, which a later
   // `setCaptureEngine` does not change. Until the source exists, the
   // installed engine answers, so a live part that mounts mid-flight does not
@@ -175,7 +181,10 @@ export function SurfaceSourceHost({
         live: liveRef.current && followsLive,
         pixelRatio: window.devicePixelRatio,
         onError: (error) => root.store.reportError(error),
-        onChrome: (chrome) => onChromeRef.current?.(chrome),
+        onChrome: (chrome) => {
+          setMeasuredChrome({ runtime: created, chrome })
+          onChromeRef.current?.(chrome)
+        },
         chromeElement: () => chromeElementRef.current?.() ?? surfaceChromeElement(captureRoot, adopt !== undefined),
       })
     } catch (error) {
@@ -272,8 +281,9 @@ export function SurfaceSourceHost({
       source,
       setPageRoot,
       setMeasuredSize: setMeasured,
+      chrome,
     }),
-    [id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent, source],
+    [id, runtime, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent, source, chrome],
   )
 
   // Focus follows the hold in the same task that moves it, so the `inert`
@@ -308,8 +318,9 @@ export function SurfaceSourceHost({
       pageRoot,
       pageContent,
       finish,
+      chrome,
     }),
-    [store, id, runtime, effectiveLive, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent, finish],
+    [store, id, runtime, effectiveLive, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent, finish, chrome],
   )
 
   // Content reaches the container by whichever door this wiring has. Both

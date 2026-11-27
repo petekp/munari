@@ -72,6 +72,8 @@ export interface SurfacePartPublication {
   readonly pageContent?: () => HTMLElement | null
   /** The Surface's finish, worn by every mesh of this part that brings no material. Absent: none. */
   readonly finish?: SurfaceFinish | null
+  /** The content root's measured radii and shadows. Absent or null: no paint has been measured yet. */
+  readonly chrome?: SurfaceChrome | null
 }
 
 /** The page element this part's mesh is matched to: authored content when the page supplies it, else the page root. */
@@ -100,7 +102,6 @@ export interface SurfaceSourceRuntime {
   readonly source: DomTextureSource
   readonly element: HTMLElement
   texture(): THREE.CanvasTexture | null
-  chrome(): SurfaceChrome
   size(): SurfaceSize
   paintedSize(): readonly [number, number]
   /** The generation of the paint currently uploaded, or -1. */
@@ -311,7 +312,6 @@ export function createSurfaceSourceRuntime(
     source,
     element: source.element,
     texture: () => texture,
-    chrome: () => chrome,
     size: () => size,
     paintedSize: () => source.paintedSize(),
     uploadedGeneration: () => uploadedGeneration,

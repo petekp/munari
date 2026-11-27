@@ -73,7 +73,7 @@ import { markSurfaceMesh, pointerIsWhereR3fHeardIt } from './surfaceOcclusion'
 import { surfaceHitRegion } from './surfaceHitRegion'
 import { suspendCameraControls } from '../cameraControls'
 import { useLatest } from '../useLatest'
-import { SurfaceFinishMaterial } from './SurfaceFinishMaterial'
+import { DeferredFinishMaterial } from './finishLoader'
 import type { SurfaceFinish } from './surfaceFinish'
 import {
   SurfaceMaterialContext,
@@ -257,7 +257,7 @@ function readRuntimeFacts(part: SurfacePartPublication | null) {
     width,
     height,
     sourceEl: runtime?.element ?? null,
-    chromeRadii: runtime?.chrome().radii,
+    chromeRadii: part?.chrome?.radii,
   }
 }
 
@@ -1244,5 +1244,5 @@ function finishOf(part: SurfacePartPublication | null): SurfaceFinish | null {
 /** A Surface with a finish wears it wherever the mesh brings no material. */
 function slotMaterialOf(material: SurfaceMeshProps['material'], finish: SurfaceFinish | null): SurfaceMeshProps['material'] {
   if (material !== undefined || !finish) return material
-  return <SurfaceFinishMaterial />
+  return <DeferredFinishMaterial />
 }

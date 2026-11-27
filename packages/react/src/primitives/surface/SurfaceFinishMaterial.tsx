@@ -11,49 +11,54 @@
 //
 // Ownership: this module owns the material's lifetime and its writes. The
 // node graph is finishNodes.ts; the lights and environments are the
-// canvas's (finishRig.tsx).
+// canvas's (finishRig.tsx). This module loads with the finish code
+// (finishLoader.tsx), which hands it the canvas and the mesh it draws for:
+// a lazy module that imported those itself split the page's eager bundle
+// into several chunks under Vite 8, which cost more gzip than this code
+// weighs (instruments/payload, m2, 2026-11-26).
 
-import { use, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useThree } from '@react-three/fiber'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { texture as textureNode, uv } from 'three/tsl'
 
 import { surfaceRadiusMask } from '../../lib/surfaceRadius'
 import { useLatest } from '../useLatest'
-import { useFinishRig, useFinishRigState } from './finishRig'
+import { useFinishLayerCode, type FinishLayerCode } from './finishLayerCode'
+import { useFinishRigState, type FinishRig } from './finishRig'
 import { createFinishMaterial, type FinishShadingInputs } from './finishNodes'
 import { createFinishUniforms, finishLayersOf, sameFinishLayers, writeFinish, type FinishLayers } from './finishUniforms'
 import type { FinishPhysicalMaterial } from './finishLightingModel'
-import { useSurfaceTextureFor } from './surfaceContext'
+import type { SurfaceMaterialValue } from './surfaceContext'
 import { resolveFinish, type SurfaceFinish } from './surfaceFinish'
-import { SurfaceFrameContext } from './surfaceFrame'
-import { getSurfaceLitTexture } from './surfaceLitTexture'
-import { useMaterialSlot } from './surfaceMaterials'
+import type { createSurfaceFrameChannel } from './surfaceFrame'
+import type { SurfaceLitTexture } from './surfaceLitTexture'
 
 export interface SurfaceFinishMaterialInputs extends FinishShadingInputs {
   /** The finish to wear. Omitted: the Surface's `finish`. */
   readonly finish?: SurfaceFinish
 }
 
-/**
- * The finish material for the Surface.Mesh this runs in, for a material
- * that bends or turns the finish's normal or changes its body color. Null
- * when neither `inputs.finish` nor the Surface names a finish.
- *
- * `normal` and `bodyColor` build the shader, so a new function builds a new
- * material: pass functions that keep their identity, defined at module scope
- * or memoized.
- */
-export function useSurfaceFinishMaterial(inputs: SurfaceFinishMaterialInputs = {}): FinishPhysicalMaterial | null {
-  const capture = useSurfaceTextureFor('useSurfaceFinishMaterial()')
-  const slot = useMaterialSlot('useSurfaceFinishMaterial()')
-  const finish = inputs.finish ?? slot.finish
-  const frames = use(SurfaceFrameContext)
-  const invalidate = useThree((state) => state.invalidate)
+/** What a finish reads from the canvas and the mesh it draws for. */
+export interface FinishSources {
+  readonly slot: SurfaceMaterialValue
+  /** The capture's lit view, acquired and synced before each draw. */
+  readonly litTexture: SurfaceLitTexture
+  readonly frames: ReturnType<typeof createSurfaceFrameChannel> | null
+  /** Null outside a SurfaceCanvas, under `lighting="none"`, and without WebGPU. */
+  readonly rig: FinishRig | null
+  /** The canvas lights its finishes, and its rig has not been built yet. */
+  readonly loading: boolean
+  readonly invalidate: () => void
+}
 
-  const litTexture = useMemo(() => getSurfaceLitTexture(capture), [capture])
-  useLayoutEffect(() => litTexture.acquire(), [litTexture])
-  // Before each draw, after raster sizing: the raw view follows the capture.
-  useLayoutEffect(() => slot.beforeDraw(litTexture.sync), [slot, litTexture])
+interface ShownLayers {
+  readonly layers: FinishLayers
+  readonly code: FinishLayerCode
+}
+
+/** The finish material for `sources`' mesh, as useSurfaceFinishMaterial describes. */
+export function useFinishMaterial(sources: FinishSources, inputs: SurfaceFinishMaterialInputs): FinishPhysicalMaterial | null {
+  const { slot, litTexture, frames, rig, loading, invalidate } = sources
+  const finish = inputs.finish ?? slot.finish
   // One node for the material's life: a resize replaces the raw view, and a
   // value write keeps the built shader.
   const [captureNode] = useState(() => textureNode(litTexture.texture))
@@ -63,30 +68,35 @@ export function useSurfaceFinishMaterial(inputs: SurfaceFinishMaterialInputs = {
   const values = finish ? resolveFinish(finish) : null
   const valuesRef = useLatest(values)
   const nextLayers = values ? finishLayersOf(values, slot.facesCamera) : null
-  const layersRef = useRef<FinishLayers | null>(nextLayers)
-  const previous = layersRef.current
-  const layersHeld = previous !== null && nextLayers !== null && sameFinishLayers(previous, nextLayers)
-  if (!layersHeld) layersRef.current = nextLayers
-  const layers = layersRef.current
+  const nextCode = useFinishLayerCode(nextLayers)
+  // The material changes layers once their code has loaded; until then the
+  // one it has keeps drawing, with the new values written into it.
+  const shownRef = useRef<ShownLayers | null>(null)
+  const previous = shownRef.current
+  const layersHeld = previous !== null && nextLayers !== null && sameFinishLayers(previous.layers, nextLayers)
+  if (nextLayers === null) shownRef.current = null
+  else if (!layersHeld && nextCode !== null) shownRef.current = { layers: nextLayers, code: nextCode }
+  const shown = shownRef.current
+  const layersPending = nextLayers !== null && shown === null
 
-  const rig = useFinishRig()
   const environmentKind = values?.environment ?? 'even'
   const { ready, keyKind } = useFinishRigState(rig, environmentKind)
   const { normal, bodyColor } = inputs
   const material = useMemo(() => {
-    if (!layers) return null
+    if (!shown || loading) return null
     const built = createFinishMaterial(
       { capture: captureNode, size: slot.size, radii: slot.radii, cornerMask: surfaceRadiusMask(uv(), slot.size, slot.radii), uniforms, normal, bodyColor },
-      layers,
+      shown.layers,
+      shown.code,
     )
     if (rig) built.lightsNode = rig.lightsNode(keyKind)
     return built
-  }, [captureNode, slot.size, slot.radii, uniforms, layers, normal, bodyColor, rig, keyKind])
+  }, [captureNode, slot.size, slot.radii, uniforms, shown, normal, bodyColor, rig, keyKind, loading])
   useLayoutEffect(() => () => material?.dispose(), [material])
 
   // Held until the rig has what this finish reflects: a material compiled
   // before the environment lands compiles again when it does.
-  const holds = material !== null && !ready
+  const holds = (values !== null && loading) || layersPending || (material !== null && !ready)
   const { hold } = slot
   useLayoutEffect(() => (holds ? hold() : undefined), [holds, hold])
 
@@ -123,10 +133,4 @@ export function useSurfaceFinishMaterial(inputs: SurfaceFinishMaterialInputs = {
   }, [material, frames, uniforms, rig, valuesRef])
 
   return material
-}
-
-/** The Surface's finish, worn by a Surface.Mesh with no material of its own. */
-export function SurfaceFinishMaterial() {
-  const material = useSurfaceFinishMaterial()
-  return material ? <primitive object={material} attach="material" /> : null
 }

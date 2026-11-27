@@ -34,7 +34,7 @@ import { configureSurfaceMaterial } from './surfaceMaterials'
 import { surfaceCompilerOf, type SurfaceCompilation } from './surfaceCompile'
 import { useLatest } from '../useLatest'
 import type { SurfaceFinish } from './surfaceFinish'
-import { useSurfaceFinishMaterial } from './SurfaceFinishMaterial'
+import { DeferredFinishMaterial } from './finishLoader'
 
 export interface SurfacePrewarmProps {
   /**
@@ -67,11 +67,10 @@ function standInTexture(): THREE.CanvasTexture {
 const noDrawCallbacks = () => () => {}
 
 function PrewarmFinish({ finish }: { readonly finish: SurfaceFinish }) {
-  const material = useSurfaceFinishMaterial({ finish })
   return (
     <mesh>
       <planeGeometry args={[1, 1]} />
-      {material ? <primitive object={material} attach="material" /> : null}
+      <DeferredFinishMaterial finish={finish} />
     </mesh>
   )
 }

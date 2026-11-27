@@ -70,6 +70,8 @@ export interface SurfacePartValue {
   setPageRoot(el: HTMLElement | null): void
   /** The page box a DOM presentation measured, when `size` is unauthored. */
   setMeasuredSize(size: SurfaceSize | null): void
+  /** The content root's measured radii and shadows. Absent or null: no paint has been measured yet. */
+  readonly chrome?: SurfaceChrome | null
 }
 
 /**
@@ -268,7 +270,7 @@ export interface SurfaceChromeState {
 export function useSurfaceChrome(): SurfaceChromeState {
   const part = useSurfacePart('useSurfaceChrome')
   return {
-    chrome: part.runtime?.chrome() ?? null,
+    chrome: part.chrome ?? null,
     width: part.size[0],
     height: part.size[1],
   }
