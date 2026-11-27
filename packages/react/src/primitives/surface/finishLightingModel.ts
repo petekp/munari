@@ -32,11 +32,11 @@ import {
   clamp,
   clearcoatNormalView,
   clearcoatRoughness,
+  color,
   cross,
-  D_GGX,
   diffuseContribution,
   dot,
-  F_Schlick,
+  exp2,
   float,
   length,
   LTC_Evaluate,
@@ -52,8 +52,6 @@ import {
   specularColorBlended,
   sqrt,
   uniform,
-  V_GGX_SmithCorrelated,
-  vec3,
 } from 'three/tsl'
 import type { KeySheenUniforms } from './finishKeyLight'
 
@@ -69,25 +67,26 @@ function gained(lightColor: Node, gain: Node<'float'>): Node<'vec3'> {
 interface AreaLobe {
   readonly normal: Node<'vec3'>
   readonly roughness: Node<'float'>
-  readonly f0: Node
+  readonly f0: Node<'color'>
   readonly f90: Node<'float'>
 }
 
-/** three's BRDF_GGX without iridescence or anisotropy: F · V · D. */
-function ggx(lightDirection: Node<'vec3'>, lobe: AreaLobe): Node<'vec3'> {
+/** three's BRDF_GGX without iridescence or anisotropy: F · V · D, as F_Schlick, V_GGX_SmithCorrelated and D_GGX write them. */
+function ggx(lightDirection: Node<'vec3'>, lobe: AreaLobe): Node<'color'> {
   const alpha = lobe.roughness.mul(lobe.roughness)
+  const alphaSquared = alpha.mul(alpha)
   const half = normalize(lightDirection.add(positionViewDirection))
   const dotNL = clamp(dot(lobe.normal, lightDirection), 0, 1)
   const dotNV = clamp(dot(lobe.normal, positionViewDirection), 0, 1)
   const dotNH = clamp(dot(lobe.normal, half), 0, 1)
   const dotVH = clamp(dot(positionViewDirection, half), 0, 1)
-  // SAFETY: F_Schlick returns f0's type, a vec3 or color, and V and D return
-  // floats; the published types call each an OperatorNode.
-  const fresnel = F_Schlick({ f0: lobe.f0, f90: lobe.f90, dotVH }) as Node<'vec3'>
-  // SAFETY: as above.
-  const visibility = V_GGX_SmithCorrelated({ alpha, dotNL, dotNV }) as Node<'float'>
-  // SAFETY: as above.
-  const distribution = D_GGX({ alpha, dotNH }) as Node<'float'>
+  const schlick = exp2(dotVH.mul(-5.55473).sub(6.98316).mul(dotVH))
+  const fresnel = lobe.f0.mul(schlick.oneMinus()).add(lobe.f90.mul(schlick))
+  const gv = dotNL.mul(sqrt(alphaSquared.add(alphaSquared.oneMinus().mul(dotNV.mul(dotNV)))))
+  const gl = dotNV.mul(sqrt(alphaSquared.add(alphaSquared.oneMinus().mul(dotNL.mul(dotNL)))))
+  const visibility = float(0.5).div(max(gv.add(gl), float(1e-6)))
+  const denominator = dotNH.mul(dotNH).mul(alphaSquared.sub(1)).add(1)
+  const distribution = alphaSquared.div(denominator.mul(denominator).mul(Math.PI))
   return fresnel.mul(visibility).mul(distribution)
 }
 
@@ -175,7 +174,7 @@ class GainedLightingModel extends PhysicalLightingModel {
     )
     if (this.clearcoat && this.clearcoatSpecularDirect) {
       accumulator(this.clearcoatSpecularDirect).addAssign(
-        representativeSpecular(key, luminance, lit, { normal: clearcoatNormalView, roughness: clearcoatRoughness, f0: vec3(0.04), f90: float(1) }),
+        representativeSpecular(key, luminance, lit, { normal: clearcoatNormalView, roughness: clearcoatRoughness, f0: color(0.04, 0.04, 0.04), f90: float(1) }),
       )
     }
   }
