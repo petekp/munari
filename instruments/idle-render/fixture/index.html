@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>idle-render — an author's animation on a SurfaceCanvas</title>
+    <style>
+      html, body, #root { margin: 0; width: 100%; height: 100%; background: #f4f1ec; }
+      main { position: relative; width: 100%; height: 100%; }
+      .cards { position: relative; display: grid; grid-template-columns: repeat(4, 240px); gap: 24px; padding: 48px; }
+      .card { box-sizing: border-box; width: 240px; height: 140px; padding: 16px; border-radius: 12px; background: #fff; color: #1f2328; font: 14px/1.45 system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>
