@@ -41,6 +41,7 @@ import * as THREE from 'three'
 import { PMREMGenerator, RectAreaLightNode, WebGPURenderer, type LightsNode } from 'three/webgpu'
 import { lights as lightsNodeOf } from 'three/tsl'
 
+import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 import type { KeySheenUniforms } from './finishKeyLight'
 import type { FinishValues } from './surfaceFinish'
 import { attachSurfaceLight, isSurfaceLight, KEY_HEIGHT_PX, KEY_REST_Y, type KeyLight, type SurfaceLight, type SurfaceLighting } from './surfaceLight'
@@ -149,6 +150,16 @@ function loadLtc(): Promise<void> {
     },
   )
   return ltcLoad
+}
+
+// The key and rim stand in CSS px above the page, which needs a perspective
+// camera to place them; under any other camera only the environment lights
+// a finish.
+let warnedUnlitCamera = false
+function warnUnlitCamera(): void {
+  if (warnedUnlitCamera || !isDevelopmentRuntime()) return
+  warnedUnlitCamera = true
+  console.warn('[munari] finishes under an orthographic camera are lit by the environment only: the canvas key and rim lights need a perspective camera.')
 }
 
 // ── the rig ────────────────────────────────────────────────────────────
@@ -286,8 +297,9 @@ export function createFinishRig(renderer: WebGPURenderer, invalidate: () => void
       // SAFETY: SurfaceCanvas creates a PerspectiveCamera unless the scene
       // asks for an orthographic one; isPerspectiveCamera checks it below.
       const camera = frame.camera as THREE.PerspectiveCamera
+      if (!camera.isPerspectiveCamera) return warnUnlitCamera()
       const rect = frame.canvas.getBoundingClientRect()
-      if (rect.height <= 0 || !camera.isPerspectiveCamera) return
+      if (rect.height <= 0) return
       const key = keyOf(lighting.key)
       camera.matrixWorld.extractBasis(_right, _up, _forward)
       _forward.negate()

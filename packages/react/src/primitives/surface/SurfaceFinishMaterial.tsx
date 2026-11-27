@@ -3,8 +3,8 @@
 //
 // The law: a finish's values are written before every draw, so changing an
 // amount, a color or the light is a uniform write that redraws on the next
-// frame. Only a change of layers (finishNodes.ts FinishLayers), or of the
-// canvas key's kind, builds a new material. The first material waits for
+// frame. Only a change of layers (finishNodes.ts FinishLayers), of the
+// canvas key's kind or of the mesh's `transparent`, builds a new material. The first material waits for
 // the rig's environment bake, and for a softbox key the LTC tables, before
 // it compiles: compiled without them, it drew one frame unlit by the
 // environment and then compiled a second time.
@@ -90,8 +90,11 @@ export function useFinishMaterial(sources: FinishSources, inputs: SurfaceFinishM
       shown.code,
     )
     if (rig) built.lightsNode = rig.lightsNode(keyKind)
+    // An opaque mesh writes depth and blends nothing, as its default material does.
+    built.transparent = slot.transparent
+    built.depthWrite = !slot.transparent
     return built
-  }, [captureNode, slot.size, slot.radii, uniforms, shown, normal, bodyColor, rig, keyKind, loading])
+  }, [captureNode, slot.size, slot.radii, slot.transparent, uniforms, shown, normal, bodyColor, rig, keyKind, loading])
   useLayoutEffect(() => () => material?.dispose(), [material])
 
   // Held until the rig has what this finish reflects: a material compiled
