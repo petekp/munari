@@ -10,7 +10,7 @@
 //
 // `color` decides who paints the body. A color is painted by the material,
 // and Munari writes it as `--munari-body` on the page copy and
-// `transparent` into the capture (surfaceBody.ts). Null leaves the body to
+// `transparent` into the capture (surfaceBodyColor.ts). Null leaves the body to
 // the HTML in both places, and the whole capture is lit.
 //
 // Ownership: this module owns the finish's shape, its defaults and the

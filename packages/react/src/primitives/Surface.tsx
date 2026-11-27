@@ -30,7 +30,6 @@ import { applyCopyScrolls } from './elementCapture'
 import { placeholderCopy, snapshotPageContent as snapshot, sourceNeedsLiveNode, unsupportedSnapshot } from './surface/surfacePageSnapshot'
 import { readSurfaceDevicePixelRatio } from './surface/surfaceDevicePixelRatio'
 
-
 export interface SurfaceControls {
   onPresentationChange?: (presentation: SurfaceViewPresentation) => void
   onMotionComplete?: (destination: SurfaceViewDestination) => void
@@ -128,7 +127,6 @@ function dockCaptureHost(host: HTMLElement, dock: HTMLElement): boolean {
   return true
 }
 
-
 function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, live, onChrome, hidden, pageClassName, pageStyle, target, as: Tag = 'div', layout = 'preserve' }: SurfaceHTMLProps) {
   if (size) validateSurfaceSize(size)
   const root = use(SurfaceContentContext)
@@ -148,7 +146,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   }, [reportSupport, partId, reason])
   const [captureRoot,setCaptureRoot] = useState<HTMLElement|null>(null)
   const [liveRoot,setLiveRoot] = useState<HTMLElement|null>(null)
-  useLayoutEffect(()=>{const element=document.createElement(Tag);element.style.display='block';element.dataset.munariSourceHost='';element.dataset.munariInstance='source';setCaptureRoot(element)},[Tag])
+  useLayoutEffect(()=>{const root=document.createElement(Tag);root.style.display='block';root.dataset.munariSourceHost='';root.dataset.munariInstance='source';setCaptureRoot(root)},[Tag])
   const [page, setPage] = useState<HTMLElement | null>(null)
   const pageContent = useCallback(() => {
     const content = page?.firstElementChild
@@ -162,7 +160,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   const desired = root.canEnter && !reason
   const pageRef = useLatest(page)
   const ownRuntime = matchingRuntime(publication, captureRoot)
-  const bodyStyle = useBodyColor(pageStyle, captureRoot, ownRuntime)
+  const body=useBodyColor(pageStyle,captureRoot,ownRuntime)
   const placeholder = useRef<HTMLElement | null>(null)
   // What the capture root already holds, so an unchanged rebuild is dropped
   // before it reaches the source (`snapshot`).
@@ -253,7 +251,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     const captured = store.canPrepareCanvas() &&
       (!warm || (desired && !unsupportedSnapshot(liveRoot) && sourceNeedsLiveNode(liveRoot))) &&
       ownRuntime !== null
-    captureRoot.inert = !captured
+    captureRoot.inert=!captured;body.asPage(captured&&warm)
     if (captured) captureRoot.removeAttribute('aria-hidden')
     else captureRoot.setAttribute('aria-hidden', 'true')
     if (captured && liveRoot.parentElement !== captureRoot && captureRoot.isConnected) {
@@ -376,9 +374,8 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
     else parkWarmRig()
   }, [pageRef, returnToHolder, parkWarmRig])
 
-
   const content = <>
-    <Tag ref={setPage} hidden={hidden} className={pageClassName} style={bodyStyle}><Tag ref={setLiveRoot} data-api-live="">{children}</Tag></Tag>
+    <Tag ref={setPage} hidden={hidden} className={pageClassName} style={body.style}><Tag ref={setLiveRoot} data-api-live="">{children}</Tag></Tag>
     <Tag ref={setDock} style={{display:'contents',pointerEvents:'none'}}>
       <Tag ref={setMarker} style={{all:'initial',position:'fixed',left:0,top:0,width:100,height:100,visibility:'hidden',pointerEvents:'none'}}/>
     </Tag>
