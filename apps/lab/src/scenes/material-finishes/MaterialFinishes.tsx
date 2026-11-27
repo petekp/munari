@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react'
 import { useThree } from '@react-three/fiber'
 import { SurfaceCanvas, useCaptureSupport, type SurfaceCanvasId, type SurfaceFinish } from '@petepetrash/munari'
+import { isSoftboxMethod, setSoftboxMethod } from '@petepetrash/munari/advanced'
 import { Button, Status, Tag } from '../../components/system'
 import { showChrome } from '../../bareMode'
 import { sceneUrl } from '../../captureMode'
@@ -201,6 +202,9 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
   const canvasId = useId()
   const initial = useState(() => {
     const params = readParams()
+    // Prototype on the softbox-size branch: ?softbox=three|half64|half32|representative.
+    const method = new URLSearchParams(window.location.search).get('softbox')
+    if (isSoftboxMethod(method)) setSoftboxMethod(method)
     // Before the first render, so the light handle draws at the start.
     startStudio(params.light)
     applyFinish(params.finish)

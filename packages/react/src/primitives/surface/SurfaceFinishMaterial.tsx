@@ -79,6 +79,7 @@ export function useSurfaceFinishMaterial(inputs: SurfaceFinishMaterialInputs = {
       { capture: captureNode, size: slot.size, radii: slot.radii, cornerMask: surfaceRadiusMask(uv(), slot.size, slot.radii), uniforms, normal, bodyColor },
       layers,
     )
+    built.areaKey = keyKind === 'area' ? uniforms.key : null
     if (rig) built.lightsNode = rig.lightsNode(keyKind)
     return built
   }, [captureNode, slot.size, slot.radii, uniforms, layers, normal, bodyColor, rig, keyKind])

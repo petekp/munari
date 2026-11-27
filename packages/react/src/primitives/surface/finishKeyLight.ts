@@ -74,12 +74,22 @@ export function keyScatter(
  */
 export interface KeySheenUniforms {
   readonly position: UniformNode<'vec3', THREE.Vector3>
+  /** The softbox's half extents in view space, for the representative-point key. */
+  readonly halfWidth: UniformNode<'vec3', THREE.Vector3>
+  readonly halfHeight: UniformNode<'vec3', THREE.Vector3>
+  /** The softbox's color times its luminance. */
+  readonly luminance: UniformNode<'color', THREE.Color>
   readonly radiantIntensity: UniformNode<'color', THREE.Color>
   readonly intensity: UniformNode<'color', THREE.Color>
 }
 
 export function createKeySheenUniforms(): KeySheenUniforms {
-  return { position: uniform(new THREE.Vector3()), radiantIntensity: uniform(new THREE.Color(0, 0, 0)), intensity: uniform(new THREE.Color(0, 0, 0)) }
+  return {
+    position: uniform(new THREE.Vector3()),
+    halfWidth: uniform(new THREE.Vector3()),
+    halfHeight: uniform(new THREE.Vector3()),
+    luminance: uniform(new THREE.Color(0, 0, 0)),
+    radiantIntensity: uniform(new THREE.Color(0, 0, 0)), intensity: uniform(new THREE.Color(0, 0, 0)) }
 }
 
 /**

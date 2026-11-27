@@ -50,6 +50,8 @@ export { inspectCapture } from './primitives/capture'
 // finish's normal or changes its body color before it is lit.
 export { useSurfaceFinishMaterial, type SurfaceFinishMaterialInputs } from './primitives/surface/SurfaceFinishMaterial'
 export type { FinishShadingInputs } from './primitives/surface/finishNodes'
+// Prototype on the softbox-size branch: the softbox key's table source.
+export { isSoftboxMethod, setSoftboxMethod, SOFTBOX_METHODS, type SoftboxMethod } from './primitives/surface/softboxTables'
 
 // The canvas side of a capture transition. Provisional: its shape may change
 // in any release. The app side, useCaptureTransition, is in the root entry.

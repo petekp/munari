@@ -38,10 +38,11 @@
 import { createContext, use, useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react'
 import { useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { PMREMGenerator, RectAreaLightNode, WebGPURenderer, type LightsNode } from 'three/webgpu'
+import { PMREMGenerator, WebGPURenderer, type LightsNode } from 'three/webgpu'
 import { lights as lightsNodeOf } from 'three/tsl'
 
 import type { KeySheenUniforms } from './finishKeyLight'
+import { loadLtc, ltcFailed, ltcLoaded, softboxMethod } from './softboxTables'
 import type { FinishValues } from './surfaceFinish'
 import { attachSurfaceLight, isSurfaceLight, KEY_HEIGHT_PX, KEY_REST_Y, type KeyLight, type SurfaceLight, type SurfaceLighting } from './surfaceLight'
 import type { SurfaceRenderFrame } from './surfaceFrame'
@@ -81,7 +82,7 @@ const GRADIENT_SKY = 2.6
 const GRADIENT_SPAN = 1.2
 
 export type EnvironmentKind = FinishValues['environment']
-export type KeyKind = 'point' | 'softbox'
+export type KeyKind = 'point' | 'softbox' | 'area'
 
 // ── environment ────────────────────────────────────────────────────────
 
@@ -130,27 +131,6 @@ function disposeScene(scene: THREE.Scene): void {
   })
 }
 
-// three's RectAreaLight needs its LTC tables, 2 × 64² float texels, before a
-// softbox key compiles. Loaded once per page, on the first softbox key.
-// A load that fails leaves the key a point light rather than holding a
-// finish that waits for it.
-let ltcLoad: Promise<void> | null = null
-let ltcLoaded = false
-let ltcFailed = false
-function loadLtc(): Promise<void> {
-  ltcLoad ??= import('three/examples/jsm/lights/RectAreaLightTexturesLib.js').then(
-    ({ RectAreaLightTexturesLib }) => {
-      RectAreaLightNode.setLTC(RectAreaLightTexturesLib.init())
-      ltcLoaded = true
-    },
-    (error) => {
-      ltcFailed = true
-      console.error('[munari] the softbox key could not load its LTC tables, so it lights as a point key.', error)
-    },
-  )
-  return ltcLoad
-}
-
 // ── the rig ────────────────────────────────────────────────────────────
 
 interface StudioLighting {
@@ -178,6 +158,8 @@ const _toMesh = new THREE.Vector3()
 const _cameraPosition = new THREE.Vector3()
 const _key = new THREE.Vector3()
 const _below = new THREE.Vector3()
+const _view = new THREE.Matrix4()
+const _rotation = new THREE.Matrix4()
 
 /**
  * Luminance that gives irradiance `power` straight under the center of a
@@ -228,6 +210,7 @@ function createFinishRig(renderer: WebGPURenderer, invalidate: () => void) {
   const nodes = {
     point: lightsNodeOf([point, rim]),
     softbox: lightsNodeOf([softbox, rim]),
+    area: lightsNodeOf([point, rim]),
   } satisfies Record<KeyKind, LightsNode>
   // Null after a bake that failed: the finish draws without an environment.
   const environments = new Map<EnvironmentKind, THREE.Texture | null>()
@@ -240,12 +223,13 @@ function createFinishRig(renderer: WebGPURenderer, invalidate: () => void) {
     for (const listener of [...listeners]) listener()
     invalidate()
   }
-  const wantsSoftbox = () => Boolean(keyOf(lighting.key).size) && !ltcFailed
+  const wantsSoftbox = () => Boolean(keyOf(lighting.key).size) && !ltcFailed()
   // The kind the finishes compile with: a softbox only once its tables are in.
-  const keyKind = (): KeyKind => (wantsSoftbox() && ltcLoaded ? 'softbox' : 'point')
+  const representative = () => softboxMethod() === 'representative'
+  const keyKind = (): KeyKind => (!wantsSoftbox() ? 'point' : representative() ? 'area' : ltcLoaded() ? 'softbox' : 'point')
   let lastKind = keyKind()
   const loadSoftbox = () => {
-    if (!wantsSoftbox() || ltcLoaded) return
+    if (!wantsSoftbox() || ltcLoaded() || representative()) return
     const born = generation
     void loadLtc().then(() => born === generation && changed())
   }
@@ -284,7 +268,7 @@ function createFinishRig(renderer: WebGPURenderer, invalidate: () => void) {
       bake(environment)
       loadSoftbox()
     },
-    ready: (environment) => environments.has(environment) && (!wantsSoftbox() || ltcLoaded),
+    ready: (environment) => environments.has(environment) && (!wantsSoftbox() || ltcLoaded() || representative()),
     subscribe(listener) {
       listeners.add(listener)
       return () => void listeners.delete(listener)
@@ -334,10 +318,16 @@ function createFinishRig(renderer: WebGPURenderer, invalidate: () => void) {
       point.updateMatrixWorld()
       softbox.updateMatrixWorld()
       rim.updateMatrixWorld()
+      // The representative-point key reads the box as RectAreaLightNode.update
+      // would: its half extents rotated into view space.
+      _rotation.extractRotation(_view.multiplyMatrices(camera.matrixWorldInverse, softbox.matrixWorld))
+      uniforms.halfWidth.value.set(softbox.width / 2, 0, 0).applyMatrix4(_rotation)
+      uniforms.halfHeight.value.set(0, softbox.height / 2, 0).applyMatrix4(_rotation)
+      uniforms.luminance.value.copy(softbox.color).multiplyScalar(softbox.intensity)
 
       uniforms.position.value.copy(_key).applyMatrix4(camera.matrixWorldInverse)
       // three gives a point key its sheen itself; only a softbox's is emitted.
-      uniforms.radiantIntensity.value.copy(softbox.color).multiplyScalar(kind === 'softbox' ? point.intensity : 0)
+      uniforms.radiantIntensity.value.copy(softbox.color).multiplyScalar(kind === 'point' ? 0 : point.intensity)
       uniforms.intensity.value.copy(point.color).multiplyScalar(point.intensity)
       if (kind !== lastKind) {
         lastKind = kind
