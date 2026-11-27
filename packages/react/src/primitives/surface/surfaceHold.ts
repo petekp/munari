@@ -44,7 +44,9 @@ export const CHURN_REST_MS = 2000
 export const UNSEEN_MS = 10_000
 
 export function release(look: Look | null): void {
-  for (const material of look?.materials ?? []) material.dispose()
+  if (!look) return
+  for (const material of look.materials) material.dispose()
+  look.materials.length = 0
 }
 
 /** The built clone that draws like `material` does now, for the look it stands in for. */

@@ -59,8 +59,8 @@ export function useSurfaceBeforeRender(callback: (frame: SurfaceRenderFrame) => 
 }
 
 /** Render-pass membership follows the live Three tree, including explicit portals. */
-export function surfaceBelongsToScene(mesh: Mesh, scene: Object3D): boolean {
-  let node: Object3D | null = mesh
+export function surfaceBelongsToScene(object: Object3D, scene: Object3D): boolean {
+  let node: Object3D | null = object
   while (node) {
     if (node === scene) return true
     node = node.parent

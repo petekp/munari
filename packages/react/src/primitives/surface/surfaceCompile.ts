@@ -34,7 +34,9 @@
 //   draws write-free until its page may let go; a material can be born with
 //   `colorWrite` off and turned on in a frame (Genie's film composite). So
 //   each material is built with its own flags, the same with color on, and
-//   with every write off.
+//   with every write off. A draw that changes the flags keeps its node
+//   build, so each node build also gets the other flags' pipelines
+//   (`crossings`).
 // - A transparent DoubleSide material draws two passes, BackSide then
 //   FrontSide. `compileAsync` builds both from the material as it stands
 //   after the frame, DoubleSide, which no draw uses, so each side is its own
@@ -69,7 +71,7 @@
 import * as THREE from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { surfaceBelongsToScene } from './surfaceFrame'
-import { passMaterials, type Drawable, drawableOf, startBuild, settle } from './surfaceCompileBuild'
+import { passMaterials, type Drawable, drawableOf, startBuild, settle, crossings, flagsKey } from './surfaceCompileBuild'
 import { pipelineKey, sharedKey, sceneKey } from './surfacePipelineKey'
 import { createOutputRest } from './surfaceOutputRest'
 import { type Look, type HeldObject, NOTHING, CHURN_CHANGES, CHURN_WINDOW_MS, CHURN_REST_MS, UNSEEN_MS, release, snapshotOf } from './surfaceHold'
@@ -137,26 +139,62 @@ export function createSurfaceCompiler(renderer: WebGPURenderer, invalidate: () =
   // material's graph at once, 700 ms of main thread (m2, 2026-11-26). A
   // build waits on the running one of its key instead.
   const running = new Map<string, Promise<void>>()
-  const build = (scene: THREE.Scene, camera: THREE.Camera, object: THREE.Object3D, materials: THREE.Material[], signature: string, resolve: () => void) => {
-    const builds = materials.map((material) => {
-      const key = sharedKey(object, material, signature, false)
-      const shared = running.get(key)
-      if (shared) return shared
-      rest.started()
-      let started: Promise<void>
-      try {
-        started = startBuild(renderer, scene, camera, object, material)
-      } catch (error) {
-        started = Promise.reject(error)
-      }
-      const done: Promise<void> = started.finally(() => {
-        rest.settled()
-        if (running.get(key) === done) running.delete(key)
-      })
-      running.set(key, done)
-      return done
+  // Builds of a material under another set of write flags, waiting for the
+  // next draw of the scene that holds the object.
+  const crossingQueue = new Set<{ readonly object: THREE.Object3D; readonly materials: THREE.Material[]; readonly signature: string; readonly resolve: () => void }>()
+  const startBuildOnce = (key: string, begin: () => Promise<void>): Promise<void> => {
+    const shared = running.get(key)
+    if (shared) return shared
+    rest.started()
+    let started: Promise<void>
+    try {
+      started = begin()
+    } catch (error) {
+      started = Promise.reject(error)
+    }
+    const done: Promise<void> = started.finally(() => {
+      rest.settled()
+      if (running.get(key) === done) running.delete(key)
     })
-    settle(builds, resolve)
+    running.set(key, done)
+    return done
+  }
+  const cross = (scene: THREE.Scene, camera: THREE.Camera) => {
+    for (const entry of [...crossingQueue]) {
+      if (!surfaceBelongsToScene(entry.object, scene)) continue
+      crossingQueue.delete(entry)
+      // Released while it waited: its clones are disposed.
+      if (entry.materials.length === 0) {
+        entry.resolve()
+        continue
+      }
+      const builds = crossings(entry.materials).map(({ built, flags }) => {
+        const key = `${sharedKey(entry.object, built, entry.signature, false)} as ${flagsKey(flags)}`
+        return startBuildOnce(key, () => {
+          const clone = built.clone()
+          entry.materials.push(clone)
+          const started = startBuild(renderer, scene, camera, entry.object, clone)
+          // The node build was found before startBuild returned; the
+          // pipeline is made after its first await, with these flags.
+          clone.colorWrite = flags.colorWrite
+          clone.depthWrite = flags.depthWrite
+          clone.stencilWrite = flags.stencilWrite
+          return started
+        })
+      })
+      settle(builds, entry.resolve)
+    }
+  }
+  const build = (scene: THREE.Scene, camera: THREE.Camera, object: THREE.Object3D, materials: THREE.Material[], signature: string, resolve: () => void) => {
+    const builds = materials.map((material) => startBuildOnce(sharedKey(object, material, signature, false), () => startBuild(renderer, scene, camera, object, material)))
+    if (crossings(materials).length === 0) {
+      settle(builds, resolve)
+      return
+    }
+    settle(builds, () => {
+      crossingQueue.add({ object, materials, signature, resolve })
+      invalidate()
+    })
   }
   const lookFor = (scene: THREE.Scene, camera: THREE.Camera, object: Drawable, key: string, presenter: boolean, signature: string): Look => {
     const look: Look = { key, signature, materials: passMaterials(object.material, presenter), built: false }
@@ -225,13 +263,16 @@ export function createSurfaceCompiler(renderer: WebGPURenderer, invalidate: () =
           released = true
           if (queued) queue.delete(queued)
           for (const clone of materials) clone.dispose()
+          materials.length = 0
         },
       }
       compilationMaterials.set(compilation, owned)
       return compilation
     },
     start(scene, camera) {
-      if (queue.size === 0 || !(scene instanceof THREE.Scene)) return
+      if (!(scene instanceof THREE.Scene)) return
+      cross(scene, camera)
+      if (queue.size === 0) return
       for (const entry of [...queue]) {
         if (!surfaceBelongsToScene(entry.mesh, scene)) continue
         queue.delete(entry)
@@ -342,6 +383,7 @@ export function createSurfaceCompiler(renderer: WebGPURenderer, invalidate: () =
     draw: rest.draw,
     dispose() {
       queue.clear()
+      crossingQueue.clear()
       for (const record of records.values()) {
         release(record.drawn)
         release(record.pending)

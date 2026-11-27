@@ -45,6 +45,24 @@ export function passMaterials(material: THREE.Material, presenter = true): THREE
   )
 }
 
+/**
+ * The builds that give each of `clones`' node builds a pipeline under each
+ * other set of write flags of the same side. A draw that changes a
+ * material's flags keeps the node build its render object began with, and
+ * three's WGSL for one key is not always the same text: the page's first
+ * physical-material build ordered its functions differently from later
+ * ones, so a clone built with color on did not give the pipeline the
+ * write-free one's render object later drew with color on, which three
+ * built with the blocking call (Bench, m2, 2026-11-27).
+ */
+export function crossings(clones: readonly THREE.Material[]): { readonly built: THREE.Material; readonly flags: WriteFlags }[] {
+  return clones.flatMap((built) =>
+    clones
+      .filter((other) => other.side === built.side && flagsKey(other) !== flagsKey(built))
+      .map((other) => ({ built, flags: { colorWrite: other.colorWrite, depthWrite: other.depthWrite, stencilWrite: other.stencilWrite } })),
+  )
+}
+
 /** An object three draws with one material. */
 export type Drawable = THREE.Object3D & { material: THREE.Material }
 
