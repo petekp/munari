@@ -72,7 +72,7 @@ interface AreaLobe {
 }
 
 /** three's BRDF_GGX without iridescence or anisotropy: F · V · D, as F_Schlick, V_GGX_SmithCorrelated and D_GGX write them. */
-function ggx(lightDirection: Node<'vec3'>, lobe: AreaLobe): Node<'color'> {
+function ggx(lightDirection: Node<'vec3'>, lobe: AreaLobe): Node<'vec3'> {
   const alpha = lobe.roughness.mul(lobe.roughness)
   const alphaSquared = alpha.mul(alpha)
   const half = normalize(lightDirection.add(positionViewDirection))
