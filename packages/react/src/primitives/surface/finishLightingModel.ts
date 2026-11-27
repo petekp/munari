@@ -29,13 +29,14 @@ import * as THREE from 'three'
 import { MeshPhysicalNodeMaterial, PhysicalLightingModel, type Node, type NodeBuilder, type UniformNode } from 'three/webgpu'
 import {
   abs,
-  BRDF_GGX,
   clamp,
   clearcoatNormalView,
   clearcoatRoughness,
   cross,
+  D_GGX,
   diffuseContribution,
   dot,
+  F_Schlick,
   float,
   length,
   LTC_Evaluate,
@@ -51,6 +52,7 @@ import {
   specularColorBlended,
   sqrt,
   uniform,
+  V_GGX_SmithCorrelated,
   vec3,
 } from 'three/tsl'
 import type { KeySheenUniforms } from './finishKeyLight'
@@ -67,8 +69,26 @@ function gained(lightColor: Node, gain: Node<'float'>): Node<'vec3'> {
 interface AreaLobe {
   readonly normal: Node<'vec3'>
   readonly roughness: Node<'float'>
-  readonly f0: Node<'vec3'>
+  readonly f0: Node
   readonly f90: Node<'float'>
+}
+
+/** three's BRDF_GGX without iridescence or anisotropy: F · V · D. */
+function ggx(lightDirection: Node<'vec3'>, lobe: AreaLobe): Node<'vec3'> {
+  const alpha = lobe.roughness.mul(lobe.roughness)
+  const half = normalize(lightDirection.add(positionViewDirection))
+  const dotNL = clamp(dot(lobe.normal, lightDirection), 0, 1)
+  const dotNV = clamp(dot(lobe.normal, positionViewDirection), 0, 1)
+  const dotNH = clamp(dot(lobe.normal, half), 0, 1)
+  const dotVH = clamp(dot(positionViewDirection, half), 0, 1)
+  const fresnel = F_Schlick({ f0: lobe.f0, f90: lobe.f90, dotVH })
+  // SAFETY: F_Schlick returns f0's type, a vec3 or color; the published types say OperatorNode.
+  return (fresnel as unknown as Node<'vec3'>).mul(V_GGX_SmithCorrelated({ alpha, dotNL, dotNV })).mul(D_GGX({ alpha, dotNH }))
+}
+
+/** SAFETY: a lighting model's accumulators are vec3 variables (PhysicalLightingModel); the published types leave them untyped. */
+function accumulator(node: Node): Node<'vec3'> {
+  return node as Node<'vec3'>
 }
 
 /** GGX from a rectangle, toward its point nearest the mirror ray. View space. */
@@ -98,8 +118,7 @@ function representativeSpecular(key: KeySheenUniforms, luminance: Node<'vec3'>, 
   const dotNL = clamp(dot(lobe.normal, lightDirection), 0, 1)
   const emitterCosine = clamp(abs(dot(lightNormal, lightDirection)), 0, 1)
   const irradiance = luminance.mul(area.mul(emitterCosine).mul(dotNL).div(distanceSquared))
-  const brdf = BRDF_GGX({ lightDirection, f0: lobe.f0, f90: lobe.f90, roughness: lobe.roughness, normalView: lobe.normal })
-  return irradiance.mul(brdf).mul(ratio.mul(ratio)).mul(lit)
+  return irradiance.mul(ggx(lightDirection, lobe)).mul(ratio.mul(ratio)).mul(lit)
 }
 
 class GainedLightingModel extends PhysicalLightingModel {
@@ -143,12 +162,12 @@ class GainedLightingModel extends PhysicalLightingModel {
     const lit = select(cross(p1.sub(p0), p3.sub(p0)).dot(P.sub(p0)).greaterThanEqual(0), float(1), float(0))
     const identity = mat3(1, 0, 0, 0, 1, 0, 0, 0, 1)
     const formFactor = LTC_Evaluate({ N: normalView, V: positionViewDirection, P, mInv: identity, p0, p1, p2, p3 })
-    reflectedLight.directDiffuse.addAssign(luminance.mul(diffuseContribution).mul(formFactor))
-    reflectedLight.directSpecular.addAssign(
+    accumulator(reflectedLight.directDiffuse).addAssign(luminance.mul(diffuseContribution).mul(formFactor))
+    accumulator(reflectedLight.directSpecular).addAssign(
       representativeSpecular(key, luminance, lit, { normal: normalView, roughness, f0: specularColorBlended, f90: float(1) }),
     )
-    if (this.clearcoat) {
-      this.clearcoatSpecularDirect.addAssign(
+    if (this.clearcoat && this.clearcoatSpecularDirect) {
+      accumulator(this.clearcoatSpecularDirect).addAssign(
         representativeSpecular(key, luminance, lit, { normal: clearcoatNormalView, roughness: clearcoatRoughness, f0: vec3(0.04), f90: float(1) }),
       )
     }

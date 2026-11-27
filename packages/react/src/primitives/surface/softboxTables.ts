@@ -108,7 +108,7 @@ export function loadLtc(): Promise<void> {
       RectAreaLightNode.setLTC(tables)
       loaded = true
     },
-    (error: unknown) => {
+    (error) => {
       failed = true
       console.error('[munari] the softbox key could not load its LTC tables, so it lights as a point key.', error)
     },
