@@ -62,9 +62,7 @@ import {
   type SurfacePartId,
 } from '@munari/core'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
-import { Discard, Fn, diffuseColor, uniform, uv, vec4 } from 'three/tsl'
-import { premultipliedOutput } from '../../lib/surfaceOutput'
-import { surfaceRadiusMask } from '../../lib/surfaceRadius'
+import { uniform } from 'three/tsl'
 import { FocusGroupContext } from '../focusContext'
 import { SurfaceAnchorContext, useSurfaceAnchorScope } from './surfaceAnchorScope'
 import { createSurfaceRasterAlignment } from './surfaceRasterAlignment'
@@ -75,6 +73,8 @@ import { markSurfaceMesh, pointerIsWhereR3fHeardIt } from './surfaceOcclusion'
 import { surfaceHitRegion } from './surfaceHitRegion'
 import { suspendCameraControls } from '../cameraControls'
 import { useLatest } from '../useLatest'
+import { SurfaceFinishMaterial } from './SurfaceFinishMaterial'
+import type { SurfaceFinish } from './surfaceFinish'
 import {
   SurfaceMaterialContext,
   SurfacePartContext,
@@ -83,7 +83,7 @@ import {
 } from './surfaceContext'
 import { configureSurfaceMaterial } from './surfaceMaterials'
 import { beginSurfacePass, drawnByOverride, type SurfaceObservedPass } from './surfacePass'
-import { useSurfaceCompiled } from './surfaceCompile'
+import { useDefaultSurfaceMaterial, useHeldCompile } from './surfaceMeshMaterial'
 import { meshOutOfView } from './surfaceCulling'
 import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 import {
@@ -309,7 +309,7 @@ export function SurfacePresenter({
   useImperativeHandle(ref, () => mountedMesh as THREE.Mesh, [mountedMesh])
   // Out of three's render path until its pipelines are built, so its first
   // draw blocks no frame. The page copy holds meanwhile: nothing has proved.
-  const compiled = useSurfaceCompiled(mountedMesh)
+  const { compiled, hold: holdCompile } = useHeldCompile(mountedMesh)
   const materialRef = useRef<MeshBasicNodeMaterial>(null)
   const pressedRef = useRef<ForwardPointerSample | null>(null)
   const resumeControls = useRef<(() => void) | null>(null)
@@ -982,32 +982,7 @@ export function SurfacePresenter({
     }
   }, [runtime, store, presenterKey, presenterHost, anchors, presentation, additionalParts, partId])
 
-  // The default material. The corner mask is uniform-driven: radii of zero
-  // make it a no-op, so a radius change is a value write, never a rebuild.
-  // The uniform nodes hold the presenter's own vectors, which are written in
-  // place. The discard keeps clear corner fragments out of the depth buffer.
-  // It is not `alphaTest`, which makes a node material reshape alpha under
-  // the alpha-to-coverage this mesh turns on for rounded opaque corners.
-  // The capture is already premultiplied, so the output scales it by the
-  // mask only: Three's own premultiply would multiply it by alpha a second
-  // time, and a half-transparent white pixel would land at 64 where the
-  // page shows 128 (measured 2026-10-08, on main's WebGLRenderer too).
-  // `premultipliedAlpha` stays on for the premultiplied blend.
-  const defaultMaterial = useMemo(() => {
-    const created = new MeshBasicNodeMaterial({ color: '#ffffff', premultipliedAlpha: true })
-    const mask = surfaceRadiusMask(
-      uv(),
-      radiusUniforms.current.size,
-      radiusUniforms.current.radii,
-    )
-    created.opacityNode = Fn(() => {
-      Discard(diffuseColor.a.mul(mask).lessThan(0.004))
-      return mask
-    })()
-    created.outputNode = premultipliedOutput(vec4(diffuseColor.rgb.mul(mask), diffuseColor.a))
-    return created
-  }, [])
-  useEffect(() => () => defaultMaterial.dispose(), [defaultMaterial])
+  const defaultMaterial = useDefaultSurfaceMaterial(radiusUniforms.current)
 
   const uvOf = (e: ThreeEvent<PointerEvent>) => {
     if (!e.uv) return null
@@ -1191,6 +1166,7 @@ export function SurfacePresenter({
   // a radius change reaches a spliced mask as a value write rather than as a
   // recompile — and so a custom material cannot silently wire a private copy
   // that compiles once and then never moves.
+  const finish = finishOf(part)
   const materialSlot = useMemo<SurfaceMaterialValue>(
     () => ({
       radii: radiusUniforms.current.radii,
@@ -1200,15 +1176,19 @@ export function SurfacePresenter({
         beforeDraws.current.add(callback)
         return () => void beforeDraws.current.delete(callback)
       },
+      hold: holdCompile,
+      facesCamera: effectivePlacement === 'match-dom',
+      finish,
     }),
-    [transparent],
+    [transparent, effectivePlacement, holdCompile, finish],
   )
+  const slotMaterial = slotMaterialOf(material, finish)
 
   // A caller's material is held to the library's alpha convention after
   // every commit, not once at mount: the object in the slot is replaced by
   // an ordinary re-render, and one that reaches the renderer with straight
   // blending has already drawn the dark fringe (see surfaceMaterials.tsx).
-  const custom = material !== undefined
+  const custom = slotMaterial !== undefined
   useEffect(() => {
     const mesh = meshRef.current
     if (!custom || !mesh?.material) return
@@ -1242,10 +1222,10 @@ export function SurfacePresenter({
         {/* A custom material mounts only once a configured texture exists, so
             `useSurfaceTexture()` in it never sees null and never has to
             re-bind on a later render a memoized material may not take. */}
-        {material instanceof THREE.Material ? (
-          <primitive object={material} attach="material" />
-        ) : material ? (
-          <SurfaceMaterialContext value={materialSlot}>{material}</SurfaceMaterialContext>
+        {slotMaterial instanceof THREE.Material ? (
+          <primitive object={slotMaterial} attach="material" />
+        ) : slotMaterial ? (
+          <SurfaceMaterialContext value={materialSlot}>{slotMaterial}</SurfaceMaterialContext>
         ) : (
           <primitive ref={materialRef} object={defaultMaterial} attach="material" />
         )}
@@ -1255,4 +1235,14 @@ export function SurfacePresenter({
       </SurfaceFrameContext>
     </SurfacePartContext>
   )
+}
+
+function finishOf(part: SurfacePartPublication | null): SurfaceFinish | null {
+  return part?.finish ?? null
+}
+
+/** A Surface with a finish wears it wherever the mesh brings no material. */
+function slotMaterialOf(material: SurfaceMeshProps['material'], finish: SurfaceFinish | null): SurfaceMeshProps['material'] {
+  if (material !== undefined || !finish) return material
+  return <SurfaceFinishMaterial />
 }

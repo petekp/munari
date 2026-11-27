@@ -352,6 +352,8 @@ function ReviewNotesPage() {
           pointerMode="surfaces"
           frameloop="always"
           shadows
+          // The notes are lit by StudioLights, as the teapot is.
+          lighting="none"
           gl={{ alpha: true }}
           camera={{ fov: FOV, position: [0, 0, 1600] }}
           onCreated={state => state.gl.setClearAlpha(0)}

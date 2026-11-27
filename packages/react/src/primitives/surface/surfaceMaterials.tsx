@@ -1,13 +1,12 @@
-// Surface materials — the two the library ships, and the rule every custom
-// one is held to.
+// Surface materials — the nodes a custom material builds from, and the rule
+// every custom one is held to.
 //
 // The law: a DOM-sourced texture is PREMULTIPLIED (decisions.md #5), so
-// every material that samples one blends premultiplied. Unlit is the easy
-// half — sample, mask, blend — and `<Surface.LitMaterial>` is the hard one:
-// lighting is a multiply against straight color, so a premultiplied sample
-// fed to it darkens exactly where it is translucent. The fix is to divide
-// alpha out in the source's sRGB space before lighting. Three multiplies
-// the final output by alpha; the corner mask then scales color and alpha.
+// every material that samples one blends premultiplied. Lighting is a
+// multiply against straight color, so a premultiplied sample fed to it
+// darkens exactly where it is translucent. The fix is to divide alpha out
+// in the source's sRGB space before lighting, which `litMap` makes possible
+// (decisions.md #48).
 //
 // The fault behind the automatic configuration, 2026-08-15: a scene's own
 // material sampled `useSurfaceTexture()` and left `premultipliedAlpha`
@@ -24,18 +23,18 @@
 // Ownership: this module owns material configuration and the node graphs.
 // It owns no texture, no mesh, and no protocol.
 
-import { use, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { use, useLayoutEffect, useRef } from 'react'
 import * as THREE from 'three'
-import { MeshStandardNodeMaterial, type Node, type TextureNode, type UniformNode } from 'three/webgpu'
-import { Discard, Fn, output, sRGBTransferEOTF, texture as textureNode, uniform, uv, vec3, vec4 } from 'three/tsl'
+import { type Node, type TextureNode, type UniformNode } from 'three/webgpu'
+import { texture as textureNode, uv } from 'three/tsl'
 import { surfaceRadiusMask } from '../../lib/surfaceRadius'
 import { SurfaceMaterialContext, useSurfaceTextureFor, type SurfaceMaterialValue } from './surfaceContext'
-import { getSurfaceLitTexture } from './surfaceLitTexture'
+import { getSurfaceLitTexture, type SurfaceLitTexture } from './surfaceLitTexture'
 import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 import { reportedGlslMaterials, usesGlsl } from './glslMaterial'
 
 
-function useMaterialSlot(caller: string): SurfaceMaterialValue {
+export function useMaterialSlot(caller: string): SurfaceMaterialValue {
   const slot = use(SurfaceMaterialContext)
   if (!slot) {
     throw new Error(
@@ -55,6 +54,14 @@ export interface SurfaceNodes {
    * keeps sampling the current capture.
    */
   readonly map: TextureNode
+  /**
+   * The same capture as a raw (NoColorSpace) view: encoded and premultiplied,
+   * for a lit material. Divide the sample's rgb by its alpha, then decode with
+   * `sRGBTransferEOTF`: decoding before the divide cannot be undone at a
+   * transparent edge (decisions.md #48). Read it while building the material,
+   * during render: the view is allocated only for a material that reads it.
+   */
+  readonly litMap: TextureNode
   /** The presenter's corner radii in source CSS px: tl, tr, br, bl. */
   readonly radii: UniformNode<'vec4', THREE.Vector4>
   /** The source's CSS size. */
@@ -90,11 +97,18 @@ export function useSurfaceNodes(): SurfaceNodes {
   const capture = useSurfaceTextureFor('useSurfaceNodes()')
   const slot = useMaterialSlot('useSurfaceNodes()')
   const nodes = useRef<SurfaceNodes | null>(null)
+  const lit = useRef<{ readonly view: SurfaceLitTexture; readonly node: TextureNode } | null>(null)
   let current = nodes.current
   if (!current || current.radii !== slot.radii) {
     const { radii, size } = slot
+    const map = textureNode(capture)
     current = {
-      map: textureNode(capture),
+      map,
+      get litMap() {
+        const view = getSurfaceLitTexture(map.value)
+        lit.current ??= { view, node: textureNode(view.texture) }
+        return lit.current.node
+      },
       radii,
       size,
       radiusMask: (coordinates = uv()) => surfaceRadiusMask(coordinates, size, radii),
@@ -102,83 +116,29 @@ export function useSurfaceNodes(): SurfaceNodes {
     nodes.current = current
   }
   current.map.value = capture
-  return current
-}
-
-export interface SurfaceLitMaterialProps {
-  /** Roughness of the slab the DOM is printed on. */
-  roughness?: number
-  metalness?: number
-  /**
-   * How much of the capture is emitted rather than lit. `0` is pure lit
-   * surface; raising it lets a source's own bright pixels — an LED readout,
-   * a backlit panel — keep their brightness under a dim scene light.
-   */
-  emissiveIntensity?: number
-  side?: THREE.Side
-}
-
-/**
- * A lit slab wearing the Surface's capture.
- *
- * Mounted in `<Surface.Mesh material={…}>`, where a configured texture is
- * guaranteed to already exist. The emissive term always carries the capture
- * so sliding `emissiveIntensity` is a uniform write rather than a rebuild —
- * at the default `0` it contributes nothing.
- */
-export function SurfaceLitMaterial({
-  roughness = 0.55,
-  metalness = 0,
-  emissiveIntensity = 0,
-  side,
-}: SurfaceLitMaterialProps) {
-  const capture = useSurfaceTextureFor('<Surface.LitMaterial>')
-  const litTexture = useMemo(() => getSurfaceLitTexture(capture), [capture])
-  useLayoutEffect(() => litTexture.acquire(), [litTexture])
-  const slot = useMaterialSlot('<Surface.LitMaterial>')
-  // Before each draw, after raster sizing: the raw view follows the capture.
-  useLayoutEffect(() => slot.beforeDraw(litTexture.sync), [slot, litTexture])
-
-  const emission = useMemo(() => uniform(0), [])
-  // One node for the material's life: a resize replaces the raw view, and a
-  // value write keeps the built material instead of rebuilding its shader.
-  const [encoded] = useState(() => textureNode(litTexture.texture))
-  encoded.value = litTexture.texture
-  const material = useMemo(() => {
-    const created = new MeshStandardNodeMaterial({ color: '#ffffff', premultipliedAlpha: true })
-    // Filter premultiplied encoded channels first, then remove coverage and
-    // decode for lighting. Hardware sRGB decoding before filtering cannot be
-    // inverted afterward at a transparent edge (decisions.md #48).
-    // SAFETY: a texture sample is a vec4; Three's types return a bare Node.
-    const sample = encoded.sample(uv()) as Node<'vec4'>
-    const straight = sample.a.greaterThan(0).select(sample.rgb.div(sample.a), vec3(0))
-    // SAFETY: Three declares this TSL function's layout as vec3 to vec3; its
-    // published types leave the result untyped.
-    const linear = sRGBTransferEOTF(straight) as Node<'vec3'>
-    created.colorNode = vec4(linear, sample.a)
-    created.emissiveNode = linear.mul(emission)
-    const mask = surfaceRadiusMask(uv(), slot.size, slot.radii)
-    // Three's premultiplication already applied source coverage; this adds
-    // only the corner coverage.
-    created.outputNode = Fn(() => {
-      const covered = output.mul(mask)
-      Discard(covered.a.lessThan(0.004))
-      return covered
-    })()
-    return created
-  }, [encoded, emission, slot.size, slot.radii])
-  useLayoutEffect(() => () => material.dispose(), [material])
-
-  emission.value = emissiveIntensity
-  material.roughness = roughness
-  material.metalness = metalness
-  const nextSide = side ?? THREE.FrontSide
-  if (material.side !== nextSide || material.transparent !== slot.transparent) {
-    material.side = nextSide
-    material.transparent = slot.transparent
-    material.needsUpdate = true
+  if (lit.current) {
+    const view = getSurfaceLitTexture(capture)
+    if (lit.current.view !== view) lit.current = { view, node: lit.current.node }
+    lit.current.node.value = view.texture
   }
-  return <primitive object={material} attach="material" />
+  // Before each draw, after raster sizing: the raw view follows the capture.
+  // The material read `litMap` while it was built in this render, so the
+  // record exists by this commit when it is wanted.
+  useLayoutEffect(() => {
+    const record = lit.current
+    if (!record) return
+    const { view, node } = record
+    const release = view.acquire()
+    const stop = slot.beforeDraw(() => {
+      view.sync()
+      node.value = view.texture
+    })
+    return () => {
+      stop()
+      release()
+    }
+  }, [capture, slot])
+  return current
 }
 
 let reportedGlsl = false

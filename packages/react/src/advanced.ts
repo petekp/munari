@@ -46,6 +46,11 @@ export { readSurfaceFrameState, type SurfaceFrameState } from './primitives/surf
 
 export { inspectCapture } from './primitives/capture'
 
+// The finish material itself, for a material slot that bends or turns a
+// finish's normal or changes its body color before it is lit.
+export { useSurfaceFinishMaterial, type SurfaceFinishMaterialInputs } from './primitives/surface/SurfaceFinishMaterial'
+export type { FinishShadingInputs } from './primitives/surface/finishNodes'
+
 // The canvas side of a capture transition. Provisional: its shape may change
 // in any release. The app side, useCaptureTransition, is in the root entry.
 export {

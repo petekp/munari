@@ -63,6 +63,7 @@ export function LitCardHandoff() {
           id={canvasId}
           pointerMode="surfaces"
           frameloop="demand"
+          lighting="none"
           gl={{ alpha: true }}
           onCreated={({ gl }) => gl.setClearAlpha(0)}
           style={{ position: 'absolute', inset: 0 }}
@@ -71,10 +72,10 @@ export function LitCardHandoff() {
           <directionalLight position={[-1.5, 2, 3]} intensity={2.6} color="#fff1d6" />
         </SurfaceCanvas>
       )}
-      <Surface.Root canvasId={canvasId} inScene={inScene}>
+      <Surface.Root canvasId={canvasId} inScene={inScene} finish={{ color: null, roughness: 0.32, metalness: 0.05 }}>
         <Surface.HTML><NoteCard /></Surface.HTML>
         <Surface.Scene>
-          <Surface.Mesh material={<Surface.LitMaterial roughness={0.32} metalness={0.05} />} />
+          <Surface.Mesh />
         </Surface.Scene>
       </Surface.Root>
       <button type="button" disabled={!supported} onClick={() => setInScene((v) => !v)}>
@@ -207,20 +208,20 @@ import { FocusGroup, FocusScene, SceneSurface, Surface, SurfaceCanvas } from '@p
 
 export function SpatialBoard() {
   return (
-    <SurfaceCanvas frameloop="demand" camera={{ position: [0, 0, 5], fov: 45 }}>
+    <SurfaceCanvas frameloop="demand" lighting="none" camera={{ position: [0, 0, 5], fov: 45 }}>
       <ambientLight intensity={0.5} />
       <directionalLight position={[2, 3, 4]} intensity={2} />
       <FocusScene>
         <group position={[-1.2, 0, 0]}>
           <FocusGroup id="metrics">
-            <SceneSurface.Root>
+            <SceneSurface.Root finish={{ color: null, roughness: 0.4 }}>
               <SceneSurface.HTML size={[320, 200]}>
                 <div style={{ width: 320, height: 200, padding: 16, background: '#fff' }}>
                   <h3>Latency</h3>
                   <p>Tab or click to approach; 3D objects occlude this panel in depth.</p>
                 </div>
               </SceneSurface.HTML>
-              <SceneSurface.Mesh material={<Surface.LitMaterial roughness={0.4} />} />
+              <SceneSurface.Mesh />
             </SceneSurface.Root>
           </FocusGroup>
         </group>
@@ -293,7 +294,7 @@ enableSnapdomCapture({
 | Requirement | CSS 3D / Drei `<Html>` | DIY `html-in-canvas` | Munari (`@petepetrash/munari`) |
 | --- | --- | --- | --- |
 | Flat tilted cards with vector text | Native in all browsers (`0 kB`) | Unnecessary overhead | Prefer CSS 3D unless lighting or shaders apply |
-| Shared scene lighting, refraction, or bent meshes on live UI | Cannot deform or shade DOM pixels | Custom WebGPU + custom hit-test math | Built in (`Surface.LitMaterial`, `useSurfaceNodes`, `deformSurfaceGeometry`) |
+| Shared scene lighting, refraction, or bent meshes on live UI | Cannot deform or shade DOM pixels | Custom WebGPU + custom hit-test math | Built in (`finish` on `Surface.Root`, `useSurfaceNodes`, `deformSurfaceGeometry`) |
 | Start in normal page flow, enter 3D without blank flashes | Native (CSS 3D) / scene-only (`<Html>`) | Flashes blank during async shader compile | Frame-verified handoff + `moveBefore` state retention |
 | Accurate clicks and scroll on curved geometry | Flat planes only | Hit box stays flat; clicks miss | Automatic switch between `native` (`matrix3d`) and UV `relay` |
 | 3D meshes synced to responsive DOM children | Manual `ResizeObserver` | `getBoundingClientRect` leads texture by 1–2 frames | Frame-matched `Surface.Anchor` and `useSurfaceAnchorBox()` |

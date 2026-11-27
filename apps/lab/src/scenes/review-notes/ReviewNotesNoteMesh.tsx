@@ -15,7 +15,7 @@ import { useMemo, useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import { deformSurfaceGeometry, Surface, type SurfaceHandle } from '@petepetrash/munari'
-import { readSurfaceFrameState } from '@petepetrash/munari/advanced'
+import { readSurfaceFrameState, useSurfaceFinishMaterial } from '@petepetrash/munari/advanced'
 import { enterPhase, type Board, type NoteMotion } from './reviewNotesBoard'
 import { PAPER_LIFT, PAPER_STACK, clampAnchor, easeInOut, easeOut, flatPoint, onBody, peeledPoint, wrappedPoint, type BodyAnchor, type CanvasRect } from './reviewNotesLaw'
 
@@ -192,8 +192,16 @@ export function ReviewNoteMesh({ id, surface, board, slotRef, onStuck, onReturne
       frustumCulled={false}
       pointerEvents={interactive ? 'geometry' : 'none'}
       geometry={<planeGeometry args={[NOTE_W, NOTE_H, COLUMNS, ROWS]} />}
-      material={<Surface.LitMaterial roughness={0.5} emissiveIntensity={emission} />}
+      material={<NotePaper emission={emission} />}
     />
   )
+}
+
+// Matte paper whose body is the note's capture. Its emission follows how flat
+// the paper lies, so it is written here rather than on the note's Root.
+function NotePaper({ emission }: { emission: number }) {
+  const finish = useMemo(() => ({ color: null, roughness: 0.5, emissiveIntensity: emission }), [emission])
+  const material = useSurfaceFinishMaterial({ finish })
+  return material ? <primitive object={material} attach="material" /> : null
 }
 

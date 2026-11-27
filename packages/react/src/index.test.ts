@@ -31,6 +31,7 @@ const ROOT_ENTRY = [
   'SURFACE_FOCUS_ATTRIBUTE',
   'SurfaceCanvas',
   'createSurface',
+  'createSurfaceLight',
   'deformSurfaceGeometry',
   'detectHtmlInCanvas',
   'encodedOutput',
@@ -75,6 +76,7 @@ const ADVANCED_ADDITIONS = [
   'surfaceManualPresenter',
   'useSurfaceOutput',
   'passMaterial',
+  'useSurfaceFinishMaterial',
 ]
 
 describe('the published entries', () => {

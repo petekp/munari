@@ -3,7 +3,7 @@ import { Component, Suspense, act, createElement as h, use, type ReactNode } fro
 import { createRoot } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { afterEach, describe, expect, it } from 'vitest'
-import { SceneLitMaterial, SurfaceSceneComponentsContext, createSceneModuleCache } from './surfaceSceneLookup'
+import { ScenePrewarm, SurfaceSceneComponentsContext, createSceneModuleCache } from './surfaceSceneLookup'
 import type { SurfaceSceneComponents } from './surfaceSceneComponents'
 
 interface LoaderPlan {
@@ -13,7 +13,7 @@ interface LoaderPlan {
 
 function drawnComponents(label: string): SurfaceSceneComponents {
   const Drawn = () => h('i', null, label)
-  return { Presenter: Drawn, LitMaterial: Drawn, Prewarm: Drawn, AnchorGroup: Drawn }
+  return { Presenter: Drawn, Prewarm: Drawn, AnchorGroup: Drawn }
 }
 
 function countedLoader({ failures = 0, delayMs = 0 }: LoaderPlan) {
@@ -41,8 +41,8 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean
 
 async function mountLoadedMaterial(sceneComponentsLoad: () => Promise<SurfaceSceneComponents>) {
   function LoadedMaterial() {
-    const { LitMaterial } = use(sceneComponentsLoad())
-    return h(LitMaterial)
+    const { Prewarm } = use(sceneComponentsLoad())
+    return h(Prewarm)
   }
   const container = document.createElement('div')
   document.body.append(container)
@@ -62,7 +62,7 @@ describe('scene component lookup', () => {
   it('draws the components a SurfaceCanvas provides', () => {
     const container = document.createElement('div')
     const root = createRoot(container)
-    flushSync(() => root.render(h(SurfaceSceneComponentsContext, { value: drawnComponents('provided') }, h(SceneLitMaterial))))
+    flushSync(() => root.render(h(SurfaceSceneComponentsContext, { value: drawnComponents('provided') }, h(ScenePrewarm))))
     expect(container.textContent).toBe('provided')
     flushSync(() => root.unmount())
   })

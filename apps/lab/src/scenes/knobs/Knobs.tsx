@@ -2128,6 +2128,11 @@ function PanelStage({
     return () => window.removeEventListener('resize', place)
   }, [widthNow])
 
+  // DOM light, held to a low floor: enough for the lamp halos and
+  // engravings to keep a breath of life when the room dims, low enough that
+  // the charcoal body stays charcoal. The LCD windows are pure emitters.
+  const knobsPanelFinish = { color: null, roughness: 0.5, metalness: 0.18, emissiveIntensity: knobsTuning.lightDom }
+
   return (
     <>
       {rect && rect.w > 0 && rect.h > 0 && (
@@ -2136,7 +2141,7 @@ function PanelStage({
           <SlabRim rect={rect} />
           {/* The panel belongs to the scene. Its captured HTML supplies the
               slab; DegradedKnobs supplies the native fallback separately. */}
-          <SceneSurface.Root name="knobs-panel">
+          <SceneSurface.Root name="knobs-panel" finish={knobsPanelFinish}>
             {/* A flicked dial keeps spinning after the hand has let go. */}
             <SceneSurface.HTML size={[rect.w, rect.h]} live>
               <KnobsPanel />
@@ -2148,18 +2153,6 @@ function PanelStage({
               position={[0, 0, FACE_Z]}
               frustumCulled={false}
               geometry={<planeGeometry args={[rect.w, rect.h]} />}
-              material={
-                <SceneSurface.LitMaterial
-                  roughness={0.5}
-                  metalness={0.18}
-                  // DOM light, held to a low floor: enough for the lamp
-                  // halos and engravings to keep a breath of life when the
-                  // room dims, low enough that the charcoal body stays
-                  // charcoal. The LCD windows do NOT ride this term — they
-                  // are pure emitters (ReadoutWindows, below).
-                  emissiveIntensity={knobsTuning.lightDom}
-                />
-              }
             >
             <PanelSourceRoot onHost={onHost} />
             <LiveKnobsAnchorContext value={liveAnchors}>
@@ -2802,6 +2795,7 @@ export function KnobsApp() {
           when. The rest of the overlay's box is ordinary CSS. */}
       <SurfaceCanvas
         id="knobs"
+        lighting="none"
         style={{ position: 'fixed', inset: 0, zIndex: OVERLAY_Z }}
         gl={{ alpha: true, antialias: true }}
         // A held knob drag paints the captured DOM many times a second,

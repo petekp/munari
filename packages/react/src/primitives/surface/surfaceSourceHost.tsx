@@ -21,7 +21,7 @@
 // Ownership: this component owns the container, the runtime's lifetime, and
 // the frame registration. It owns no mesh and no material.
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { use, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   captureEngine,
@@ -33,6 +33,7 @@ import { useSurfaceDevicePixelRatio } from './surfaceDevicePixelRatio'
 import { useLatest } from '../useLatest'
 import { applyScrollOffsets, readScrollOffsets, type ScrollOffsets } from '../retainedMove'
 import { transferSurfaceFocus } from './surfaceFocus'
+import { SurfaceFinishContext, useHeldFinish } from './surfaceFinish'
 import {
   SurfaceHandleContext,
   SurfacePartContext,
@@ -296,6 +297,7 @@ export function SurfaceSourceHost({
   // Published to the STORE as well as the context. A presenter reached
   // through separated wiring holds only the handle — it has no ancestor
   // that ever saw this source, so context alone would leave it blank.
+  const finish = useHeldFinish(use(SurfaceFinishContext))
   useEffect(
     () => store.publishPart(id, {
       id,
@@ -305,8 +307,9 @@ export function SurfaceSourceHost({
       captureRoot,
       pageRoot,
       pageContent,
+      finish,
     }),
-    [store, id, runtime, effectiveLive, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent],
+    [store, id, runtime, effectiveLive, sourceWidth, sourceHeight, captureRoot, pageRoot, pageContent, finish],
   )
 
   // Content reaches the container by whichever door this wiring has. Both

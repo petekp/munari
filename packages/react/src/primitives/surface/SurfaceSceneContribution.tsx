@@ -10,15 +10,17 @@
 
 import { use, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { SurfaceHandleContext, SurfacePartContext, SurfaceRootContext, SurfaceTunnelContext } from './surfaceContext'
+import { SurfaceFinishContext } from './surfaceFinish'
 
 export function SceneContribution({ scene }: { scene: ReactNode }) {
   const root = use(SurfaceRootContext)!
   const part = use(SurfacePartContext)
+  const finish = use(SurfaceFinishContext)
   const mounted = useSyncExternalStore(root.store.subscribePresence, root.store.canvasMounted, () => false)
   const [key] = useState(() => `surface-content-${Math.random()}`)
   useLayoutEffect(() => root.store.declarePresentation('canvas'), [root.store])
   const identity = useMemo(() => ({ handle: root.handle, store: root.store }), [root.handle, root.store])
-  const element = <SurfaceHandleContext value={identity}><SurfaceRootContext value={root}><SurfacePartContext value={part}><SurfaceTunnelContext value>{scene}</SurfaceTunnelContext></SurfacePartContext></SurfaceRootContext></SurfaceHandleContext>
+  const element = <SurfaceHandleContext value={identity}><SurfaceRootContext value={root}><SurfacePartContext value={part}><SurfaceFinishContext value={finish}><SurfaceTunnelContext value>{scene}</SurfaceTunnelContext></SurfaceFinishContext></SurfacePartContext></SurfaceRootContext></SurfaceHandleContext>
   useEffect(() => {
     if (!root.host || !mounted) return
     return root.host.registerPresenter({ key, element })

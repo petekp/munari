@@ -5,7 +5,7 @@ import {
   useSurfaceStatus, useSurfaceRefresh, useSurfaceDriver, useSurfaceMotion, useFreezeSurface, useSurfaceProgress, useCaptureSupport, supportsCapture,
   useElementCapture, CaptureContent, useCaptureHandle, usePageTarget, useSurfaceBeforeRender,
   type SurfaceHandle, type SurfacePresentation, type SurfaceDestination, type SurfaceProps,
-  type SurfaceStatus, type CaptureContentProps, type SurfaceLitMaterialProps, type SurfaceChromeState,
+  type SurfaceStatus, type CaptureContentProps, type SurfaceFinish, type SurfaceLighting, createSurfaceLight, type SurfaceChromeState,
   type FocusSceneProps, type FocusGroupProps, type Viewport, type Dir, type SurfacePartId, type PointerRouteRequest,
 } from '@petepetrash/munari'
 import { FrameSurface, type FrameSource, type PresentationRequirement } from '@petepetrash/munari/advanced'
@@ -183,7 +183,8 @@ void handle.request
 
 function ExportedTypeErgonomics(
   captureProps: CaptureContentProps,
-  litProps: SurfaceLitMaterialProps,
+  finish: SurfaceFinish,
+  lighting: SurfaceLighting,
   chromeState: SurfaceChromeState,
   focusSceneProps: FocusSceneProps,
   focusGroupProps: FocusGroupProps,
@@ -192,6 +193,13 @@ function ExportedTypeErgonomics(
   partId: SurfacePartId,
   routeRequest: PointerRouteRequest,
 ) {
-  void [captureProps, litProps, chromeState, focusSceneProps, focusGroupProps, viewport, dir, partId, routeRequest]
+  void [captureProps, finish, lighting, chromeState, focusSceneProps, focusGroupProps, viewport, dir, partId, routeRequest]
 }
 void ExportedTypeErgonomics
+
+const pointerLight = createSurfaceLight({ follow: 'pointer', z: 480 })
+;<SurfaceCanvas lighting={{ key: pointerLight, rim: false }} />
+;<SurfaceCanvas lighting="none" />
+;<Surface.Root inScene finish={{ color: '#1d4e89', coat: { amount: 1, roughness: 0.05 } }}><Surface.HTML><div /></Surface.HTML></Surface.Root>
+// @ts-expect-error A layer is one object, not a bare amount.
+;<Surface.Root inScene finish={{ coat: 1 }}><Surface.HTML><div /></Surface.HTML></Surface.Root>

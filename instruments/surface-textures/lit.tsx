@@ -1,9 +1,13 @@
 // Lit alpha proof — equal lighting must preserve the source's coverage.
+// The lit swatches wear a finish with no body color, so the capture itself
+// is lit, under the scene's own ambient light (lighting="none").
 import {createRoot} from 'react-dom/client'
-import {useState} from 'react'
+import {useEffect,useMemo,useState} from 'react'
 import {useThree} from '@react-three/fiber'
+import {MeshBasicNodeMaterial} from 'three/webgpu'
+import {Discard,Fn,diffuseColor,vec4} from 'three/tsl'
 import {gpuErrors,snapshotCanvas} from '../canvasPixels'
-import {SceneSurface,SurfaceCanvas,useSurfaceHandle,useSurfaceStatus} from '@petepetrash/munari'
+import {SceneSurface,SurfaceCanvas,premultipliedOutput,useSurfaceHandle,useSurfaceNodes,useSurfaceStatus} from '@petepetrash/munari'
 import '@petepetrash/munari/style.css'
 
 const statuses:Record<string,string|null>={}
@@ -20,17 +24,33 @@ interface LitPixels {
 const cases=[{id:'white',rgb:'255,255,255',emissive:0},{id:'color',rgb:'100,150,220',emissive:0},{id:'glow',rgb:'100,150,220',emissive:0.4}]
 // Half-density edge sources force interpolation between opaque and clear texels.
 // A 1:1 aligned source can make the same sample fully clear, testing no blend.
+// The default material's graph, for the one unlit mesh of a Surface whose
+// other meshes wear its finish (SurfaceMesh.tsx, defaultMaterial).
+function Unlit() {
+  const {map,radiusMask}=useSurfaceNodes()
+  const material=useMemo(()=>{
+    const created=new MeshBasicNodeMaterial({premultipliedAlpha:true})
+    const mask=radiusMask()
+    created.colorNode=map
+    created.opacityNode=Fn(()=>{Discard(diffuseColor.a.mul(mask).lessThan(0.004));return mask})()
+    created.outputNode=premultipliedOutput(vec4(diffuseColor.rgb.mul(mask),diffuseColor.a))
+    return created
+  },[map,radiusMask])
+  useEffect(()=>()=>material.dispose(),[material])
+  return <primitive object={material} attach="material"/>
+}
 function Swatch({id,x,y,alpha,rgb,emissive=0,edge=false,changed=false}:{id:string;x:number;y:number;alpha:number;rgb:string;emissive?:number;edge?:boolean;changed?:boolean}) {
   const surface=useSurfaceHandle(id)
   statuses[id]=useSurfaceStatus(surface).presentation
   const shared=id==='white-1'
   const width=shared&&changed?176:128
-  return <SceneSurface.Root surface={surface}>
+  const finish=useMemo(()=>({color:null,emissiveIntensity:emissive}),[emissive])
+  return <SceneSurface.Root surface={surface} finish={finish}>
     <SceneSurface.HTML size={[width,64]} resolution={edge?0.5:undefined}><div style={{width,height:64,borderRadius:16,background:edge?`linear-gradient(to right,rgba(${rgb},${alpha}) 50%,transparent 50%)`:`rgba(${rgb},${alpha})`}}/></SceneSurface.HTML>
-    <SceneSurface.Mesh name={id} placement="manual" position={[x,y,0]} alpha="source" geometry={<planeGeometry args={[128,64]}/>} material={<SceneSurface.LitMaterial emissiveIntensity={emissive}/>}/>
+    <SceneSurface.Mesh name={id} placement="manual" position={[x,y,0]} alpha="source" geometry={<planeGeometry args={[128,64]}/>}/>
     {shared&&<>
-      <SceneSurface.Mesh placement="manual" position={[-150,170,0]} renderOrder={changed?4:-4} alpha="source" geometry={<planeGeometry args={[128,64]}/>}/>
-      <SceneSurface.Mesh placement="manual" position={[150,170,0]} alpha="source" geometry={<planeGeometry args={[128,64]}/>} material={<SceneSurface.LitMaterial/>}/>
+      <SceneSurface.Mesh placement="manual" position={[-150,170,0]} renderOrder={changed?4:-4} alpha="source" geometry={<planeGeometry args={[128,64]}/>} material={<Unlit/>}/>
+      <SceneSurface.Mesh placement="manual" position={[150,170,0]} alpha="source" geometry={<planeGeometry args={[128,64]}/>}/>
     </>}
   </SceneSurface.Root>
 }
@@ -62,7 +82,7 @@ declare global {interface Window {__litProof:{statuses:typeof statuses;update:()
 function Fixture() {
   const [changed,setChanged]=useState(false)
   const palette=cases.map(entry=>({...entry,rgb:changed?'80,190,120':entry.rgb}))
-  return <SurfaceCanvas orthographic camera={{position:[0,0,1000],zoom:1}} style={{width:500,height:440}}>
+  return <SurfaceCanvas orthographic lighting="none" camera={{position:[0,0,1000],zoom:1}} style={{width:500,height:440}}>
     <ambientLight intensity={Math.PI/4}/>{palette.map((entry,row)=>[1,0.5,0.25].map((alpha,col)=><Swatch key={`${entry.id}-${alpha}`} {...entry} id={`${entry.id}-${alpha}`} x={-150+150*col} y={90-90*row} alpha={alpha} changed={changed}/>))}{palette.map((entry,col)=><Swatch key={`${entry.id}-edge`} {...entry} id={`${entry.id}-edge`} x={-150+150*col} y={-180} alpha={1} edge/>)}<UnlitHalf id="unlit-blue" rgb="0,0,255" x={0} z={0}/><UnlitHalf id="unlit-red" rgb="255,0,0" x={32} z={1}/><Observe update={()=>setChanged(true)}/>
   </SurfaceCanvas>
 }

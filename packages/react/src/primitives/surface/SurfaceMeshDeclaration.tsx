@@ -20,6 +20,7 @@ import {
   SurfaceRootContext,
   SurfaceTunnelContext,
 } from './surfaceContext'
+import { SurfaceFinishContext } from './surfaceFinish'
 import { surfaceStoreOf } from './surfaceHandle'
 import { useCanvasPresence } from './SurfaceScene'
 import { ScenePresenter } from './surfaceSceneLookup'
@@ -43,6 +44,8 @@ export function SurfaceMesh({ surface, part, ...props }: SurfaceMeshProps) {
   const root = use(SurfaceRootContext)
   const inheritedPart = use(SurfacePartContext)
   const tunneled = use(SurfaceTunnelContext)
+  // Carried through the tunnel, which passes on only what wraps the element.
+  const finish = use(SurfaceFinishContext)
   const store = surface ? surfaceStoreOf(surface) : (root?.store ?? null)
   if (!store) {
     throw new Error(
@@ -68,9 +71,11 @@ export function SurfaceMesh({ surface, part, ...props }: SurfaceMeshProps) {
   const inward = root !== null && root.wiring === 'page' && !tunneled
   const element = (
     <SurfaceHandleContext value={handleValue}>
-      <SurfaceTunnelContext value>
-        <ScenePresenter {...props} store={store} partId={partId} tunneled />
-      </SurfaceTunnelContext>
+      <SurfaceFinishContext value={finish}>
+        <SurfaceTunnelContext value>
+          <ScenePresenter {...props} store={store} partId={partId} tunneled />
+        </SurfaceTunnelContext>
+      </SurfaceFinishContext>
     </SurfaceHandleContext>
   )
   useEffect(() => {

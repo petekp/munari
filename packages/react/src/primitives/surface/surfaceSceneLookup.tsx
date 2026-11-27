@@ -2,7 +2,7 @@
 //
 // The law: page code that runs before any canvas mounts imports no three
 // renderer code. A Surface declared in a page tree still names its presenter,
-// its lit material, its prewarm group and its anchor groups, which render only
+// its prewarm group and its anchor groups, which render only
 // inside a canvas. The page side names them through this context, and
 // SurfaceCanvas, which imports the scene modules statically, provides them.
 //
@@ -21,7 +21,6 @@
 import { createContext, use } from 'react'
 import type { SurfaceSceneComponents } from './surfaceSceneComponents'
 import type { PresenterProps } from './SurfaceMesh'
-import type { SurfaceLitMaterialProps } from './surfaceMaterials'
 import type { SurfacePrewarmProps } from './SurfacePrewarm'
 import type { SurfaceAnchorGroupProps } from './SurfaceAnchorGroup'
 
@@ -72,19 +71,6 @@ function useSurfaceSceneComponents(): SurfaceSceneComponents {
 export function ScenePresenter(props: PresenterProps) {
   const { Presenter } = useSurfaceSceneComponents()
   return <Presenter {...props} />
-}
-
-/**
- * A lit slab wearing the Surface's capture.
- *
- * Mounted in `<Surface.Mesh material={…}>`, where a configured texture is
- * guaranteed to already exist. The emissive term always carries the capture
- * so sliding `emissiveIntensity` is a uniform write rather than a rebuild —
- * at the default `0` it contributes nothing.
- */
-export function SceneLitMaterial(props: SurfaceLitMaterialProps) {
-  const { LitMaterial } = useSurfaceSceneComponents()
-  return <LitMaterial {...props} />
 }
 
 export function ScenePrewarm(props: SurfacePrewarmProps) {

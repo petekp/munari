@@ -33,17 +33,24 @@ import { SurfaceMaterialContext, SurfacePrewarmContext, type SurfaceMaterialValu
 import { configureSurfaceMaterial } from './surfaceMaterials'
 import { surfaceCompilerOf, type SurfaceCompilation } from './surfaceCompile'
 import { useLatest } from '../useLatest'
+import type { SurfaceFinish } from './surfaceFinish'
+import { useSurfaceFinishMaterial } from './SurfaceFinishMaterial'
 
 export interface SurfacePrewarmProps {
   /**
    * Meshes wearing the materials later presenters will draw with, on
    * geometry with the same attributes. They are never drawn.
    */
-  children: ReactNode
+  children?: ReactNode
   /** The `alpha` of the Surface.Mesh presenters these stand for. */
   alpha?: 'opaque' | 'source'
   /** Called once, when every pipeline is built. */
   onReady?: () => void
+  /**
+   * Finishes later Surfaces will wear on this canvas, each built on a plane
+   * with the canvas's lighting, so their first draws build nothing.
+   */
+  finishes?: readonly SurfaceFinish[]
 }
 
 function standInTexture(): THREE.CanvasTexture {
@@ -59,7 +66,17 @@ function standInTexture(): THREE.CanvasTexture {
 
 const noDrawCallbacks = () => () => {}
 
-export function SurfacePrewarm({ children, alpha = 'opaque', onReady }: SurfacePrewarmProps) {
+function PrewarmFinish({ finish }: { readonly finish: SurfaceFinish }) {
+  const material = useSurfaceFinishMaterial({ finish })
+  return (
+    <mesh>
+      <planeGeometry args={[1, 1]} />
+      {material ? <primitive object={material} attach="material" /> : null}
+    </mesh>
+  )
+}
+
+export function SurfacePrewarm({ children, alpha = 'opaque', onReady, finishes }: SurfacePrewarmProps) {
   const gl = useThree((state) => state.gl)
   const [texture] = useState(standInTexture)
   const [frameTexture] = useState(standInTexture)
@@ -71,12 +88,23 @@ export function SurfacePrewarm({ children, alpha = 'opaque', onReady }: SurfaceP
     [texture, frameTexture],
   )
   const frame = useMemo<SurfaceContextValue>(() => ({ texture: frameTexture }), [frameTexture])
+  // A finish holds until the canvas's environment is baked, so the build
+  // here waits for every hold to release.
+  const [holds, setHolds] = useState(0)
   const slot = useMemo<SurfaceMaterialValue>(
     () => ({
       radii: uniform(new THREE.Vector4()),
       size: uniform(new THREE.Vector2(1, 1)),
       transparent: alpha === 'source',
       beforeDraw: noDrawCallbacks,
+      hold() {
+        setHolds((count) => count + 1)
+        return () => setHolds((count) => count - 1)
+      },
+      // A finish is built for a page-declared Surface.Mesh, which matches its
+      // DOM box unless told otherwise.
+      facesCamera: true,
+      finish: null,
     }),
     [alpha],
   )
@@ -85,7 +113,7 @@ export function SurfacePrewarm({ children, alpha = 'opaque', onReady }: SurfaceP
   const onReadyRef = useLatest(onReady)
 
   useFrame(() => {
-    if (!group || compilations.current) return
+    if (!group || compilations.current || holds > 0) return
     const compiler = surfaceCompilerOf(gl)
     const started: SurfaceCompilation[] = []
     if (compiler) {
@@ -115,6 +143,7 @@ export function SurfacePrewarm({ children, alpha = 'opaque', onReady }: SurfaceP
         <SurfaceContext value={frame}>
           <group ref={setGroup} visible={false}>
             {children}
+            {finishes?.map((finish, index) => <PrewarmFinish key={index} finish={finish} />)}
           </group>
         </SurfaceContext>
       </SurfaceMaterialContext>

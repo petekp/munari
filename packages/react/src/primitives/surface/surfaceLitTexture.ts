@@ -33,7 +33,7 @@ const views = new WeakMap<THREE.Texture, SurfaceLitTexture>()
 function canvasImage(source: THREE.Texture): HTMLCanvasElement {
   const image = source.image
   if (!(image instanceof HTMLCanvasElement)) {
-    throw new Error('Surface.LitMaterial requires a DOM capture canvas.')
+    throw new Error('A lit Surface material requires a DOM capture canvas.')
   }
   return image
 }

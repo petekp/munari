@@ -422,7 +422,7 @@ export const COMPARISON_ROWS: readonly ComparisonRow[] = [
     requirement: 'Shared scene lighting, refraction, or bent meshes on live UI',
     cssAndDrei: 'Cannot deform or shade DOM pixels',
     diyCanvas: 'Custom WebGPU + custom hit-test math',
-    munari: 'Built in (Surface.LitMaterial, useSurfaceNodes, deformSurfaceGeometry)',
+    munari: 'Built in (finish on Surface.Root, useSurfaceNodes, deformSurfaceGeometry)',
   },
   {
     requirement: 'Start in normal page flow, enter 3D without blank flashes',

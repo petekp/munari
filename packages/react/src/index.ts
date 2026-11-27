@@ -52,11 +52,21 @@ export {
   useSurfaceTextureOf,
   type SurfaceChromeState,
 } from './primitives/surface/surfaceContext'
+export { useSurfaceNodes, type SurfaceNodes } from './primitives/surface/surfaceMaterials'
+
+// ── Finishes and light ───────────────────────────────────────────────────
+// A finish is plain data on Surface.Root; the canvas lights it. The presets
+// are copyable values in registry/finishes, not exports.
+export type { FinishValues, SurfaceDetailKind, SurfaceFinish } from './primitives/surface/surfaceFinish'
 export {
-  useSurfaceNodes,
-  type SurfaceNodes,
-  type SurfaceLitMaterialProps,
-} from './primitives/surface/surfaceMaterials'
+  createSurfaceLight,
+  type KeyLight,
+  type LightPosition,
+  type PointerKind,
+  type SurfaceLight,
+  type SurfaceLighting,
+  type SurfaceLightOptions,
+} from './primitives/surface/surfaceLight'
 // The shader half of the corner mask (the JS half lives in the kernel), for a
 // node material that samples a second capture with its own size and radii.
 export { surfaceRadiusMask } from './lib/surfaceRadius'

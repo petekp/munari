@@ -7,9 +7,12 @@ import { SurfaceMesh } from './surface/SurfaceMeshDeclaration'
 import { SurfacePart } from './surface/SurfacePart'
 import { SurfaceScene as SurfaceSceneBoundary } from './surface/SurfaceScene'
 import { SurfaceAnchor } from './surface/SurfaceAnchor'
-import { SceneLitMaterial, ScenePrewarm } from './surface/surfaceSceneLookup'
+import { ScenePrewarm } from './surface/surfaceSceneLookup'
+import { SurfaceFinishContext, type SurfaceFinish } from './surface/surfaceFinish'
+import { useBodyColor, type CustomProperties } from './surface/surfaceBodyColor'
+import { PageBinding } from './surface/SurfacePageBinding'
 import { SceneContribution } from './surface/SurfaceSceneContribution'
-import { SurfaceRootContext, SurfacePartContext, DEFAULT_PART } from './surface/surfaceContext'
+import { SurfaceRootContext, DEFAULT_PART } from './surface/surfaceContext'
 import { surfaceStoreOf, useSurfaceHandle, type SurfaceHandle } from './surface/surfaceHandle'
 import { surfaceViewPresentation, type SurfaceViewPresentation, type SurfaceViewDestination } from './surface/surfaceStatus'
 import { type SurfaceSize, type SurfaceSourceRuntime, type SurfaceResolution, type SurfacePartPublication } from './surface/surfaceSourceRuntime'
@@ -20,38 +23,13 @@ import { surfaceChromeElement } from './surface/surfaceChromeElement'
 import { validateSurfaceSize } from './surface/surfaceSize'
 import { watchSurfacePlacement } from './surface/surfacePlacement'
 import { claimSourcePointer, releaseSourcePointer } from './surface/surfacePointerOwnership'
-import { registerHostSpace, hostSpace, markerSpace, boxInHostSpace, hostSpaceScale, hostSpaceUpright } from './surface/surfaceHostSpace'
+import { registerHostSpace, hostSpace, boxInHostSpace, hostSpaceScale, hostSpaceUpright } from './surface/surfaceHostSpace'
 import { createSurfacePageClip } from './surface/surfacePageClip'
 import { insertRetained, moveRetained } from './retainedMove'
 import { applyCopyScrolls } from './elementCapture'
 import { placeholderCopy, snapshotPageContent as snapshot, sourceNeedsLiveNode, unsupportedSnapshot } from './surface/surfacePageSnapshot'
 import { readSurfaceDevicePixelRatio } from './surface/surfaceDevicePixelRatio'
 
-function PageBinding({page,marker,layout,inScene,pageContent}:{page:HTMLElement;marker:HTMLElement;pageContent:()=>HTMLElement|null;layout:'preserve'|'reflow';inScene:boolean}) {
-  const root=use(SurfaceRootContext)!
-  const part=use(SurfacePartContext)!
-  const last=useRef<readonly[number,number]|null>(null)
-  const setPageRoot=part.setPageRoot,setMeasuredSize=part.setMeasuredSize
-  useLayoutEffect(()=>{setPageRoot(page);return()=>setPageRoot(null)},[page,setPageRoot])
-  useLayoutEffect(()=>{
-    // The slot's size in the block's own px, never its rect: a turned block
-    // inflates every rect it reports, and a Surface sized from one would ask
-    // for a texture bigger than the content it is drawing.
-    const read=()=>{const space=markerSpace(marker);const box=space&&boxInHostSpace(pageContent() ?? page, space);if(!box)return;const w=box.width,h=box.height;if(last.current?.[0]!==w||last.current[1]!==h){last.current=[w,h];setMeasuredSize([w,h])}root.host?.invalidate()}
-    read();const observer=new ResizeObserver(read);observer.observe(page)
-    let measured:HTMLElement|null=null
-    const watch=()=>{const next=pageContent();if(next!==measured){if(measured)observer.unobserve(measured);measured=next;if(measured)observer.observe(measured)}read()}
-    watch();const mutations=new MutationObserver(watch);mutations.observe(page,{subtree:true,childList:true})
-    const subscriptions = new AbortController()
-    window.addEventListener('scroll',read,{capture:true,passive:true,signal:subscriptions.signal});window.addEventListener('resize',read,{passive:true,signal:subscriptions.signal})
-    return()=>{observer.disconnect();mutations.disconnect();subscriptions.abort()}
-  },[page,marker,setMeasuredSize,root.host,pageContent])
-  useEffect(()=>{
-    const apply=()=>{const released=!root.store.pagePresents();page.style.visibility=released?'hidden':'';page.style.display=layout==='reflow'&&released&&inScene?'none':'';page.inert=released;if(released)page.setAttribute('aria-hidden','true');else page.removeAttribute('aria-hidden')}
-    apply();return root.store.subscribeHold(apply)
-  },[page,root.store,layout,inScene])
-  return null
-}
 
 export interface SurfaceControls {
   onPresentationChange?: (presentation: SurfaceViewPresentation) => void
@@ -70,6 +48,15 @@ export interface SurfaceControls {
 export type SurfaceRootProps = SurfaceControls & SurfaceIdentityProps & {
   inScene: boolean
   canvasId?: string
+  /**
+   * The physical finish the Surface's mesh wears in the scene, lit by its
+   * SurfaceCanvas's `lighting`. A finish with a `color` paints the body:
+   * Munari writes it as `--munari-body` on the page copy and `transparent`
+   * in the capture, so content styled `background: var(--munari-body, …)`
+   * shows the color on the page and the lit body in the scene. A
+   * Surface.Mesh with its own `material` ignores the finish.
+   */
+  finish?: SurfaceFinish
   children: ReactNode
 }
 const SurfaceContentContext = createContext<{
@@ -78,7 +65,7 @@ const SurfaceContentContext = createContext<{
   reportSupport(part: SurfacePartId, reason: string | null | undefined): void
 } | null>(null)
 
-function SurfaceRoot({ inScene, surface, canvasId, name, children, ...controls }: SurfaceRootProps) {
+function SurfaceRoot({ inScene, surface, canvasId, name, finish, children, ...controls }: SurfaceRootProps) {
   const own = useSurfaceHandle(name)
   const handle = surface ?? own
   const browserSupported = useCaptureSupport()
@@ -98,7 +85,7 @@ function SurfaceRoot({ inScene, surface, canvasId, name, children, ...controls }
   const context = useMemo(() => ({ handle, canEnter, reportSupport }), [handle, canEnter, reportSupport])
   return <SurfaceContentContext value={context}>
     <SurfaceController surface={handle} canvasId={canvasId} renderIn={canEnter ? 'canvas' : 'page'} authorIntent={{ requestedInScene: inScene, reason }} {...controls} {...callbacks}>
-      {children}
+      <SurfaceFinishContext value={finish ?? null}>{children}</SurfaceFinishContext>
     </SurfaceController>
   </SurfaceContentContext>
 }
@@ -123,7 +110,7 @@ export type SurfaceHTMLProps = {
   as?: 'div' | 'span'
   /** Reflow removes the page slot only after a proven canvas draw. */
   layout?: 'preserve' | 'reflow'
-  pageStyle?: Omit<CSSProperties, 'visibility' | 'pointerEvents' | 'display'>
+  pageStyle?: Omit<CSSProperties, 'visibility' | 'pointerEvents' | 'display'> & CustomProperties
 } & ({ hidden?: false; size?: SurfaceSize } | { hidden: boolean; size: SurfaceSize })
 
 function matchingRuntime(publication: SurfacePartPublication | null, element: HTMLElement | null): SurfaceSourceRuntime | null {
@@ -140,6 +127,7 @@ function dockCaptureHost(host: HTMLElement, dock: HTMLElement): boolean {
   insertRetained(host, dock)
   return true
 }
+
 
 function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, live, onChrome, hidden, pageClassName, pageStyle, target, as: Tag = 'div', layout = 'preserve' }: SurfaceHTMLProps) {
   if (size) validateSurfaceSize(size)
@@ -174,6 +162,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
   const desired = root.canEnter && !reason
   const pageRef = useLatest(page)
   const ownRuntime = matchingRuntime(publication, captureRoot)
+  const bodyStyle = useBodyColor(pageStyle, captureRoot, ownRuntime)
   const placeholder = useRef<HTMLElement | null>(null)
   // What the capture root already holds, so an unchanged rebuild is dropped
   // before it reaches the source (`snapshot`).
@@ -389,7 +378,7 @@ function SurfaceHTML({ children, part: partId = DEFAULT_PART, size, resolution, 
 
 
   const content = <>
-    <Tag ref={setPage} hidden={hidden} className={pageClassName} style={pageStyle}><Tag ref={setLiveRoot} data-api-live="">{children}</Tag></Tag>
+    <Tag ref={setPage} hidden={hidden} className={pageClassName} style={bodyStyle}><Tag ref={setLiveRoot} data-api-live="">{children}</Tag></Tag>
     <Tag ref={setDock} style={{display:'contents',pointerEvents:'none'}}>
       <Tag ref={setMarker} style={{all:'initial',position:'fixed',left:0,top:0,width:100,height:100,visibility:'hidden',pointerEvents:'none'}}/>
     </Tag>
@@ -435,7 +424,6 @@ export const Surface = Object.assign(BasicSurface, {
   Scene: SurfaceScene,
   Mesh: SurfaceMesh,
   Anchor: SurfaceAnchor,
-  LitMaterial: SceneLitMaterial,
   Prewarm: ScenePrewarm,
 })
 
@@ -447,13 +435,18 @@ function useViewCallbacks(controls: SurfaceControls) {
   }), [latest])
 }
 
-export type SceneSurfaceRootProps = SurfaceControls & SurfaceIdentityProps & { children: ReactNode; canvasId?: string }
-function SceneSurfaceRoot({ children, name, surface, canvasId, ...controls }: SceneSurfaceRootProps) {
+export type SceneSurfaceRootProps = SurfaceControls & SurfaceIdentityProps & {
+  children: ReactNode
+  canvasId?: string
+  /** The finish the mesh wears; see `SurfaceRootProps.finish`. Scene-only content paints its own body. */
+  finish?: SurfaceFinish
+}
+function SceneSurfaceRoot({ children, name, surface, canvasId, finish, ...controls }: SceneSurfaceRootProps) {
   const own = useSurfaceHandle(name)
   const handle = surface ?? own
   const callbacks = useViewCallbacks(controls)
   return <SurfaceController surface={handle} canvasId={canvasId} renderIn="canvas" authorIntent={{ requestedInScene: true, reason: null }} {...controls} {...callbacks}>
-    {children}
+    <SurfaceFinishContext value={finish ?? null}>{children}</SurfaceFinishContext>
   </SurfaceController>
 }
 export type SceneSurfaceHTMLProps = {
@@ -465,9 +458,9 @@ function SceneSurfaceHTML({ children, element, part = DEFAULT_PART, ...props }: 
   validateSurfaceSize(props.size)
   return <SurfacePart name={part} source={children} adopt={element} {...props}/>
 }
-export interface SceneSurfaceProps { children: ReactNode; size: SurfaceSize; name?: string; live?: boolean }
-function BasicSceneSurface({ children, size, name, live }: SceneSurfaceProps) {
-  return <SceneSurfaceRoot name={name}>
+export interface SceneSurfaceProps { children: ReactNode; size: SurfaceSize; name?: string; live?: boolean; finish?: SurfaceFinish }
+function BasicSceneSurface({ children, size, name, live, finish }: SceneSurfaceProps) {
+  return <SceneSurfaceRoot name={name} finish={finish}>
     <SceneSurfaceHTML size={size} live={live}>{children}</SceneSurfaceHTML>
     <SurfaceMesh scale={[size[0] / size[1], 1, 1]}/>
   </SceneSurfaceRoot>
@@ -478,6 +471,5 @@ export const SceneSurface = Object.assign(BasicSceneSurface, {
   Mesh: SurfaceMesh,
   Scene: SurfaceScene,
   Anchor: SurfaceAnchor,
-  LitMaterial: SceneLitMaterial,
   Prewarm: ScenePrewarm,
 })

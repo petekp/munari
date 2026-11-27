@@ -15,6 +15,10 @@
 
 import { useEffect, useState } from 'react'
 
+// Each specimen is its own capture body, lifted by its own emission so the
+// lens shows the page's colors under a canvas with no lights.
+export const SPECIMEN_FINISH = { color: null, emissiveIntensity: 1 }
+
 export function AquaSheet() {
   return (
     <div className="opt-aqua">

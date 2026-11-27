@@ -33,7 +33,7 @@
 // remounts the Canvas with a new one, unless the replacement is lost too
 // soon after it was created (decisions.md #73).
 
-import { Component, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import { Canvas, useFrame, useThree, type CanvasProps, type RootState } from '@react-three/fiber'
 import { Color, NoToneMapping, PCFShadowMap, RenderTarget, Scene, type Camera, type Object3D } from 'three'
@@ -54,6 +54,9 @@ import { GLSL_SCAN_INTERVAL_MS, reportGlslInScene } from './glslMaterial'
 import { isDevelopmentRuntime } from '../../lib/developmentRuntime'
 import { createSurfaceCompiler, installSurfaceCompiler } from './surfaceCompile'
 import { prebuildMipmapPasses } from './surfaceMipmapPrebuild'
+import { RendererStartBoundary, RendererStartError } from './surfaceRendererStart'
+import { FinishRigProvider } from './finishRig'
+import type { SurfaceLighting } from './surfaceLight'
 
 /**
  * Canvas style, minus the fields the host reserves.
@@ -106,6 +109,13 @@ export interface SurfaceCanvasProps
    * lost one was itself a replacement created under 10 s earlier.
    */
   onRendererLost?: () => void
+  /**
+   * How the Surface finishes on this canvas are lit. Default `studio`: the
+   * studio key, rim and environments. `none` lights finishes with the
+   * scene's own lights and `scene.environment`. The rig lights finish
+   * materials only; the scene's other materials never see it.
+   */
+  lighting?: SurfaceLighting
 }
 
 // The reserved style fields, as a runtime list for the development check.
@@ -150,40 +160,6 @@ function createSurfaceRenderer(
     // Fiber types its canvas with its own OffscreenCanvas stand-in.
     if (!(defaults.canvas instanceof HTMLCanvasElement)) return Promise.reject(new Error('[munari] SurfaceCanvas needs a DOM canvas'))
     return startSurfaceRenderer(parameters, defaults.canvas, defaults)
-  }
-}
-
-class RendererStartError extends Error {}
-
-/**
- * Keeps a renderer that could not start at the Canvas.
- *
- * Fiber 9.8.1 throws the factory's rejection while rendering the Canvas, so
- * without this a browser with no GPU unmounts the caller's whole tree, page
- * HTML included. A start failure is reported to the window's error handlers
- * and the Canvas renders nothing, which leaves `fallback` showing; any other
- * error goes on to the caller's boundaries.
- */
-interface RendererStartState {
-  readonly error: Error | null
-}
-
-class RendererStartBoundary extends Component<{ children: ReactNode }, RendererStartState> {
-  state: RendererStartState = { error: null }
-
-  static getDerivedStateFromError(error: Error): RendererStartState {
-    return { error }
-  }
-
-  componentDidCatch(error: Error) {
-    if (error instanceof RendererStartError) reportError(error)
-  }
-
-  render() {
-    const { error } = this.state
-    if (error === null) return this.props.children
-    if (error instanceof RendererStartError) return null
-    throw error
   }
 }
 
@@ -528,6 +504,7 @@ export function SurfaceCanvas({
   pointerMode = 'scene',
   onRendererLost,
   shadows,
+  lighting = 'studio',
   ...canvasProps
 }: SurfaceCanvasProps) {
   const candidate = useMemo(() => createSurfaceHost(id), [id])
@@ -651,8 +628,10 @@ export function SurfaceCanvas({
               onDisplayScale={setDisplayScale}
               displaySized={resize?.offsetSize!==true}
             />
-            {children}
-            <SurfaceInwardPresenters host={host} />
+            <FinishRigProvider lighting={lighting}>
+              {children}
+              <SurfaceInwardPresenters host={host} />
+            </FinishRigProvider>
             {pointerMode === 'surfaces' ? <SurfacePointerBridge host={host} /> : null}
           </Canvas>
         </RendererStartBoundary>

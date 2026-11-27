@@ -5,13 +5,11 @@
 // surfaceSceneLookup.tsx, so it never ships with a page that has no canvas yet.
 
 import { SurfacePresenter } from './SurfaceMesh'
-import { SurfaceLitMaterial } from './surfaceMaterials'
 import { SurfacePrewarm } from './SurfacePrewarm'
 import { SurfaceAnchorGroup } from './SurfaceAnchorGroup'
 
 export const surfaceSceneComponents = {
   Presenter: SurfacePresenter,
-  LitMaterial: SurfaceLitMaterial,
   Prewarm: SurfacePrewarm,
   AnchorGroup: SurfaceAnchorGroup,
 }

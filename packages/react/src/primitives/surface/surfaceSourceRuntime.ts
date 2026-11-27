@@ -40,6 +40,7 @@ import {
   type DomTextureSource,
   type SurfaceChrome,
 } from '@munari/core'
+import type { SurfaceFinish } from './surfaceFinish'
 
 /** Texture density policy, shaped like r3f's `dpr`. */
 export type SurfaceResolution =
@@ -69,6 +70,8 @@ export interface SurfacePartPublication {
   readonly captureRoot: HTMLElement | null
   readonly pageRoot: HTMLElement | null
   readonly pageContent?: () => HTMLElement | null
+  /** The Surface's finish, worn by every mesh of this part that brings no material. Absent: none. */
+  readonly finish?: SurfaceFinish | null
 }
 
 /** The page element this part's mesh is matched to: authored content when the page supplies it, else the page root. */

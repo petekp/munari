@@ -66,6 +66,9 @@ describe('useSurfaceNodes', () => {
       size: uniform(new THREE.Vector2(200, 100)),
       transparent: true,
       beforeDraw: () => () => {},
+      hold: () => () => {},
+      facesCamera: true,
+      finish: null,
     }
     const stub: Pick<SurfaceSourceRuntime, 'texture'> = { texture }
     // SAFETY: the hook reaches only `runtime.texture()`; the rest of the

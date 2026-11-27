@@ -82,7 +82,7 @@ import {
   worldRect,
   type Specimen,
 } from './opticsSheet'
-import { AquaSheet, Calculator, Ledger, LcdPanel, LunaBar, TypeSpecimen } from './opticsSpecimens'
+import { AquaSheet, Calculator, Ledger, LcdPanel, LunaBar, SPECIMEN_FINISH, TypeSpecimen } from './opticsSpecimens'
 import { showChrome } from '../../bareMode'
 import './optics.css'
 
@@ -284,14 +284,13 @@ function SpecimenSurface({
   const raycast = useLensRaycast(block, hand)
   const [cx, cy] = worldCenter(block)
   return (
-    <SceneSurface.Root name={block.id}>
+    <SceneSurface.Root name={block.id} finish={SPECIMEN_FINISH}>
 <SceneSurface.HTML size={[block.w, block.h]} resolution={resolution} live={block.live}>{CONTENT.get(block.id)}</SceneSurface.HTML>
       <SceneSurface.Mesh
         placement="manual"
         position={[cx, cy, 0]}
         raycast={raycast}
         geometry={<planeGeometry args={[block.w, block.h]} />}
-        material={<SceneSurface.LitMaterial emissiveIntensity={1} />}
       />
     </SceneSurface.Root>
   )
@@ -1024,6 +1023,7 @@ export function OpticsApp() {
       <SurfaceCanvas
         dpr={[1, 2]}
         gl={{ antialias: true }}
+        lighting="none"
         onCreated={(state) => {
           window.__r3f = state
         }}

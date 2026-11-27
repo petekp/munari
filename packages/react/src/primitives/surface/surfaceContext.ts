@@ -20,6 +20,7 @@ import { surfaceStoreOf } from './surfaceHandle'
 import type { SurfaceStore, SurfaceHandle } from './surfaceHandle'
 import type { SurfaceHost } from './surfaceHostRegistry'
 import type { SurfaceSourceRuntime, SurfaceSize } from './surfaceSourceRuntime'
+import type { SurfaceFinish } from './surfaceFinish'
 
 /** Where the root was declared — which decides what it may contain. */
 export type SurfaceWiring = 'page' | 'canvas'
@@ -100,6 +101,16 @@ export interface SurfaceMaterialValue {
    * material's own `onBeforeRender` never runs on WebGPURenderer.
    */
   readonly beforeDraw: (callback: () => void) => () => void
+  /**
+   * Keep the presenter's first material from compiling, and so from drawing,
+   * until the returned release: for a material still waiting on something
+   * its shader is built from. A presenter that has drawn ignores it.
+   */
+  readonly hold: () => () => void
+  /** True when the mesh is placed over its DOM box (`placement="match-dom"`), so it shares the camera's rotation. */
+  readonly facesCamera: boolean
+  /** The Surface's finish, or null when it has none. */
+  readonly finish: SurfaceFinish | null
 }
 
 export const SurfaceMaterialContext = createContext<SurfaceMaterialValue | null>(null)
