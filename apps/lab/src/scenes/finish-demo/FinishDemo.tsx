@@ -2,43 +2,30 @@
 // four kinds of UI side by side, adjusts each card's finish, and reads the
 // code that is running (?scene=finish-demo).
 //
-// The finishes, studio and material are the material-finishes scene's
-// modules, imported rather than copied, so changes there reach this page.
-// Each card wears its own finish; the light rig, text lighting and key light
-// are the page's.
+// The finishes are the preset table's and the material and lights are the
+// library's. Each card wears its own finish; the light rig, text lighting
+// and key light are the page's.
 
 import { useEffect, useRef, useState } from 'react'
+import { finishes } from '../material-finishes/recipe/finishes'
 import { Button } from '../../components/system'
-import { FINISH_ORDER, FINISHES, notifyFinishTuning, type FinishId, type LightRig, type TextLighting } from '../material-finishes/materialFinishesTuning'
+import { FINISH_ORDER, type FinishId, type LightRig, type TextLighting } from '../material-finishes/materialFinishesTuning'
 import { CODE_NOTE, DemoBar } from './FinishDemoBar'
 import { CONTEXTS, ContextCard, contextOf, type ContextId } from './FinishDemoContexts'
 import { Choice, CodeListing, CopyCode, FinishPicker, GROUND_OPTIONS, KnobControl, RIG_OPTIONS, TEXT_OPTIONS } from './FinishDemoControls'
 import { BASE_KNOBS, ownKnobs } from './finishDemoFinishes'
-import {
-  adjustLines,
-  cardLines,
-  changeRig,
-  createCard,
-  IMPORT_LINES,
-  moveKeyLight,
-  resetFinish,
-  setupLines,
-  type BenchCard,
-  type CodeLine,
-  type KeyLight,
-  type PageSetup,
-} from './finishDemoRecipe'
-import { FinishStage, useTuningVersion, type PageGround } from './FinishDemoStage'
+import { adjustLines, cardLines, createCard, IMPORT_LINES, keyLight, keySize, setupLines, type BenchCard, type CodeLine, type PageSetup } from './finishDemoRecipe'
+import { FinishStage, moveKey, useKeyPosition, type PageGround } from './FinishDemoStage'
 
 // The finish each card starts in: four finishes whose lobes differ (a coat,
 // a dielectric's plain gloss, a brushed metal and a sheen), so the bench
 // opens on materials a reader can tell apart. Lacquer goes on the tile,
 // whose empty right half can take its highlight without covering text.
 const START_FINISHES: readonly (readonly [ContextId, FinishId])[] = [
-  ['settings', 'satin-polymer'],
-  ['product', 'anodized-aluminum'],
-  ['tile', 'lacquer'],
-  ['media', 'velvet'],
+  ['settings', 'polymer-charcoal'],
+  ['product', 'aluminum-blue'],
+  ['tile', 'lacquer-crimson'],
+  ['media', 'velvet-midnight'],
 ]
 const HIGHLIGHT_CARD: ContextId = 'tile'
 
@@ -55,7 +42,7 @@ const HIGHLIGHT_Y = 0.41
  * (744, 618) put lacquer's highlight at (732, 534)).
  */
 function keyFor(targetX: number, targetY: number): readonly [number, number] {
-  return [(2 * targetX) / window.innerWidth - 0.5, (2 * targetY) / window.innerHeight - 0.5]
+  return [2 * targetX - window.innerWidth / 2, 2 * targetY - window.innerHeight / 2]
 }
 
 type CodeTab = 'apply' | 'adjust'
@@ -70,12 +57,9 @@ function finishLabel(id: FinishId): string {
 }
 
 export function FinishDemoApp({ onReady }: { readonly onReady?: () => void }) {
-  useTuningVersion()
   const [rig, setRig] = useState<LightRig>('softbox')
-  const [keyLight] = useState<KeyLight>(() => ({ x: 0.5, y: 0.5 }))
-  const [cards, setCards] = useState<readonly BenchCard[]>(() =>
-    START_FINISHES.map(([context, finishId]) => createCard(context, finishId, 'softbox', keyLight)),
-  )
+  const [cards, setCards] = useState<readonly BenchCard[]>(() => START_FINISHES.map(([context, preset]) => createCard(context, preset)))
+  const key = useKeyPosition(keyLight)
   const [selected, setSelected] = useState<ContextId>(HIGHLIGHT_CARD)
   const [text, setText] = useState<TextLighting>('unlit')
   const [ground, setGround] = useState<PageGround>('light')
@@ -89,30 +73,27 @@ export function FinishDemoApp({ onReady }: { readonly onReady?: () => void }) {
     if (keyPlaced.current || !figure) return
     keyPlaced.current = true
     const [x, y] = keyFor(figure.left + figure.width * HIGHLIGHT_X, figure.top + figure.height * HIGHLIGHT_Y)
-    moveKeyLight(cards, keyLight, x, y)
-  }, [cards, keyLight])
-
-  useEffect(() => {
-    notifyFinishTuning()
+    moveKey(x, y)
   }, [cards])
 
   const card = cards.find((item) => item.context === selected)
   if (!card) throw new Error(`The bench has no ${selected} card`)
-  const chooseFinish = (finishId: FinishId) => {
-    setCards((current) => current.map((item) => (item.context === selected ? createCard(selected, finishId, rig, keyLight) : item)))
+  const replaceCard = (next: BenchCard) => {
+    setCards((current) => current.map((item) => (item.context === next.context ? next : item)))
   }
+  const chooseFinish = (preset: FinishId) => replaceCard(createCard(selected, preset))
   const chooseRig = (next: LightRig) => {
     setRig(next)
-    changeRig(cards, next, keyLight)
+    keyLight.set({ size: keySize(next) })
   }
 
   return (
-    <FinishStage rig={rig} ground={ground} cards={cards} keyLight={keyLight} className="fd-bench" pageHtml={pageHtml} onReady={onReady}>
+    <FinishStage ground={ground} className="fd-bench" pageHtml={pageHtml} onReady={onReady}>
       {(inScene) => {
         const page: PageSetup = { rig, text, inScene }
-        const apply: CodeLine[] = [...IMPORT_LINES, '', ...setupLines(cards, rig)]
+        const apply: CodeLine[] = [...IMPORT_LINES, '', ...setupLines(cards, rig, key)]
         for (const item of cards) apply.push('', ...cardLines(item, page, contextOf(item.context).content))
-        const lines = tab === 'apply' ? apply : adjustLines(card, cards)
+        const lines = tab === 'apply' ? apply : adjustLines(card, key)
         return (
           <>
             <DemoBar inScene={inScene} />
@@ -123,10 +104,10 @@ export function FinishDemoApp({ onReady }: { readonly onReady?: () => void }) {
                   {cards.map((item) => (
                     <li key={item.context}>
                       <button type="button" className="fd-finish" aria-pressed={item.context === selected} onClick={() => setSelected(item.context)}>
-                        <span className="fd-swatch" style={{ background: item.finish.color }} aria-hidden />
+                        <span className="fd-swatch" style={{ background: item.finish.color ?? undefined }} aria-hidden />
                         <span>
                           <strong>{contextOf(item.context).label}</strong>
-                          <span className="fd-finish-note">{finishLabel(item.finishId)}</span>
+                          <span className="fd-finish-note">{finishLabel(item.preset)}</span>
                         </span>
                       </button>
                     </li>
@@ -135,14 +116,19 @@ export function FinishDemoApp({ onReady }: { readonly onReady?: () => void }) {
               </section>
               <section>
                 <h2 className="fd-heading">{contextOf(card.context).label} finish</h2>
-                <FinishPicker value={card.finishId} onSelect={chooseFinish} />
+                <FinishPicker value={card.preset} onSelect={chooseFinish} />
               </section>
               <section>
                 <h2 className="fd-heading">Adjust</h2>
-                {[...BASE_KNOBS, ...ownKnobs(FINISHES[card.finishId])].map((knob) => (
-                  <KnobControl key={`${card.context}-${card.finishId}-${knob.key}`} knob={knob} card={card} />
+                {[...BASE_KNOBS, ...ownKnobs(finishes[card.preset])].map((knob) => (
+                  <KnobControl
+                    key={`${card.context}-${card.preset}-${knob.path.join('.')}`}
+                    knob={knob}
+                    finish={card.finish}
+                    onChange={(finish) => replaceCard({ ...card, finish })}
+                  />
                 ))}
-                <Button compact variant="outline" onClick={() => resetFinish(card)}>
+                <Button compact variant="outline" onClick={() => replaceCard(createCard(card.context, card.preset))}>
                   Reset finish
                 </Button>
               </section>
@@ -164,7 +150,7 @@ export function FinishDemoApp({ onReady }: { readonly onReady?: () => void }) {
                   <figure key={context.id} className="fd-context" data-context={context.id}>
                     <ContextCard card={item} page={page} />
                     <figcaption>
-                      {context.label} · {finishLabel(item.finishId)}
+                      {context.label} · {finishLabel(item.preset)}
                     </figcaption>
                   </figure>
                 )
@@ -177,7 +163,7 @@ export function FinishDemoApp({ onReady }: { readonly onReady?: () => void }) {
               </div>
               <p className="fd-note">
                 {tab === 'apply'
-                  ? 'Mount the lights and environments in the canvas, then give each piece of UI a FinishCard with its own finish, studio and lights.'
+                  ? 'Give the canvas the key light, then give each piece of UI a Surface.Root with its own finish. Its content paints var(--munari-body).'
                   : `The writes that bring the ${contextOf(card.context).label.toLowerCase()} from its tuned finish to what is on screen. Drag the light or move a slider and this updates.`}
               </p>
               <CodeListing lines={lines} />

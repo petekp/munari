@@ -1,7 +1,7 @@
 /* Finish demo — a bench of finished cards between a control rail and a
  * code rail. Each card root declares its own pixel size (docs/authoring.md);
  * the scene's .mf-card supplies padding, radius and ink, and each card's
- * inkStyle sets --mf-body, --mf-ink and --mf-quiet from its body color. */
+ * inkStyle sets --mf-on-ink, --mf-ink and --mf-quiet from its body color. */
 
 .fd-page {
   --fd-ground: #dcdad5;
@@ -159,6 +159,11 @@
 
 .fd-card--settings { width: 320px; height: 280px; }
 .fd-card--product { width: 320px; height: 280px; }
+
+/* WCAG large text on the product card's label and title: at least 18.66 px
+ * bold (WCAG 2.2, "large scale"). */
+.fd-card--product .mf-label { font: 700 19px/1.2 var(--m-sans); }
+.fd-card--product .mf-title { font: 800 32px/1.1 var(--m-sans); }
 .fd-card--tile { width: 320px; height: 220px; }
 .fd-card--media { width: 320px; height: 220px; }
 

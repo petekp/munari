@@ -2,14 +2,12 @@
 // side by side, so the presets can be judged against each other under the
 // same rig (?scene=material-finishes&compare=<family id>&text=&light=).
 //
-// The law: a preset sets studio values and the environment along with the
-// finish, and the page has one studio, so the presets cannot share a canvas.
 // Each frame is a full 1440×900 copy of the scene without its controls,
 // scaled to half size, which keeps the cards' layout and the light's
 // placement the same as the full page.
 
 import { useEffect } from 'react'
-import { FINISH_FAMILIES, type FinishFamily } from './materialFinishesPresets'
+import { FINISH_FAMILIES, type FinishFamily } from './materialFinishesFamilies'
 import { FINISH_ORDER, isLightRig } from './materialFinishesTuning'
 
 // The scene's layout and light placement are tuned at this viewport.

@@ -1,245 +1,73 @@
-// Material finishes tuning — nine physical finishes as plain preset objects,
-// the studio light rigs they are judged under, and the live copies the
-// tweak panel edits.
+// Material finishes tuning — the finish the page wears, the studio light it
+// is judged under, and the stores the tweak panel writes.
 //
-// A finish is the shape a future `finishes` table would take. Most fields
-// map one-to-one to a MeshPhysicalNodeMaterial property; `color` is the
-// body the capture is printed on (lit text) or laid over (unlit text), and
-// the edge and detail fields shape the body's normal. The live copies mutate
-// in place and listeners invalidate the canvas, so a slider reaches the
-// material with no React render (the polymer prototype's pattern).
-
-import { NO_LOBES, type Finish, type FinishId } from './materialFinishesFinish'
-import {
-  FOIL_HOLOGRAPHIC,
-  FOIL_OIL_SLICK,
-  FOIL_CRUMPLED,
-  PAPER_OFFICE,
-  PAPER_KRAFT,
-  PAPER_COLD_PRESS,
-  RUBBER_BLACK,
-  RUBBER_GRIP,
-  RUBBER_SILICONE,
-  WAX_CANDLE,
-  WAX_BEESWAX,
-  WAX_SILICONE,
-} from './materialFinishesPresets'
-
-export type { Finish, FinishId, SurfaceDetail, TextLighting } from './materialFinishesFinish'
-
-// Lobe values follow the MaterialX example presets (Apache-2.0) at
-// github.com/AcademySoftwareFoundation/MaterialX, resources/Materials/
-// Examples: OpenPbr/open_pbr_carpaint, open_pbr_aluminum_brushed,
-// open_pbr_velvet and StandardSurface/standard_surface_plastic,
-// standard_surface_velvet, standard_surface_metal_brushed. Body colors,
-// edge widths and detail values are by eye, unmeasured.
+// The finish is a SurfaceFinish value from the preset table
+// (recipe/finishes.ts); a tweak replaces it with a changed copy, and the
+// page renders the new value onto every card. The key light is a
+// createSurfaceLight handle, so dragging it redraws the canvas with no React
+// render. The rest of the studio is SurfaceCanvas's `lighting` object, in
+// its units: 1 is the studio's own brightness.
 //
-// OpenPBR reads a coated base's specular IOR relative to the coat, so a
-// base whose IOR matches its coat reflects nothing at that interface. three
-// does not divide the IORs, and the base's own 4% lobe at the base
-// roughness drew the broad wash under lacquer's and the glaze's coat
-// highlights. Coated finishes set `specularIntensity` 0 instead.
-export const FINISHES: Readonly<Record<FinishId, Readonly<Finish>>> = Object.freeze({
-  // open_pbr_carpaint: coat 1 at roughness 0.02 over a base whose IOR equals
-  // the coat's. Orange peel within the catalog's 0–0.05 coat-normal range.
-  lacquer: Object.freeze({
-    ...NO_LOBES,
-    color: '#8c1022',
-    roughness: 0.3,
-    ior: 1.5,
-    specularIntensity: 0,
-    clearcoat: 1,
-    clearcoatRoughness: 0.02,
-    edgeWidth: 6,
-    detail: 'orange-peel',
-    detailScale: 18,
-    detailDepth: 0.004,
-  }),
-  // standard_surface_plastic: one dielectric lobe at roughness 0.32, no
-  // coat and no sheen. "Satin" is the gloss level of a molded part; the
-  // fabric sheen lobe the first build gave it has no counterpart in plastic.
-  // IOR 1.49 is polypropylene and PMMA on physicallybased.info. A dark
-  // body lets the soft highlight stand out.
-  'satin-polymer': Object.freeze({
-    ...NO_LOBES,
-    color: '#3a3d42',
-    roughness: 0.36,
-    ior: 1.49,
-    edgeWidth: 12,
-  }),
-  // open_pbr_aluminum_brushed: roughness 0.2, anisotropy 0.9;
-  // standard_surface_metal_brushed: roughness 0.25, anisotropy 0.65. The body
-  // is a blue dyed anodize, by eye.
-  // The grooves run along x, which spreads the highlight across them, along
-  // y: rotation π/2 turns three's stretched axis from u to v.
-  'anodized-aluminum': Object.freeze({
-    ...NO_LOBES,
-    color: '#7da2d4',
-    roughness: 0.26,
-    metalness: 1,
-    ior: 1.5,
-    anisotropy: 0.65,
-    anisotropyRotation: Math.PI / 2,
-    edgeWidth: 3,
-    detail: 'brushed',
-    detailScale: 1.2,
-    detailDepth: 0.06,
-  }),
-  // standard_surface_velvet: base specular 0, sheen 1, with a sheen color
-  // far brighter than the body (body 0.023/0/0.038 linear under sheen
-  // 0.404/0.058/1); here a navy body under a periwinkle sheen. Sheen
-  // roughness 0.5 is open_pbr_velvet's fuzz roughness, a lobe tight enough
-  // that the glow gathers into a bright line along the rim facing the key.
-  // The relief is the pile; the edge is cloth over a thin padded panel.
-  velvet: Object.freeze({
-    ...NO_LOBES,
-    color: '#141a3a',
-    roughness: 0.9,
-    ior: 1.5,
-    specularIntensity: 0,
-    sheen: 1,
-    sheenColor: '#b8c4ff',
-    sheenRoughness: 0.5,
-    edgeWidth: 48,
-    detail: 'pile',
-    detailScale: 24,
-    detailDepth: 0.08,
-  }),
-  // A glass glaze on a ceramic body, which physicallybased.info lists as
-  // porcelain: roughness 0, IOR 1.5. Coat roughness 0.02 matches lacquer's,
-  // so the softbox's image keeps a sharp edge. Glaze and body match in IOR, so the
-  // base reflects nothing; the glaze is the coat. A celadon green that runs
-  // thin and pale over the rounded edge, with a sparse, faint crackle.
-  'glazed-ceramic': Object.freeze({
-    ...NO_LOBES,
-    color: '#8db59a',
-    roughness: 0.5,
-    ior: 1.52,
-    specularIntensity: 0,
-    clearcoat: 1,
-    clearcoatRoughness: 0.02,
-    edgeWidth: 12,
-    detail: 'glaze',
-    detailScale: 120,
-    detailDepth: 0.035,
-    rimColor: '#e6eee2',
-    crackle: 0.2,
-    crackleScale: 90,
-  }),
-  'thin-film-foil-holographic': FOIL_HOLOGRAPHIC,
-  'thin-film-foil-oil-slick': FOIL_OIL_SLICK,
-  'thin-film-foil-crumpled': FOIL_CRUMPLED,
-  'paper-office': PAPER_OFFICE,
-  'paper-kraft': PAPER_KRAFT,
-  'paper-cold-press': PAPER_COLD_PRESS,
-  'soft-touch-rubber-black': RUBBER_BLACK,
-  'soft-touch-rubber-grip': RUBBER_GRIP,
-  'soft-touch-rubber-silicone': RUBBER_SILICONE,
-  'translucent-wax-candle': WAX_CANDLE,
-  'translucent-wax-beeswax': WAX_BEESWAX,
-  'translucent-wax-silicone': WAX_SILICONE,
-})
+// Ownership: this module holds the live values and their listeners; the
+// library owns the lights, environments and material.
+
+import { createSurfaceLight, type SurfaceFinish, type SurfaceLighting } from '@petepetrash/munari'
+import { finishes, type FinishPreset } from './recipe/finishes'
+
+export type FinishId = FinishPreset
+export type TextLighting = 'lit' | 'unlit'
 
 export const FINISH_ORDER: readonly { readonly id: FinishId; readonly label: string }[] = [
-  { id: 'lacquer', label: 'Lacquer' },
-  { id: 'satin-polymer', label: 'Satin polymer' },
-  { id: 'anodized-aluminum', label: 'Anodized aluminum' },
-  { id: 'velvet', label: 'Velvet' },
-  { id: 'glazed-ceramic', label: 'Glazed ceramic' },
-  { id: 'thin-film-foil-holographic', label: 'Holographic foil' },
-  { id: 'thin-film-foil-oil-slick', label: 'Oil-slick foil' },
-  { id: 'thin-film-foil-crumpled', label: 'Crumpled foil' },
+  { id: 'lacquer-crimson', label: 'Lacquer' },
+  { id: 'polymer-charcoal', label: 'Satin polymer' },
+  { id: 'aluminum-blue', label: 'Anodized aluminum' },
+  { id: 'velvet-midnight', label: 'Velvet' },
+  { id: 'ceramic-celadon', label: 'Glazed ceramic' },
+  { id: 'foil-holographic', label: 'Holographic foil' },
+  { id: 'foil-oil-slick', label: 'Oil-slick foil' },
+  { id: 'foil-crumpled', label: 'Crumpled foil' },
   { id: 'paper-office', label: 'Office paper' },
   { id: 'paper-kraft', label: 'Kraft paper' },
   { id: 'paper-cold-press', label: 'Cold-press paper' },
-  { id: 'soft-touch-rubber-black', label: 'Black soft-touch' },
-  { id: 'soft-touch-rubber-grip', label: 'Orange grip rubber' },
-  { id: 'soft-touch-rubber-silicone', label: 'Sage silicone rubber' },
-  { id: 'translucent-wax-candle', label: 'Candle wax' },
-  { id: 'translucent-wax-beeswax', label: 'Beeswax' },
-  { id: 'translucent-wax-silicone', label: 'Coral silicone' },
+  { id: 'rubber-black', label: 'Black soft-touch' },
+  { id: 'rubber-grip', label: 'Orange grip rubber' },
+  { id: 'rubber-silicone', label: 'Sage silicone rubber' },
+  { id: 'wax-candle', label: 'Candle wax' },
+  { id: 'wax-beeswax', label: 'Beeswax' },
+  { id: 'wax-silicone', label: 'Coral silicone' },
 ]
 
 export function isFinishId(value: string | null): value is FinishId {
   return FINISH_ORDER.some((item) => item.id === value)
 }
 
-// ── studio per finish ──────────────────────────────────────────────────
+// ── live finish ────────────────────────────────────────────────────────
 
-/**
- * What a finish reflects besides the lights.
- * - `even`: one tone across the whole mirror cone.
- * - `gradient`: a fill behind the viewer that brightens toward the top,
- *   so a gloss shows a sky-to-floor falloff across each card.
- */
-export type EnvironmentKind = 'even' | 'gradient'
+let live: SurfaceFinish = finishes['lacquer-crimson']
 
-/** The studio a finish is judged in. */
-export interface FinishStudio {
-  /** Studio values set over the rig's start. */
-  readonly studio?: Readonly<Partial<StudioTuning>>
-  readonly environment: EnvironmentKind
+/** The finish every card on the page wears. */
+export function liveFinish(): SurfaceFinish {
+  return live
 }
 
-// The coated finishes, lacquer and the glaze, reflect the gradient fill, so
-// each card shows the top-to-bottom falloff of a glossy panel.
-//
-// Velvet's sheen is Charlie sheen, which three evaluates for point and
-// directional lights and the environment but not for the softbox
-// (directRectArea at r186); the material adds the key's sheen itself
-// (keySheen in materialFinishesNodes). The lobe is strongest where light
-// and view both graze, so the glow sits on the rounded edge facing the key
-// and moves with it. Velvet puts most of its light in the key, which can be
-// dragged, and little in the fixed environment. On m2 (2026-11-26) dragging
-// the key from the page's lower middle to its upper left or right changed
-// velvet's card pixels by a mean of sRGB 16 to 19, against 1.4 with the
-// environment-lit sheen and 19 to 21 on lacquer. An environment of 2 to 3
-// brought back more of the environment-lit look and cut that change to 13 to 18.
-// The pile relief is what reads as cloth: with no relief blind readers
-// called the cards frosted glass, and with a grain 2 to 6 px across, leather.
-export const FINISH_STUDIOS: Readonly<Record<FinishId, FinishStudio>> = Object.freeze({
-  lacquer: { environment: 'gradient' },
-  'satin-polymer': { environment: 'even' },
-  'anodized-aluminum': { environment: 'even' },
-  velvet: { studio: Object.freeze({ environmentIntensity: 1.4, lightPower: 5, rimPower: 1.5 }), environment: 'even' },
-  'glazed-ceramic': { environment: 'gradient' },
-  'thin-film-foil-holographic': { environment: 'even' },
-  'thin-film-foil-oil-slick': { environment: 'even' },
-  'thin-film-foil-crumpled': { environment: 'even' },
-  'paper-office': { environment: 'even' },
-  'paper-kraft': { environment: 'even' },
-  'paper-cold-press': { environment: 'even' },
-  'soft-touch-rubber-black': { environment: 'even' },
-  'soft-touch-rubber-grip': { environment: 'even' },
-  'soft-touch-rubber-silicone': { environment: 'even' },
-  'translucent-wax-candle': { environment: 'even' },
-  'translucent-wax-beeswax': { environment: 'even' },
-  'translucent-wax-silicone': { environment: 'even' },
-})
-
-export const liveFinish: Finish = { ...FINISHES.lacquer }
-
-/** Load a finish's tuned values into the live copy. */
-export function applyFinish(finish: FinishId): void {
-  Object.assign(liveFinish, FINISHES[finish])
+export function setLiveFinish(next: SurfaceFinish): void {
+  live = next
   notifyFinishTuning()
+}
+
+/** Load a preset's tuned values into the live finish. */
+export function applyFinish(finish: FinishId): void {
+  setLiveFinish(finishes[finish])
 }
 
 // ── studio ─────────────────────────────────────────────────────────────
 
-/**
- * How the cards are lit.
- * - `room`: three's RoomEnvironment and one point light, the first build.
- * - `softbox`: a built studio environment, a rectangular softbox key and a
- *   grazing rim light.
- * - `studio-point`: the same studio and rim with the point light as key.
- */
-export type LightRig = 'room' | 'softbox' | 'studio-point'
+/** The key's kind: a rectangular softbox, or a point. */
+export type LightRig = 'softbox' | 'point'
 
 export const LIGHT_RIGS: readonly { readonly id: LightRig; readonly label: string }[] = [
   { id: 'softbox', label: 'Softbox' },
-  { id: 'studio-point', label: 'Studio point' },
-  { id: 'room', label: 'Room' },
+  { id: 'point', label: 'Point' },
 ]
 
 export function isLightRig(value: string | null): value is LightRig {
@@ -249,95 +77,75 @@ export function isLightRig(value: string | null): value is LightRig {
 /** Whether each card tilts toward the pointer. */
 export type CardTilt = 'none' | 'pointer'
 
-/** The studio light and environment, in viewport CSS terms. */
+/** The studio, in SurfaceCanvas lighting units, with the key's position as viewport fractions. */
 export interface StudioTuning {
-  /** Key light position as fractions of the viewport. */
-  lightX: number
-  lightY: number
-  /** Key light height above the card plane, CSS px. */
-  lightHeight: number
-  /** Irradiance straight under the key, before N·L. */
-  lightPower: number
+  keyX: number
+  keyY: number
+  /** CSS px above the page. */
+  keyHeight: number
+  keyBrightness: number
   /** Softbox size, CSS px. */
   softboxWidth: number
   softboxHeight: number
-  /** Irradiance of the rim light on a plane facing it. */
-  rimPower: number
-  /** Rim light elevation above the card plane, degrees. */
+  rimBrightness: number
+  /** Degrees above the page. */
   rimElevation: number
   environmentIntensity: number
 }
 
 // A coat's highlight lands between the key and the camera's axis: at
 // height 480, about halfway (measured on m2: the key at y 618 CSS px put
-// lacquer's bar at 536, with the axis at 450). The studio rigs start the key
-// below the form card's centre, so the bar lies in the text-free band
+// lacquer's bar at 536, with the axis at 450). The key starts below the
+// form card's centre, 0.517 across, so the bar lies in the text-free band
 // between "Not saved" and Save, and the light handle sits below the card.
-// The previous start, over the gap between the product and form cards, laid
-// the bar over the form card's label; the room rig keeps that start as the
-// previous behavior. The softbox is wide and short to fit that band: 200 px
-// wide left a small isolated spot, and 560 px ran the bar over "Not saved".
-// Powers are set so satin polymer, the brightest body, keeps its body at or
-// under the tone curve's shoulder and only its highlight rolls off (probe on
-// m2, 2026-11-25: face median sRGB 226 on the form card, at the shoulder,
-// and 199 to 200 on the outer cards).
-const STUDIO_START: Readonly<Record<LightRig, Readonly<StudioTuning>>> = Object.freeze({
-  room: Object.freeze({
-    lightX: 0.382,
-    lightY: 0.48,
-    lightHeight: 320,
-    lightPower: 2.4,
-    softboxWidth: 0,
-    softboxHeight: 0,
-    rimPower: 0,
-    rimElevation: 15,
-    environmentIntensity: 0.65,
-  }),
-  softbox: Object.freeze({
-    lightX: 0.517,
-    lightY: 0.687,
-    lightHeight: 480,
-    lightPower: 1.55,
-    softboxWidth: 290,
-    softboxHeight: 80,
-    rimPower: 1.2,
-    rimElevation: 15,
-    environmentIntensity: 1.35,
-  }),
-  'studio-point': Object.freeze({
-    lightX: 0.517,
-    lightY: 0.687,
-    lightHeight: 480,
-    lightPower: 1.55,
-    softboxWidth: 0,
-    softboxHeight: 0,
-    rimPower: 1.2,
-    rimElevation: 15,
-    environmentIntensity: 1.35,
-  }),
+// The softbox is wide and short to fit that band: 200 px wide left a small
+// isolated spot, and 560 px ran the bar over "Not saved".
+const STUDIO_START: Readonly<StudioTuning> = Object.freeze({
+  keyX: 0.517,
+  keyY: 0.687,
+  keyHeight: 480,
+  keyBrightness: 1,
+  softboxWidth: 290,
+  softboxHeight: 80,
+  rimBrightness: 1,
+  rimElevation: 15,
+  environmentIntensity: 1,
 })
 
-export const studio: StudioTuning = { ...STUDIO_START.softbox }
+export const studio: StudioTuning = { ...STUDIO_START }
 
-/** A new studio at a rig's values under a finish's own, for a card that has its own studio. */
-export function studioFor(rig: LightRig, finish: FinishId): StudioTuning {
-  return { ...STUDIO_START[rig], ...FINISH_STUDIOS[finish].studio }
+/** The page's key light. Every card on every canvas of the page is lit by it. */
+export const keyLight = createSurfaceLight()
+
+/** Stand the key where the studio says, in the rig's kind. */
+export function placeKey(rig: LightRig): void {
+  keyLight.set({
+    x: studio.keyX * window.innerWidth,
+    y: studio.keyY * window.innerHeight,
+    z: studio.keyHeight,
+    brightness: studio.keyBrightness,
+    size: rig === 'softbox' ? [studio.softboxWidth, studio.softboxHeight] : undefined,
+  })
 }
 
-/** Start the studio at a rig's values and a finish's, key position included. Does not notify. */
-export function startStudio(rig: LightRig, finish: FinishId): void {
-  Object.assign(studio, STUDIO_START[rig], FINISH_STUDIOS[finish].studio)
+/** Restart the studio at its start values and stand the key there. */
+export function startStudio(rig: LightRig): void {
+  Object.assign(studio, STUDIO_START)
+  placeKey(rig)
 }
 
-/** Restart the studio at a rig's values and a finish's, keeping the key where it was dragged. */
-export function applyStudio(rig: LightRig, finish: FinishId): void {
-  const { lightX, lightY } = studio
-  Object.assign(studio, STUDIO_START[rig], FINISH_STUDIOS[finish].studio, { lightX, lightY })
-  notifyFinishTuning()
+/** The canvas's lighting for the studio's current values. */
+export function lightingOf(): SurfaceLighting {
+  return {
+    key: keyLight,
+    rim: { brightness: studio.rimBrightness, elevation: studio.rimElevation },
+    environmentIntensity: studio.environmentIntensity,
+  }
 }
 
 type Listener = () => void
 const listeners = new Set<Listener>()
+let version = 0
 
 export function subscribeFinishTuning(listener: Listener): () => void {
   listeners.add(listener)
@@ -346,6 +154,12 @@ export function subscribeFinishTuning(listener: Listener): () => void {
   }
 }
 
+/** A number that changes on every write, for useSyncExternalStore. */
+export function tuningVersion(): number {
+  return version
+}
+
 export function notifyFinishTuning(): void {
+  version += 1
   for (const listener of listeners) listener()
 }

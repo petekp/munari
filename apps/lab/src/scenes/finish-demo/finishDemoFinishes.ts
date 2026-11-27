@@ -2,37 +2,30 @@
 // page ink that reads on each body, and the knobs that belong to each.
 //
 // The law: every list here is derived from the material-finishes scene's
-// FINISH_ORDER, FINISH_FAMILIES, FINISHES and FINISH_STUDIOS, so a finish
-// added there appears on this page, in its family, with its ink and knobs,
-// and no edit here.
+// FINISH_ORDER and families and the preset table, so a preset added there
+// appears on this page, in its family, with its ink and knobs, and no edit
+// here.
 //
-// Ownership: the material-finishes scene owns the finish values and the
-// studio. This module only describes them.
+// Ownership: the preset table (material-finishes/recipe/finishes.ts) owns
+// the finish values. This module only describes them.
 
 import type { CSSProperties } from 'react'
-import {
-  FINISH_ORDER,
-  FINISH_STUDIOS,
-  FINISHES,
-  type Finish,
-  type FinishId,
-  type FinishStudio,
-} from '../material-finishes/materialFinishesTuning'
-import { familyOfFinish } from '../material-finishes/materialFinishesPresets'
+import type { FinishValues, SurfaceFinish } from '@petepetrash/munari'
+import { FINISH_ORDER, type FinishId } from '../material-finishes/materialFinishesTuning'
+import { familyOfFinish } from '../material-finishes/materialFinishesFamilies'
+import { finishes } from '../material-finishes/recipe/finishes'
 import { contrastRatio } from '../style/styleContrastLaw'
 
 export interface DemoFinish {
   readonly id: FinishId
   readonly label: string
-  readonly finish: Readonly<Finish>
-  readonly studio: FinishStudio
+  readonly finish: Readonly<SurfaceFinish>
 }
 
 export const DEMO_FINISHES: readonly DemoFinish[] = FINISH_ORDER.map((item) => ({
   id: item.id,
   label: item.label,
-  finish: FINISHES[item.id],
-  studio: FINISH_STUDIOS[item.id],
+  finish: finishes[item.id],
 }))
 
 /** Finishes under one heading in the picker: a material family, or the finishes that belong to none. */
@@ -55,6 +48,11 @@ export const DEMO_FINISH_GROUPS: readonly DemoFinishGroup[] = (() => {
   return [...groups].map(([label, finishes]) => ({ label, finishes }))
 })()
 
+/** A preset's body color; every preset paints its body. */
+export function bodyOf(finish: Readonly<SurfaceFinish>): string {
+  if (!finish.color) throw new Error('A bench finish needs a body color')
+  return finish.color
+}
 
 // ── ink ────────────────────────────────────────────────────────────────
 
@@ -105,22 +103,25 @@ export function inkFor(body: string): PageInk {
   return { ink, quiet }
 }
 
-type InkStyle = CSSProperties & { readonly '--mf-body': string; readonly '--mf-ink': string; readonly '--mf-quiet': string }
+type InkStyle = CSSProperties & { readonly '--mf-on-ink': string; readonly '--mf-ink': string; readonly '--mf-quiet': string }
 
-/** The page ink a FinishCard's content reads in, for its style prop: the body color and the ink that reads on it. */
+/** The page ink a card's content reads in, for its style prop: the ink that reads on the body, and the body color for text on a solid ink fill. */
 export function inkStyle(body: string): InkStyle {
   const { ink, quiet } = inkFor(body)
-  return { '--mf-body': body, '--mf-ink': ink, '--mf-quiet': quiet }
+  return { '--mf-on-ink': body, '--mf-ink': ink, '--mf-quiet': quiet }
 }
 
 // ── knobs ──────────────────────────────────────────────────────────────
 
-export type FinishNumberKey = Exclude<keyof Finish, 'color' | 'sheenColor' | 'rimColor' | 'detail'>
-export type FinishColorKey = 'color' | 'sheenColor'
+type BaseNumber = 'roughness' | 'metalness'
+type Layer = 'coat' | 'sheen' | 'anisotropy' | 'detail' | 'crackle' | 'edge'
+
+/** Where a knob's value sits in a finish: a field of its own, or a field of one of its layers. */
+export type KnobPath = readonly [BaseNumber | 'color'] | readonly [Layer, string]
 
 export interface NumberKnob {
   readonly kind: 'number'
-  readonly key: FinishNumberKey
+  readonly path: KnobPath
   readonly label: string
   readonly min: number
   readonly max: number
@@ -129,7 +130,7 @@ export interface NumberKnob {
 
 export interface ColorKnob {
   readonly kind: 'color'
-  readonly key: FinishColorKey
+  readonly path: KnobPath
   readonly label: string
 }
 
@@ -138,38 +139,60 @@ export type FinishKnob = NumberKnob | ColorKnob
 // The ranges are the material-finishes tuning panel's, which span three's
 // valid range for each property.
 export const BASE_KNOBS: readonly FinishKnob[] = [
-  { kind: 'color', key: 'color', label: 'Body color' },
-  { kind: 'number', key: 'roughness', label: 'Roughness', min: 0, max: 1, step: 0.01 },
+  { kind: 'color', path: ['color'], label: 'Body color' },
+  { kind: 'number', path: ['roughness'], label: 'Roughness', min: 0, max: 1, step: 0.01 },
 ]
 
 /**
- * The knobs that make a finish its material: the lobes and relief its
- * values turn on. A lobe at zero in the finish has no knob, because raising
- * it would turn the finish into a different material.
+ * The knobs that make a finish its material: the layers it carries. A
+ * layer the finish lacks has no knob, because adding it would turn the
+ * finish into a different material.
  */
-export function ownKnobs(finish: Readonly<Finish>): readonly FinishKnob[] {
+export function ownKnobs(finish: Readonly<SurfaceFinish>): readonly FinishKnob[] {
   const knobs: FinishKnob[] = []
-  if (finish.metalness > 0) knobs.push({ kind: 'number', key: 'metalness', label: 'Metalness', min: 0, max: 1, step: 0.01 })
-  if (finish.clearcoat > 0) {
-    knobs.push({ kind: 'number', key: 'clearcoat', label: 'Coat', min: 0, max: 1, step: 0.01 })
-    knobs.push({ kind: 'number', key: 'clearcoatRoughness', label: 'Coat roughness', min: 0, max: 1, step: 0.01 })
+  if ((finish.metalness ?? 0) > 0) knobs.push({ kind: 'number', path: ['metalness'], label: 'Metalness', min: 0, max: 1, step: 0.01 })
+  if (finish.coat) {
+    knobs.push({ kind: 'number', path: ['coat', 'amount'], label: 'Coat', min: 0, max: 1, step: 0.01 })
+    knobs.push({ kind: 'number', path: ['coat', 'roughness'], label: 'Coat roughness', min: 0, max: 1, step: 0.01 })
   }
-  if (finish.sheen > 0) {
-    knobs.push({ kind: 'color', key: 'sheenColor', label: 'Sheen color' })
-    knobs.push({ kind: 'number', key: 'sheenRoughness', label: 'Sheen roughness', min: 0, max: 1, step: 0.01 })
+  if (finish.sheen) {
+    knobs.push({ kind: 'color', path: ['sheen', 'color'], label: 'Sheen color' })
+    knobs.push({ kind: 'number', path: ['sheen', 'roughness'], label: 'Sheen roughness', min: 0, max: 1, step: 0.01 })
   }
-  if (finish.anisotropy > 0) {
-    knobs.push({ kind: 'number', key: 'anisotropy', label: 'Brushing', min: 0, max: 1, step: 0.01 })
-    knobs.push({ kind: 'number', key: 'anisotropyRotation', label: 'Brushing angle (rad)', min: 0, max: Math.PI, step: 0.01 })
+  if (finish.anisotropy) {
+    knobs.push({ kind: 'number', path: ['anisotropy', 'amount'], label: 'Brushing', min: 0, max: 1, step: 0.01 })
+    knobs.push({ kind: 'number', path: ['anisotropy', 'rotation'], label: 'Brushing angle (rad)', min: 0, max: Math.PI, step: 0.01 })
   }
-  if (finish.detail !== 'none') {
-    knobs.push({ kind: 'number', key: 'detailScale', label: 'Relief size (CSS px)', min: 0.5, max: 160, step: 0.5 })
-    knobs.push({ kind: 'number', key: 'detailDepth', label: 'Relief slope', min: 0, max: 2, step: 0.005 })
+  if (finish.detail) {
+    knobs.push({ kind: 'number', path: ['detail', 'scale'], label: 'Relief size (CSS px)', min: 0.5, max: 160, step: 0.5 })
+    knobs.push({ kind: 'number', path: ['detail', 'depth'], label: 'Relief slope', min: 0, max: 2, step: 0.005 })
   }
-  if (finish.crackle > 0) {
-    knobs.push({ kind: 'number', key: 'crackle', label: 'Crackle', min: 0, max: 1, step: 0.01 })
-    knobs.push({ kind: 'number', key: 'crackleScale', label: 'Crackle size (CSS px)', min: 4, max: 120, step: 1 })
+  if (finish.crackle) {
+    knobs.push({ kind: 'number', path: ['crackle', 'amount'], label: 'Crackle', min: 0, max: 1, step: 0.01 })
+    knobs.push({ kind: 'number', path: ['crackle', 'scale'], label: 'Crackle size (CSS px)', min: 4, max: 120, step: 1 })
   }
-  knobs.push({ kind: 'number', key: 'edgeWidth', label: 'Edge width (CSS px)', min: 0, max: 120, step: 0.5 })
+  knobs.push({ kind: 'number', path: ['edge', 'width'], label: 'Edge width (CSS px)', min: 0, max: 120, step: 0.5 })
   return knobs
 }
+
+/** A knob's value in a finish; a field the finish leaves out reads as the library's neutral value. */
+export function knobValue(finish: Readonly<SurfaceFinish>, path: KnobPath): number | string {
+  if (path.length === 1) {
+    const [field] = path
+    return finish[field] ?? NEUTRAL[field] ?? ''
+  }
+  const [field, key] = path
+  const layer: Readonly<Record<string, number | string | null>> | null | undefined = finish[field]
+  const value = layer?.[key]
+  if (value === undefined || value === null) throw new Error(`The finish has no ${path.join('.')}`)
+  return String(value) === value ? value : Number(value)
+}
+
+/** A copy of a finish with one knob's value changed. */
+export function withKnob(finish: Readonly<SurfaceFinish>, path: KnobPath, value: number | string): SurfaceFinish {
+  if (path.length === 1) return { ...finish, [path[0]]: value }
+  const [field, key] = path
+  return { ...finish, [field]: { ...finish[field], [key]: value } }
+}
+
+const NEUTRAL: Pick<FinishValues, BaseNumber | 'color'> = { roughness: 0.55, metalness: 0, color: null }

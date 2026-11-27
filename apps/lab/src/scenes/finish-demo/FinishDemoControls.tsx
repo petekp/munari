@@ -1,15 +1,16 @@
 // Finish demo controls — the pickers, knobs and code listing of the bench.
 //
-// Every control writes through the actions in finishDemoRecipe, and the
-// listing renders the lines that module prints, so the page cannot show
+// Every knob hands back a changed copy of the card's finish, and the
+// listing renders the lines finishDemoRecipe prints, so the page cannot show
 // code it does not run.
 
 import { useState } from 'react'
 import { Button, Slider } from '../../components/system'
+import type { SurfaceFinish } from '@petepetrash/munari'
 import type { FinishId, TextLighting } from '../material-finishes/materialFinishesTuning'
-import { DEMO_FINISH_GROUPS, type FinishKnob } from './finishDemoFinishes'
-import { RIG_CHOICES, setFinishColor, setFinishNumber, type BenchCard, type CodeLine } from './finishDemoRecipe'
-import { useTuningVersion, type PageGround } from './FinishDemoStage'
+import { DEMO_FINISH_GROUPS, knobValue, withKnob, type FinishKnob } from './finishDemoFinishes'
+import { RIG_CHOICES, type CodeLine } from './finishDemoRecipe'
+import type { PageGround } from './FinishDemoStage'
 
 interface ChoiceProps<Value extends string> {
   readonly label: string
@@ -40,7 +41,7 @@ export function FinishPicker({ value, onSelect }: { readonly value: FinishId; re
             {group.finishes.map((item) => (
               <li key={item.id}>
                 <button type="button" className="fd-finish" aria-pressed={value === item.id} onClick={() => onSelect(item.id)}>
-                  <span className="fd-swatch" style={{ background: item.finish.color }} aria-hidden />
+                  <span className="fd-swatch" style={{ background: item.finish.color ?? undefined }} aria-hidden />
                   <strong>{item.label}</strong>
                 </button>
               </li>
@@ -67,13 +68,19 @@ function decimalsOf(step: number): number {
   return fraction.length
 }
 
-export function KnobControl({ knob, card }: { readonly knob: FinishKnob; readonly card: BenchCard }) {
-  useTuningVersion()
+interface KnobControlProps {
+  readonly knob: FinishKnob
+  readonly finish: SurfaceFinish
+  readonly onChange: (next: SurfaceFinish) => void
+}
+
+export function KnobControl({ knob, finish, onChange }: KnobControlProps) {
+  const value = knobValue(finish, knob.path)
   if (knob.kind === 'color') {
     return (
       <label className="fd-color">
         <span className="m-small">{knob.label}</span>
-        <input type="color" value={card.finish[knob.key]} onChange={(event) => setFinishColor(card, knob.key, event.target.value)} />
+        <input type="color" value={String(value)} onChange={(event) => onChange(withKnob(finish, knob.path, event.target.value))} />
       </label>
     )
   }
@@ -83,8 +90,8 @@ export function KnobControl({ knob, card }: { readonly knob: FinishKnob; readonl
       min={knob.min}
       max={knob.max}
       step={knob.step}
-      value={Number(card.finish[knob.key].toFixed(decimalsOf(knob.step)))}
-      onChange={(value) => setFinishNumber(card, knob.key, value)}
+      value={Number(Number(value).toFixed(decimalsOf(knob.step)))}
+      onChange={(next) => onChange(withKnob(finish, knob.path, next))}
     />
   )
 }

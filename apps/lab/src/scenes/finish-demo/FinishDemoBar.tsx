@@ -15,4 +15,4 @@ export function DemoBar({ inScene }: { readonly inScene: boolean }) {
 }
 
 /** Where the code on this page comes from. */
-export const CODE_NOTE = 'The finish code is the lab’s, from the material finishes scene. The library has no finish API yet.'
+export const CODE_NOTE = 'The finishes are the presets in registry/finishes: copy that file and edit any value. RecaptureOnStyle is the material finishes scene’s.'
