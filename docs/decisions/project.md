@@ -8,7 +8,9 @@ Rules for the repository shape, the published package, the kernel boundary, and 
 
 The only public package is `@petepetrash/munari`, built from `packages/react`. `@munari/core` (`packages/core`) is the kernel. It has zero runtime dependencies and is never published on its own. `registry/` holds copyable behaviors that are never published. `apps/lab` is a consumer, and `instruments/` holds maintained measurements.
 
-`three` and `@react-three/fiber` are peer dependencies, so a consumer app has one copy of three. The binding is specific to Three.js, and no renderer-abstraction layer exists. The DOM stays the retained content, and the scene shows its actual pixels rather than a rebuilt likeness.
+`three` and `@react-three/fiber` are peer dependencies, so a consumer app has one copy of three. The root binding is specific to Three.js, and no renderer-abstraction layer exists. The DOM stays the retained content, and the scene shows its actual pixels rather than a rebuilt likeness.
+
+An opt-in zero-Three subpath, `@petepetrash/munari/gpu`, alongside the workspace CLI package `@petepetrash/munari-cli` (`#81`), keeps `three`, `@react-three/fiber`, and runtime TypeGPU out of pages that target WebGPU directly.
 
 <a id="2"></a>
 
@@ -83,3 +85,13 @@ The part ledger is such a gap. A Surface with a declared part and no registered 
 Agent-facing work uses the same content, control and evidence owners as consumer code. An agent requests application intent, then checks the relevant receipts and the visible result. There is no second mutable state and no setter that can fake readiness or a hold. Scene tuning stays scene policy. A new observation is a bounded, read-only view that claims no work and retains no sources by default.
 
 `docs/system-model.md` names ownership and evidence. `docs/agent-workflow.md` routes a task to its control and check. `docs/agent-system-plan.md` is unbuilt except where a stage records its status. A pilot that adds state, idle work or required reading without an observed benefit is removed (#37).
+
+<a id="81"></a>
+
+## #81 — `@petepetrash/munari/gpu`, Material Manifests, and `munari` CLI
+
+Pages that target WebGPU without a Three.js scene import `@petepetrash/munari/gpu` (`SurfaceCanvas`, `Surface`, `createManifestDriver`, `unlitSurfaceManifest`, `createSurfaceLight`, `pixelGridSnap`). It runs directly over `@munari/core` (`gpuSurface` payload: `80,069 B` gzip loaded + `42,106 B` gzip deferred for finishes and 64×64 LTC softbox tables, vs `537,715 B` gzip loaded on the Three.js `surface` entry) with `three`, `@react-three/fiber`, and `@zumer/snapdom` optional and excluded by bundle and boundary checks.
+
+Material authors edit standalone TypeGPU `*.material.ts` modules from `registry/materials/` (installed cleanly via `packages/cli` — `@petepetrash/munari-cli` `init`, `list`, `add`, `compile`, `check`), which `unplugin-typegpu` compiles ahead of time into zero-dependency `*.material.gen.ts` manifests with static WGSL and `DataView` uniform packers verified byte-for-byte against `typed-binary` (`0` TypeGPU runtime modules in app bundles).
+
+The `/gpu` host preserves retained DOM focus/input state across `@group(0)`/`@group(1)`/`@group(2)` pass draws (two-pass backdrop copy `#80` with zero backdrop copy cost for opaque finishes), applies DPR 2 `pixelGridSnap`, degrades gracefully to live page HTML when WebGPU is unavailable or after a repeated `device.lost` within `10 s` (`#73`), and is verified end-to-end in Chrome by `instruments/gpu-runtime/run.mjs` (`npm run gate:gpu`).

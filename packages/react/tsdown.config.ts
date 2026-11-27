@@ -49,7 +49,7 @@ const useClientDirective = {
 //    still travels inside the package (#1): `alwaysBundle` keeps it in the
 //    output, now as nested modules.
 export default defineConfig({
-  entry: ['src/index.ts', 'src/advanced.ts', 'src/snapdom.ts'],
+  entry: ['src/index.ts', 'src/advanced.ts', 'src/gpu.ts', 'src/snapdom.ts'],
   outDir: 'dist',
   format: ['esm'],
   dts: true,

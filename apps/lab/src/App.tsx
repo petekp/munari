@@ -49,6 +49,7 @@ const FrontierPrototypeApp = lazy(() => import('./scenes/frontier-prototype/Fron
 const BeyondPrototypeApp = lazy(() => import('./scenes/beyond-prototype/BeyondPrototype').then(m => ({ default: m.BeyondPrototypeApp })))
 const SignaturePrototypeApp = lazy(() => import('./scenes/signature-prototype/SignaturePrototype').then(m => ({ default: m.SignaturePrototypeApp })))
 const WordmarkApp = lazy(() => import('./scenes/wordmark/Wordmark').then(m => ({ default: m.WordmarkApp })))
+const GpuStudioApp = lazy(() => import('./scenes/gpu-studio/GpuStudio').then(m => ({ default: m.GpuStudioApp })))
 
 // The promoted scene roster is decisions.md #75. URL-only studies stay beside
 // it without claiming promotion: the candidates bench, refraction, gallery,
@@ -83,6 +84,7 @@ const LAB_SCENES = [
   'frontier-prototype',
   'beyond-prototype',
   'signature-prototype',
+  'gpu-studio',
 ] as const
 
 type SceneId = 'home' | DemoId | (typeof LAB_SCENES)[number]
@@ -152,6 +154,7 @@ const PAGE_SCENES = {
   lamp: LampApp,
   rain: RainApp,
   'distortion-wave': DistortionWaveApp,
+  'gpu-studio': GpuStudioApp,
 } as const
 
 /**
@@ -245,7 +248,7 @@ const SITE_LAZY_PAGES = {
   'beyond-prototype': BeyondPrototypeApp,
   'signature-prototype': SignaturePrototypeApp,
 } as const
-const OMITS_NOTICE = new Set<SceneId>(['home', 'why', 'architecture', 'polymer-prototype', 'material-finishes', 'finish-demo', 'frontier-prototype', 'beyond-prototype', 'signature-prototype', 'marble-hand', 'plume', 'postcard'])
+const OMITS_NOTICE = new Set<SceneId>(['home', 'why', 'architecture', 'polymer-prototype', 'material-finishes', 'finish-demo', 'frontier-prototype', 'beyond-prototype', 'signature-prototype', 'marble-hand', 'plume', 'postcard', 'gpu-studio'])
 
 function isSitePage(scene: SceneId): boolean {
   return scene in SITE_TITLES

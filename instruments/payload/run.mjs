@@ -47,6 +47,7 @@ if (unrecorded.length > 0 || unbuilt.length > 0) {
 const alias = [
   { find: /^@petepetrash\/munari$/, replacement: join(dist, 'index.js') },
   { find: /^@petepetrash\/munari\/advanced$/, replacement: join(dist, 'advanced.js') },
+  { find: /^@petepetrash\/munari\/gpu$/, replacement: join(dist, 'gpu.js') },
   { find: /^@petepetrash\/munari\/snapdom$/, replacement: join(dist, 'snapdom.js') },
 ]
 

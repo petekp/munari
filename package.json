@@ -16,9 +16,11 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p apps/lab && tsc --noEmit -p registry && tsc --noEmit -p tools",
     "lint": "oxlint . --deny-warnings",
     "build": "npm run build -w @petepetrash/munari",
+    "munari": "node packages/cli/bin/munari.mjs",
     "gate:fisheye-pointer": "node instruments/fisheye-pointer/run.mjs",
     "gate:slider-drag": "node instruments/slider-drag/run.mjs",
     "gate:frame-surface": "node instruments/frame-surface/run.mjs",
+    "gate:gpu": "node instruments/gpu-runtime/run.mjs",
     "gate:glass-effects": "node instruments/glass-effects/run.mjs",
     "gate:genie-duplicate": "node instruments/genie-drain/no-duplicate-drag.mjs",
     "gate:genie-film": "node instruments/genie-drain/film-window.mjs",
@@ -104,7 +106,9 @@
     "react-dom": "^19.2.7",
     "three": "^0.186.1",
     "tsdown": "^0.22.14",
+    "typegpu": "^0.12.12",
     "typescript": "^7.0.2",
+    "unplugin-typegpu": "^0.12.9",
     "vite": "^8.2.0",
     "vitest": "^4.1.10"
   }

@@ -119,6 +119,46 @@ describe('the hourglass', () => {
     ).toEqual([])
   })
 
+  it('gpu subpath never imports three, @react-three/fiber, typegpu, or @zumer/snapdom', () => {
+    const dir = join(ROOT, 'packages/react/src')
+    const gpuFiles = [
+      join(dir, 'gpu.ts'),
+      ...sourceFiles(join(dir, 'gpu')).filter((file) => !/\.test\.tsx?$/.test(file)),
+    ]
+    const visited = new Set<string>()
+    const queue = [...gpuFiles]
+    const bad: Violation[] = []
+    while (queue.length > 0) {
+      const file = queue.pop()!
+      if (visited.has(file)) continue
+      visited.add(file)
+      for (const spec of importSpecifiers(readFileSync(file, 'utf8'), file)) {
+        if (spec.startsWith('.')) {
+          if (escapesDir(file, spec, dir)) {
+            bad.push({ file: relative(ROOT, file), spec })
+          } else {
+            const base = resolve(dirname(file), spec)
+            for (const cand of [base, `${base}.ts`, `${base}.tsx`, join(base, 'index.ts')]) {
+              if (readdirSync(dirname(cand)).includes(basename(cand))) {
+                queue.push(cand)
+                break
+              }
+            }
+          }
+          continue
+        }
+        const ok =
+          spec === '@munari/core' ||
+          spec === 'react' ||
+          spec === 'react-dom' ||
+          spec.startsWith('react/') ||
+          spec.startsWith('react-dom/')
+        if (!ok) bad.push({ file: relative(ROOT, file), spec })
+      }
+    }
+    expect(bad).toEqual([])
+  })
+
   it('conformance suites reach core through @munari/core, never relative paths or react', () => {
     const base = join(ROOT, 'tests/conformance')
     expect(

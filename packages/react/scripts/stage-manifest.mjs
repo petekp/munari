@@ -29,7 +29,7 @@ const pkgDir = resolve(here, '..')
 const repoRoot = resolve(pkgDir, '..', '..')
 const dist = join(pkgDir, 'dist')
 
-for (const entry of ['index.js', 'advanced.js', 'snapdom.js']) {
+for (const entry of ['index.js', 'advanced.js', 'gpu.js', 'snapdom.js']) {
   if (existsSync(join(dist, entry))) continue
   console.error(`stage-manifest: dist/${entry} is missing — run the build first.`)
   process.exit(1)
@@ -53,6 +53,7 @@ const staged = {
   exports: {
     '.': { types: './index.d.ts', default: './index.js' },
     './advanced': { types: './advanced.d.ts', default: './advanced.js' },
+    './gpu': { types: './gpu.d.ts', default: './gpu.js' },
     './snapdom': { types: './snapdom.d.ts', default: './snapdom.js' },
     './style.css': './style.css',
   },
@@ -84,6 +85,14 @@ const staged = {
 const javascript = readdirSync(dist, { recursive: true }).filter((entry) => entry.endsWith('.js'))
 for (const entry of javascript) {
   const emitted = readFileSync(join(dist, entry), 'utf8')
+  if (entry === 'gpu.js' || entry.startsWith('gpu/')) {
+    for (const forbidden of ['\'three', '"three', '@react-three/fiber', 'typegpu', '@zumer/snapdom']) {
+      if (emitted.includes(forbidden)) {
+        console.error(`stage-manifest: dist/${entry} imports forbidden runtime dep ${forbidden}.`)
+        process.exit(1)
+      }
+    }
+  }
   if (!emitted.includes('@munari/core')) continue
   console.error(`stage-manifest: dist/${entry} still imports @munari/core — it was not bundled.`)
   console.error('Check `deps.alwaysBundle` in tsdown.config.ts.')

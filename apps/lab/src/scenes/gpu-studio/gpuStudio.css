@@ -1,0 +1,308 @@
+.gpu-studio-root {
+  min-height: 100vh;
+  background: #e9ecf1;
+  color: #161b26;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.gpu-studio-canvas-wrap {
+  min-height: 100vh;
+  padding: 20px 28px 40px;
+  box-sizing: border-box;
+}
+
+.gpu-studio-topbar {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 1080px;
+  margin: 0 auto 24px;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(22, 27, 38, 0.12);
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.05);
+}
+
+.gpu-studio-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.gpu-studio-brand h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.gpu-studio-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e0ecff;
+  color: #1d4ed8;
+}
+
+.gpu-studio-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.gpu-studio-tab {
+  padding: 6px 12px;
+  border: 1px solid rgba(22, 27, 38, 0.14);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.gpu-studio-tab[aria-pressed='true'] {
+  background: #161b26;
+  color: #ffffff;
+  border-color: #161b26;
+}
+
+.gpu-studio-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.gpu-studio-btn {
+  padding: 6px 12px;
+  border: 1px solid rgba(22, 27, 38, 0.16);
+  border-radius: 8px;
+  background: #ffffff;
+  color: #161b26;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.gpu-studio-btn:hover,
+.gpu-studio-btn[data-hover='true'] {
+  background: #f1f5f9;
+}
+
+.gpu-studio-stage {
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.gpu-studio-controls {
+  position: relative;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ── Flight card ── */
+.gpu-flight-card {
+  width: 340px;
+  padding: 18px;
+  box-sizing: border-box;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid rgba(22, 27, 38, 0.12);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gpu-flight-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.gpu-flight-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid rgba(22, 27, 38, 0.22);
+  border-radius: 8px;
+  font-size: 13px;
+  color: #161b26;
+  background: #f8fafc;
+}
+
+.gpu-flight-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* ── Fisheye ── */
+.gpu-fisheye-panel {
+  width: 360px;
+  height: 652px;
+  border-radius: 14px;
+  background: #ffffff;
+  border: 1px solid rgba(22, 27, 38, 0.14);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.gpu-fisheye-header {
+  height: 36px;
+  padding: 6px 10px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(22, 27, 38, 0.1);
+  background: #f8fafc;
+}
+
+.gpu-fisheye-filter {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 2px 8px;
+  font-size: 12px;
+  border: 1px solid rgba(22, 27, 38, 0.18);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #161b26;
+}
+
+.gpu-fisheye-row {
+  height: 22px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(22, 27, 38, 0.05);
+  cursor: pointer;
+}
+
+.gpu-fisheye-row:hover,
+.gpu-fisheye-row[data-hover='true'] {
+  background: #eff6ff;
+}
+
+.gpu-fisheye-row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gpu-fisheye-done {
+  padding: 1px 6px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid rgba(22, 27, 38, 0.2);
+  background: #ffffff;
+  color: #161b26;
+  cursor: pointer;
+}
+
+/* ── Materials & Finishes ── */
+.gpu-materials-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 20px;
+  max-width: 980px;
+}
+
+.gpu-finish-card {
+  width: 210px;
+  height: 150px;
+  padding: 16px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: var(--munari-body, #7d1924);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.gpu-foil-card {
+  width: 210px;
+  height: 150px;
+  padding: 16px;
+  box-sizing: border-box;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #1e293b, #334155);
+  color: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.gpu-backdrop-stage {
+  position: relative;
+  width: 300px;
+  height: 150px;
+}
+
+.gpu-backdrop-back {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.gpu-backdrop-front {
+  position: absolute;
+  right: 0;
+  top: 14px;
+}
+
+.gpu-backdrop-card {
+  width: 210px;
+  height: 120px;
+  border-radius: 12px;
+  background: #e85d04;
+  color: #ffffff;
+  padding: 14px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.ui-root:has([data-testid='backdrop-glass']),
+.ui-root:has([data-testid^='finish-']) {
+  background: transparent;
+}
+
+.gpu-glass-card {
+  width: 170px;
+  height: 120px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #0f172a;
+  padding: 12px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}

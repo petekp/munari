@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Munari WebGPU Claims Probe</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: rgb(40, 101, 180);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      .stage {
+        position: relative;
+        width: 800px;
+        height: 220px;
+        background: rgb(40, 101, 180);
+      }
+      .zone {
+        position: absolute;
+        top: 20px;
+        width: 160px;
+        height: 120px;
+      }
+      .zone-label {
+        position: absolute;
+        top: 150px;
+        width: 160px;
+        color: #fff;
+        font-size: 11px;
+      }
+      .swatch-card {
+        width: 160px;
+        height: 120px;
+        background: rgba(200, 80, 40, 0.5);
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 28px;
+        font-weight: 700;
+        -webkit-font-smoothing: antialiased;
+      }
+      #zone-a {
+        left: 20px;
+      }
+      #zone-b {
+        left: 200px;
+      }
+      #zone-c {
+        left: 380px;
+      }
+      #zone-d {
+        left: 560px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage" id="stage">
+      <div id="zone-a" class="zone">
+        <div class="swatch-card">Ag</div>
+      </div>
+      <canvas id="zone-b" class="zone" width="160" height="120"></canvas>
+      <canvas id="zone-c" class="zone" width="160" height="120"></canvas>
+      <canvas id="zone-d" class="zone" width="160" height="120"></canvas>
+    </div>
+    <pre id="probe-out" style="color: #fff; padding: 16px; font-size: 11px"></pre>
+    <script type="module" src="/probeEntry.ts"></script>
+  </body>
+</html>

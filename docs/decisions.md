@@ -2,7 +2,7 @@
 
 Numbered rules that govern Munari today, grouped by area. Each rule states the current constraint. A measured rule keeps the number that justifies it. Git history keeps earlier versions and the evidence behind them. Terms follow the glossary in [CONTEXT.md](../CONTEXT.md).
 
-Code cites a rule as `decisions.md #N`, and this index maps the number to its file. Numbers are permanent. A retired number is never reused. A new decision takes the next free number, #81, in the file for its area, and gets a row here.
+Code cites a rule as `decisions.md #N`, and this index maps the number to its file. Numbers are permanent. A retired number is never reused. A new decision takes the next free number, #82, in the file for its area, and gets a row here.
 
 Changing a rule needs evidence and matching changes to its owning tests (#2). Browser facts and how they were measured live in [platform.md](platform.md).
 
@@ -98,3 +98,4 @@ Changing a rule needs evidence and matching changes to its owning tests (#2). Br
 | <a id="78"></a>[#78](decisions/input.md#78) | A nearer scene mesh takes the pointer from the Surface behind it |
 | <a id="79"></a>[#79](decisions/renderer.md#79) | A finish is data on the Surface, and the canvas lights it |
 | <a id="80"></a>[#80](decisions/renderer.md#80) | A glass finish samples the canvas once per render, decoded |
+| <a id="81"></a>[#81](decisions/project.md#81) | `@petepetrash/munari/gpu`, Material Manifests, and `munari` CLI |

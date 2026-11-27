@@ -1,0 +1,123 @@
+.fisheye-page {
+  position: fixed;
+  inset: 0;
+  background: #f3f1ec;
+  display: grid;
+  place-items: center;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.fisheye-stage {
+  display: flex;
+  align-items: center;
+  gap: 64px;
+}
+
+.fisheye-holder {
+  flex: none;
+}
+
+.fisheye-panel {
+  display: flex;
+  flex-direction: column;
+  background: #fbfaf7;
+  outline: 1px solid #d7d2c8;
+  border-radius: 10px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.fisheye-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid #d7d2c8;
+  background: #fbfaf7;
+  box-sizing: border-box;
+}
+
+.fisheye-filter {
+  appearance: none;
+  border: 1px solid #d7d2c8;
+  border-radius: 6px;
+  background: #fff;
+  color: #18181b;
+  font-size: 11px;
+  line-height: 1;
+  padding: 5px 8px;
+  width: 150px;
+}
+
+.fisheye-count {
+  margin-left: auto;
+  font-size: 9px;
+  font-weight: 600;
+  color: #18181b;
+  opacity: 0.55;
+}
+
+.fisheye-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 0 10px;
+  background: #fbfaf7;
+  color: #18181b;
+  font-size: 10px;
+  line-height: 1;
+  border-bottom: 1px solid #e7e4dc;
+  cursor: pointer;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.fisheye-row:hover,
+.fisheye-row[data-hover] {
+  background: #fff;
+}
+
+.fisheye-row:active,
+.fisheye-row[data-active] {
+  background: #f3f1ec;
+}
+
+.fisheye-row[data-dim] {
+  opacity: 0.3;
+}
+
+.fisheye-row[data-selected] {
+  background: #e6eefb;
+}
+
+.fisheye-num {
+  width: 34px;
+  font-weight: 600;
+  opacity: 0.6;
+}
+
+.fisheye-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fisheye-act {
+  margin-left: auto;
+  border: 1px solid #d7d2c8;
+  border-radius: 4px;
+  background: #fff;
+  color: #18181b;
+  font-size: 10px;
+  width: 18px;
+  height: 16px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.fisheye-row[data-done] .fisheye-act {
+  background: #1d4ed8;
+  color: #fff;
+  border-color: #1d4ed8;
+}

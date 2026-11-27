@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "materials": [
+    {
+      "name": "flight-card",
+      "file": "flightCard",
+      "manifest": "flightCardManifest",
+      "needsBackdrop": false,
+      "summary": "Aerodynamic lift bend, specular gloss sweep, and surface curvature shading for cards in motion."
+    },
+    {
+      "name": "fisheye-lens",
+      "file": "fisheyeLens",
+      "manifest": "fisheyeLensManifest",
+      "needsBackdrop": false,
+      "summary": "Vertex-warped magnifying lens shading reading auto-inferred @location(2) aSlope and @location(3) aLens."
+    },
+    {
+      "name": "foil",
+      "file": "foil",
+      "manifest": "foilManifest",
+      "needsBackdrop": false,
+      "summary": "Thin-film iridescent rainbow foil sweep driven by pointer tilt and phase shift."
+    },
+    {
+      "name": "vignette",
+      "file": "vignette",
+      "manifest": "vignetteManifest",
+      "needsBackdrop": false,
+      "summary": "Smooth radial edge vignette and subtle focal glow preserving premultiplied alpha."
+    },
+    {
+      "name": "tilt-shadow",
+      "file": "tiltShadow",
+      "manifest": "tiltShadowManifest",
+      "needsBackdrop": false,
+      "summary": "Directional bevel and warm/cool tilt lighting across DOM cards."
+    },
+    {
+      "name": "glass-refract",
+      "file": "glassRefract",
+      "manifest": "glassRefractManifest",
+      "needsBackdrop": true,
+      "summary": "Refractive frosted glass sampling the two-pass @group(2) canvas backdrop with Fresnel highlight."
+    }
+  ],
+  "tools": [
+    {
+      "name": "finishes",
+      "sourceDir": "finishes",
+      "files": ["finishes.ts"],
+      "summary": "Seventeen tuned SurfaceFinish presets with contrasting text colors."
+    },
+    {
+      "name": "glass",
+      "sourceDir": "glass",
+      "files": ["glassSdf.tsx", "glassSdfNodes.ts"],
+      "summary": "Screen-space glass SDF compositor (Three/TSL)."
+    },
+    {
+      "name": "focus-orbit",
+      "sourceDir": "focus-orbit",
+      "files": ["FocusOrbitRig.tsx", "arcLayout.ts", "cameraPose.ts"],
+      "summary": "Workspace cylindrical arc layout and focus orbit camera rig."
+    }
+  ]
+}

@@ -11,6 +11,10 @@
     "gzipBytes": 129841,
     "marginBytes": 2000
   },
+  "gpuSurface": {
+    "gzipBytes": 80069,
+    "marginBytes": 2000
+  },
   "lazyCanvas": {
     "gzipBytes": 189772,
     "marginBytes": 2000
