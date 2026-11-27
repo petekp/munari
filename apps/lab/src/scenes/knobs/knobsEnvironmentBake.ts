@@ -2,7 +2,7 @@
 // environment, handed over only once its pipelines are built.
 //
 // The law: the bake's pipelines are built off the frame first, so the first
-// refresh blocks nothing (decisions.md #80). The dry run's target is the
+// refresh blocks nothing (decisions.md #81). The dry run's target is the
 // environment from the start: every material keys its build on the
 // environment, and one set later rebuilt each of them (15 node builds became
 // 80, m2, 2026-11-26).

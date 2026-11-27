@@ -26,7 +26,7 @@ Renderer tone mapping stays `NoToneMapping`, because the final pass ignores `ton
 
 `SurfaceCanvas` draws every canvas frame through Three's `DirectRenderPipeline`. Blending happens in the sRGB canvas, as on WebGL, and added light survives over transparent pixels. Draws into a render target are unchanged. `getRenderTarget()` is `null` during a canvas draw, so a presenter's canvas draw presents directly; only a color-writing pass into a render target defers to the end of the frame (#25).
 
-A custom material returns color through `premultipliedOutput` (premultiplied linear) or `encodedOutput` (premultiplied sRGB), and added light comes from blend factors. A translucent material sets `premultipliedAlpha: true`. A material that samples the canvas, such as stock transmission, draws too bright: over sRGB (40, 101, 180) it drew (110, 169, 219). Glass renders into its own render target and samples that, as `registry/glass/` does.
+A custom material returns color through `premultipliedOutput` (premultiplied linear) or `encodedOutput` (premultiplied sRGB), and added light comes from blend factors. A translucent material sets `premultipliedAlpha: true`. The canvas holds premultiplied sRGB, so a material that samples it divides out the alpha and decodes each sample before using it. Stock transmission reads the canvas as linear and draws too bright: over sRGB (40, 101, 180) it drew (110, 169, 219), one extra encode. The glass finish decodes its samples (#80). `registry/glass/` renders the scene into its own render target and samples that.
 
 <a id="73"></a>
 
@@ -62,7 +62,41 @@ A page downloads finish code only for the finishes it shows. The base material, 
 
 A finish's first frame waits for its code and for what it reflects. Its material is held until every chunk its layers need has loaded and the rig has baked the environment it uses, so the card keeps its page look meanwhile. A finish that gains a layer keeps drawing its current material until that layer's chunk loads. Its environment map and side are written at commit, so the build #76 starts sees them and the material compiles once. Before its first frame, a finish pays for loading its code, the node build, the held compile, one PMREM bake per environment kind the canvas uses, and for a softbox key, the LTC load.
 
-## #80 — A SurfaceCanvas draws nothing whose pipelines are not built
+<a id="80"></a>
+
+## #80 — A glass finish samples the canvas once per render, decoded
+
+Glass is the `transmission` layer of a finish: `{ amount, thickness, dispersion }`. `amount` of the body's light passes through, showing what the canvas drew behind the Surface. The face's normal bends it, `roughness` frosts it, and `dispersion` (20 / Abbe number, as in KHR_materials_dispersion) splits it by color. `color` is the tint: the share of white that passes through the flat face of a slab `thickness` CSS px deep. A longer path through the bevel deepens it (Beer–Lambert, as in KHR_materials_volume). The tint is the body color because glass's color is the light its body absorbs. A separate tint field would leave `color` with no meaning on glass. `--munari-body` is written as for any finish.
+
+The backdrop is one copy of the canvas per render. Every glass material on a canvas samples the same `viewportTexture()`, and three copies it at the first glass draw. So it holds what drew before that draw. A glass sees only what draws before it: the lab draws its backdrop Surface first and gives the glass cards `renderOrder={1}`. A glass that draws later than another glass is not in the copy. A glass finish blends and writes no depth on any mesh, opaque or transparent, because where the canvas behind it is empty the page shows through it (#79). Over an empty canvas the page behind the canvas shows through unbent, dimmed by the tint's luminance. The page's share passes through the blend, which also passes the canvas directly under the glass, unbent. Where a bent ray lands on empty canvas over a drawn pixel, that pixel shows unbent. Partly covered pixels pass about (1 − coverage)² of the page instead of (1 − coverage). The lab's opaque backdrop shows neither.
+
+Each sample divides out its alpha and decodes from sRGB (#72). With `thickness: 0`, `ior: 1.0001`, white and no lights, the glass drew the backdrop exactly: 0/255 difference over 4 × 6,600 px. With the decode removed it differed by up to 72/255 on every pixel (m2, 2026-11-26).
+
+The copy has no mipmaps. three builds the mipmap pass for the canvas format, `bgra8unorm` on macOS, with the blocking `createRenderPipeline` at first use. That is the freeze #76 removed. A blur drawn in its own render would run before the copy it reads, because three submits a nested render's commands first. So frost is 8 taps on the full-resolution copy, on a golden-angle spiral that each pixel turns by its own angle. Eight sharp copies of the backdrop become grain. Dispersion spreads the taps' IORs over a spectral ramp. A finish draws one tap when its blur is under 0.35 CSS px and it has no dispersion.
+
+`registry/glass/` stays separate. It is a compositor that owns its render targets and pass order, so overlapping panels see each other and merge. The finish is one draw in a mesh's material slot. It takes the compositor's approach, not its code: the eye ray refracted through the bevel normal, and the spectral tap loop.
+
+Transmission loads as its own layer chunk (#79) the first time a finish with the layer mounts. The built module in `packages/react/dist` is 1,821 bytes gzip. With it, the gate's eager `surface` entry grew by 62 bytes, from 535,775 to 535,837 (limit 537,833), and its deferred code by 1,601 bytes (m2, 2026-11-27).
+
+Cost on m2 at 1440 × 900, DPR 2, with a full-screen backdrop Surface. The frame time is wall-clock: 30 back-to-back renders, each awaited to `onSubmittedWorkDone`, so it counts CPU encoding and GPU work together. Each page load takes the median of 6 such batches. The table gives the median of 3 page loads, with the lowest and highest load, in ms per frame:
+
+| Cards | `polymer-charcoal` | `glass-clear` | `glass-cobalt` | `glass-frosted` | `glass-crystal` |
+|---|---|---|---|---|---|
+| 1 | 0.39 (0.39–0.43) | 0.62 (0.62–2.32) | 0.71 (0.67–0.73) | 0.68 (0.68–0.69) | 0.73 (0.70–0.76) |
+| 4 | 0.71 (0.59–0.73) | 0.87 (0.87–0.92) | 0.91 (0.86–0.93) | 1.10 (1.09–2.26) | 1.07 (1.06–1.10) |
+| 12 | 1.19 (1.18–1.21) | 1.57 (1.54–1.64) | 1.60 (1.54–2.12) | 2.19 (2.19–2.19) | 2.15 (2.10–3.65) |
+
+Differences under about 0.1 ms are within the spread between loads, and a single load can run far slower than the others. `glass-clear` and `glass-cobalt` draw the same one-tap shader. The eight-tap presets, `glass-frosted` and `glass-crystal`, cost about 1 ms more than `polymer-charcoal` at 12 cards. The glass presets use the `gradient` environment and `polymer-charcoal` the `even` one, so the gap also holds the environment's cost.
+
+The copy is one `bgra8unorm` texture the size of the drawing buffer, 2880 × 1800 here (20.7 MB), counted from the WebGPU device's `createTexture` calls. three's `info.memory` counts it at 4 bytes, the size it had when created.
+
+A glass page made one more `createRenderPipeline` call than a `polymer-charcoal` page, for `MeshBasicMaterial`. A `lacquer-crimson` page, which also uses the `gradient` environment, makes the same call, so it belongs to that environment (#79), not to transmission. Timing the call cannot show how long it blocks, because Dawn compiles on the GPU process. The slowest asynchronous pipeline build per page load took 39.8–73 ms for glass and 20.2–81.5 ms for `polymer-charcoal`. From navigation to a card's first frame, which now includes loading the finish chunks, took 1.38–1.73 s for glass and 1.45–1.65 s for `polymer-charcoal` (3 cold browsers each).
+
+The page copy cannot bend what is behind it. The lab paints it with `color-mix(in srgb, var(--munari-body) 55%, transparent)`, so it reads as tinted glass. Content painted with the opaque `var(--munari-body)` shows a solid slab on the page and glass in the scene.
+
+<a id="81"></a>
+
+## #81 — A SurfaceCanvas draws nothing whose pipelines are not built
 
 Every object a `SurfaceCanvas` draws to the screen waits for its pipelines, not only Surface presenters (#76). The canvas holds a mesh, point set, line or sprite back from each draw until `compileAsync` has built its pipelines under that draw's target and output state. A new object draws with nothing meanwhile. An object whose material changed keeps drawing with its last built material until the new one is built. A light that joins the scene stays off until the builds it causes finish. The rollback cannot restore a light that left the scene, so a removed light can change the lighting of the frames drawn while a replacement builds.
 

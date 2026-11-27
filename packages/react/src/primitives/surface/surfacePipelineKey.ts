@@ -3,7 +3,7 @@
 //
 // The law: two draws share a pipeline exactly when three would key them the
 // same, so a held look is reused only under an equal key and a build is
-// shared only by equal keys (decisions.md #80). The faults these keys follow
+// shared only by equal keys (decisions.md #81). The faults these keys follow
 // are in surfaceCompile.ts's preamble.
 //
 // Ownership: arithmetic on three's state only; nothing here builds or holds.

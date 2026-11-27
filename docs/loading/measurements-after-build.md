@@ -67,7 +67,7 @@ Four things did not improve.
 - Light still stops 617–767 ms once on a cold load. Six pipelines are still
   created with the blocking call. One is the mipmap pipeline. The other five
   were built asynchronously by `waitForDrawPipelines` and then created again
-  with the blocking call. The cause is not known (decisions.md #80).
+  with the blocking call. The cause is not known (decisions.md #81).
 - Bench still creates one `MeshPhysicalNodeMaterial` pipeline with the
   blocking call on every load. The hold never built it. Bench and Knobs also
   create two mipmap pipelines, which their prebuilds made cheap.

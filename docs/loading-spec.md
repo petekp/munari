@@ -1,6 +1,6 @@
 # Loading
 
-**Status: partly built; [decision #81](decisions/surface.md#81) says what.**
+**Status: partly built; [decision #82](decisions/surface.md#82) says what.**
 Source baseline: `5a79523`. This specifies a first-load reporting API for
 munari components.
 
@@ -588,7 +588,7 @@ missing dial or numeral fails.
 - whether a source repaints after a failed font load, since it listens only
   to `loadingdone`.
 
-**Decision entry.** #81 records Shown and its evidence for each relationship,
+**Decision entry.** #82 records Shown and its evidence for each relationship,
 the font check, the recheck as policy, the frame-time clamp, out-of-view
 presenters staying owed, and context-loss ordering. `CONTEXT.md` gains Shown.
 The system model gains one row in "Keep the observable facts separate".

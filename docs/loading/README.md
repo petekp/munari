@@ -1,7 +1,7 @@
 <!-- review-gate author: claude-opus-5-5 -->
 # Loading Munari's effects
 
-Status: built, 2026-11-26. Decisions #80 and #81 state the current
+Status: built, 2026-11-26. Decisions #81 and #82 state the current
 behavior; this page keeps the design and its reasons. The finish API it
 mentions as a proposal has since landed (decision #79).
 

@@ -2,7 +2,7 @@
 // RoomEnvironment.
 //
 // The law: the room's PMREM pipelines are built off the frame first, so the
-// bake itself blocks nothing (decisions.md #80).
+// bake itself blocks nothing (decisions.md #81).
 //
 // Ownership: LightLamp assigns the texture and disposes it.
 

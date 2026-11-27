@@ -1,7 +1,7 @@
 // Canvas loading — what a SurfaceCanvas reports to an enclosing <Loading>.
 //
 // The law: a canvas is shown once its renderer has drawn a frame that held
-// nothing back for its pipelines (decisions.md #80 and #81). A lost renderer
+// nothing back for its pipelines (decisions.md #81 and #82). A lost renderer
 // starts over, because what it drew is gone.
 //
 // Ownership: SurfaceCanvas reports each draw; <Loading> decides what the

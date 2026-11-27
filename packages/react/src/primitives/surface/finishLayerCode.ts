@@ -26,6 +26,7 @@ const LAYER_CHUNKS = {
   sheen: () => import('./finishSheen'),
   scatter: () => import('./finishScatter'),
   crackle: () => import('./finishCrackle'),
+  transmission: () => import('./finishTransmission'),
   'orange-peel': () => import('./finishReliefOrangePeel'),
   brushed: () => import('./finishReliefBrushed'),
   pile: () => import('./finishReliefPile'),
@@ -77,6 +78,7 @@ function layerChunksOf(layers: FinishLayers): LayerChunk[] {
   if (layers.sheen) chunks.push('sheen')
   if (layers.scatter) chunks.push('scatter')
   if (layers.crackle) chunks.push('crackle')
+  if (layers.transmission) chunks.push('transmission')
   if (layers.detail !== null) chunks.push(layers.detail)
   return chunks
 }

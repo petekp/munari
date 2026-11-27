@@ -2,7 +2,7 @@
 // pipelines build: its last built look, or nothing.
 //
 // The law: an object whose pipelines are not built is never drawn as it is
-// (decisions.md #80). Its last built look stands in, and an object with none
+// (decisions.md #81). Its last built look stands in, and an object with none
 // draws nothing; three skips an invisible material without building for it.
 //
 // Ownership: the records and stand-ins; when to hold is surfaceCompile.ts's.

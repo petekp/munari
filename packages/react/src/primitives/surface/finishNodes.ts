@@ -60,6 +60,7 @@ import {
   materialAnisotropy,
   materialClearcoat,
   materialClearcoatRoughness,
+  materialIOR,
   materialMetalness,
   materialRoughness,
   materialSheen,
@@ -88,6 +89,7 @@ import {
 import { encodedOutput, premultipliedOutput } from '../../lib/surfaceOutput'
 import { chunkCode, type FinishLayerCode } from './finishLayerCode'
 import { FinishPhysicalMaterial } from './finishLightingModel'
+import type { CardAxes, Transmitted } from './finishTransmission'
 import type { FinishLayers, FinishUniforms } from './finishUniforms'
 import type { SurfaceDetailKind } from './surfaceFinish'
 
@@ -279,6 +281,8 @@ export function createFinishMaterial(inputs: FinishMaterialInputs, layers: Finis
     bodyColor = mix(bodyColor, clamp(filmF0, vec3(0), vec3(1)), uniforms.film)
   }
 
+  const { glass, diffuseBody } = glassBody(layers, code, { normal: baseNormal, axes: toView, content, bodyColor, uniforms })
+
   // three's softbox key gives no sheen and no scatter, so the key's share of
   // both is emitted here, scaled by the same gain as three's lights.
   let keyLight: Node<'vec3'> = vec3(0)
@@ -295,7 +299,8 @@ export function createFinishMaterial(inputs: FinishMaterialInputs, layers: Finis
     // three's premultiplication already applied the capture's coverage; this
     // adds only the corner coverage.
     material.outputNode = Fn(() => {
-      const covered = output.mul(cornerMask)
+      // Glass fills the capture's empty area with its own coverage.
+      const covered = withGlass(output.rgb, glass ? output.a.add(uncovered) : output.a, glass, uncovered).mul(cornerMask)
       Discard(covered.a.lessThan(DISCARD_ALPHA))
       return covered
     })()
@@ -307,30 +312,90 @@ export function createFinishMaterial(inputs: FinishMaterialInputs, layers: Finis
     material.roughnessNode = filteredRoughness(mix(materialRoughness, float(INK_ROUGHNESS), page.a), baseNormal)
     material.specularIntensityNode = mix(materialSpecularIntensity, float(1), page.a)
     // SAFETY: as above, vec3 to vec3.
-    const bodyEncoded = sRGBTransferOETF(bodyColor) as Node<'vec3'>
+    const bodyEncoded = sRGBTransferOETF(diffuseBody) as Node<'vec3'>
     // SAFETY: as above, vec3 to vec3.
     const albedo = sRGBTransferEOTF(page.rgb.add(bodyEncoded.mul(uncovered))) as Node<'vec3'>
     material.colorNode = vec4(albedo, 1)
     material.emissiveNode = keyEmission.add(albedo.mul(uniforms.emission))
     material.outputNode = Fn(() => {
-      const covered = vec4(rollOff(output.rgb), output.a).mul(cornerMask)
+      const covered = withGlass(rollOff(output.rgb), output.a, glass, uncovered).mul(cornerMask)
       Discard(covered.a.lessThan(DISCARD_ALPHA))
       return premultipliedOutput(covered)
     })()
     return material
   }
 
-  material.colorNode = vec4(bodyColor, 1)
-  material.emissiveNode = keyEmission.add(bodyColor.mul(uniforms.emission))
+  material.colorNode = vec4(diffuseBody, 1)
+  material.emissiveNode = keyEmission.add(diffuseBody.mul(uniforms.emission))
   material.outputNode = Fn(() => {
     // The canvas stores 0..1, so what the roll-off leaves above 1 clips
     // before the composite rather than bleeding into the text's antialiased
     // edge.
-    // SAFETY: as above, vec3 to vec3.
-    const litBody = sRGBTransferOETF(rollOff(output.rgb).saturate()) as Node<'vec3'>
-    const covered = vec4(page.rgb.add(litBody.mul(uncovered)), 1).mul(cornerMask)
+    const covered = underPage(page, rollOff(output.rgb), glass, uncovered).mul(cornerMask)
     Discard(covered.a.lessThan(DISCARD_ALPHA))
     return encodedOutput(covered)
   })()
   return material
+}
+
+interface GlassBody {
+  readonly glass: Transmitted | null
+  /** The body color the lights shade diffusely, linear light. */
+  readonly diffuseBody: Node<'vec3'>
+}
+
+interface GlassInputs {
+  readonly normal: Node<'vec3'>
+  /** The card's axes in view space, or null when they are the camera's. */
+  readonly axes: CardAxes | null
+  readonly content: Node<'vec2'>
+  /** Linear light. */
+  readonly bodyColor: Node<'vec3'>
+  readonly uniforms: FinishUniforms
+}
+
+/**
+ * Glass passes `amount` of its light through and the rest is a diffuse body.
+ * The body color tints what passes, so it is not also the albedo of the
+ * light that passes. A capture body has no one color, so its glass is clear.
+ */
+function glassBody(layers: FinishLayers, code: FinishLayerCode, { bodyColor, uniforms, axes, ...face }: GlassInputs): GlassBody {
+  if (!layers.transmission) return { glass: null, diffuseBody: bodyColor }
+  const transmission = chunkCode(code.transmission, 'transmission')
+  const ownsBody = layers.body !== 'capture'
+  const glass = transmission.transmittedLight({
+    ...face,
+    axes: axes ?? transmission.CAMERA_AXES,
+    tint: ownsBody ? bodyColor : vec3(1),
+    amount: uniforms.transmission,
+    thickness: uniforms.thickness,
+    dispersion: uniforms.dispersion,
+    roughness: materialRoughness,
+    ior: materialIOR,
+    toEye: positionViewDirection,
+  })
+  return { glass, diffuseBody: ownsBody ? bodyColor.mul(float(1).sub(uniforms.transmission)) : bodyColor }
+}
+
+/** The lit body, premultiplied linear, with the light through any glass added where the capture is empty. */
+function withGlass(lit: Node<'vec3'>, alpha: Node<'float'>, glass: Transmitted | null, uncovered: Node<'float'>): Node<'vec4'> {
+  if (!glass) return vec4(lit, alpha)
+  return vec4(lit.add(glass.light.mul(uncovered)), alpha.sub(glass.seeThrough.mul(uncovered)))
+}
+
+/**
+ * The lit body, encoded, under the capture. Glass over an empty canvas is
+ * translucent, so its body composites premultiplied, with the light through
+ * the glass added to the reflections.
+ */
+function underPage(page: Node<'vec4'>, lit: Node<'vec3'>, glass: Transmitted | null, uncovered: Node<'float'>): Node<'vec4'> {
+  if (!glass) {
+    // SAFETY: as above, vec3 to vec3.
+    const litBody = sRGBTransferOETF(lit.saturate()) as Node<'vec3'>
+    return vec4(page.rgb.add(litBody.mul(uncovered)), 1)
+  }
+  const coverage = float(1).sub(glass.seeThrough)
+  // SAFETY: as above, vec3 to vec3.
+  const body = sRGBTransferOETF(lit.add(glass.light).div(max(coverage, float(1e-4))).saturate()) as Node<'vec3'>
+  return vec4(page.rgb.add(body.mul(coverage).mul(uncovered)), page.a.add(coverage.mul(uncovered)))
 }

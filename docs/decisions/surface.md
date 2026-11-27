@@ -66,9 +66,9 @@ A draw that shows nothing issues no draw or presentation receipt. `FrameSurface`
 
 `FrameSurface` replaces a tainted source canvas with a blank stand-in. It checks when the runtime is created and at the first publish after each allocation, because a check on every publish costs a readback. `Surface` needs no origin check, because neither capture engine taints its canvas (platform.md #34).
 
-## #81 — `<Loading>` reports when a scene is complete, and time is only a notice
+## #82 — `<Loading>` reports when a scene is complete, and time is only a notice
 
-`<Loading onLoaded>` calls `onLoaded` once, from a page animation frame, when every entry inside it is complete. The entries are each `Surface`, `SceneSurface` and `SurfaceCanvas`, each `useLoadingWait` or `LoadingPending`, and each nested `<Loading>` that is not `independent`. A Surface is complete when it is shown on the scene or has settled on its page presentation. A canvas is complete when it has drawn a frame that held nothing back (#80). The boundary finishes only when two checks one frame apart agree and nothing joined, left or changed between them, which catches a wait added by passive effects (#57). An app wait set to an `Error` holds the boundary until the wait changes. `useLoadingStatus` reads the nearest boundary's entries.
+`<Loading onLoaded>` calls `onLoaded` once, from a page animation frame, when every entry inside it is complete. The entries are each `Surface`, `SceneSurface` and `SurfaceCanvas`, each `useLoadingWait` or `LoadingPending`, and each nested `<Loading>` that is not `independent`. A Surface is complete when it is shown on the scene or has settled on its page presentation. A canvas is complete when it has drawn a frame that held nothing back (#81). The boundary finishes only when two checks one frame apart agree and nothing joined, left or changed between them, which catches a wait added by passive effects (#57). An app wait set to an `Error` holds the boundary until the wait changes. `useLoadingStatus` reads the nearest boundary's entries.
 
 Time never finishes a load. Past `late.afterMs` of frame time the boundary calls `late.onLate` once and keeps waiting; the app decides what a late load shows. There is no Suspense integration and no timer in the library.
 

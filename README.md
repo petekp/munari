@@ -138,8 +138,8 @@ const lacquer: SurfaceFinish = {
 `keyLight.set({ x, y })` moves the key in client CSS px without a React
 render. Add `size: [width, height]` to make the key a softbox.
 Under `lighting="none"` the canvas adds no lights, and finishes are lit by
-your scene's own lights. The repository's `registry/finishes` folder holds 17 tuned
-presets, such as lacquer, anodized aluminum, velvet and paper, with a
+your scene's own lights. The repository's `registry/finishes` folder holds 21 tuned
+presets, such as lacquer, anodized aluminum, velvet, paper and glass, with a
 suggested text color for each. Copy it into your project.
 
 ### If "Show in scene" stays disabled

@@ -90,9 +90,12 @@ export function useFinishMaterial(sources: FinishSources, inputs: SurfaceFinishM
       shown.code,
     )
     if (rig) built.lightsNode = rig.lightsNode(keyKind)
-    // An opaque mesh writes depth and blends nothing, as its default material does.
-    built.transparent = slot.transparent
-    built.depthWrite = !slot.transparent
+    // An opaque mesh writes depth and blends nothing, as its default material
+    // does. Glass blends on any mesh, because where the canvas behind it is
+    // empty the page shows through it (decisions.md #80).
+    const blends = slot.transparent || shown.layers.transmission
+    built.transparent = blends
+    built.depthWrite = !blends
     return built
   }, [captureNode, slot.size, slot.radii, slot.transparent, uniforms, shown, normal, bodyColor, rig, keyKind, loading])
   useLayoutEffect(() => () => material?.dispose(), [material])

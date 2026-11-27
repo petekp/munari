@@ -2,7 +2,7 @@
 # Loading decisions
 
 Status: decided 2026-11-26 and built: D1 B, D2 B, D3 A with C, D4 B, D5 A,
-D6 A and D7 A. D8 stays deferred. Decisions #80 and #81 state the result.
+D6 A and D7 A. D8 stays deferred. Decisions #81 and #82 state the result.
 Part of the [loading design](README.md).
 
 Each decision lists its options, what each costs, and a recommendation.

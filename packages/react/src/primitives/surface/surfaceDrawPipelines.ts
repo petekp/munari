@@ -1,13 +1,13 @@
 // Draw pipelines outside SurfaceCanvas — bakes built ahead, and a wait for
 // renderers of their own.
 //
-// The law: no frame waits on a blocking pipeline build (decisions.md #80). A
+// The law: no frame waits on a blocking pipeline build (decisions.md #81). A
 // bake drawn once with something missing would keep the gap for good, so it
 // is built ahead with `prebuildPipelines`. A renderer that draws to the
 // screen skips each render whose pipelines are not built
 // (`waitForDrawPipelines`). Measured 2026-11-26 on Light, five pipelines the
 // wait built were still created again with the blocking call; the cause is
-// not known (decisions.md #80).
+// not known (decisions.md #81).
 //
 // Ownership: renderers SurfaceCanvas does not own. The canvas hold is
 // surfaceCompile.ts's.

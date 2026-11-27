@@ -3,7 +3,7 @@
 //
 // The law: a Surface is shown once it presents in the scene, or once it
 // stays on the page for a stated reason; a SceneSurface has no page to fall
-// back to, so without capture it is unavailable (decisions.md #43 and #81). A
+// back to, so without capture it is unavailable (decisions.md #43 and #82). A
 // lazy Surface defers until its page presentation nears the viewport and does
 // not hold its <Loading> meanwhile, as a lazy image does not hold `load`.
 //

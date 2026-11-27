@@ -2,7 +2,7 @@
 // the gate that keeps a presenter's first draw until its pipelines are built.
 //
 // The law: a Surface presenter draws only once every pipeline its first
-// material draws with is built (decisions.md #76 and #80). Outside a
+// material draws with is built (decisions.md #76 and #81). Outside a
 // SurfaceCanvas there is no compiler and it draws at once.
 //
 // Ownership: this module finds the compiler for a renderer; holding and

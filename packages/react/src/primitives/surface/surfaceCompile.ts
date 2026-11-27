@@ -7,7 +7,7 @@
 // draw (`useSurfaceCompiled`); every other object in a canvas draw is held
 // by the canvas (`hold`), which draws it with nothing until its first
 // pipelines are built, and with its last built look while a changed
-// material builds (decisions.md #80). three 0.186 builds a pipeline it
+// material builds (decisions.md #81). three 0.186 builds a pipeline it
 // lacks at the draw, with the blocking `createRenderPipeline`, and Chrome's
 // Dawn runs that call on the GPU process's main thread, where the Metal
 // compile stops raster and compositing until it returns, for every canvas
@@ -58,7 +58,7 @@
 //   or a bake whose renders were built ahead (`prebuildPipelines`), blocks
 //   nothing when three later builds the same descriptor itself.
 //
-// decisions.md #76 and #80 state the rule.
+// decisions.md #76 and #81 state the rule.
 //
 // Ownership: this module builds pipelines, says when they are built, and
 // holds back what is not. A build three could not finish still resolves (it
