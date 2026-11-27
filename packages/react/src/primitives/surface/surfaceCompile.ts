@@ -74,9 +74,11 @@ import { surfaceBelongsToScene } from './surfaceFrame'
 import { passMaterials, type Drawable, drawableOf, startBuild, settle, crossings, flagsKey } from './surfaceCompileBuild'
 import { pipelineKey, sharedKey, sceneKey } from './surfacePipelineKey'
 import { createOutputRest } from './surfaceOutputRest'
-import { type Look, type HeldObject, NOTHING, CHURN_CHANGES, CHURN_WINDOW_MS, CHURN_REST_MS, UNSEEN_MS, release, snapshotOf } from './surfaceHold'
+import { type Look, type HeldObject, NOTHING, CHURN_CHANGES, CHURN_WINDOW_MS, CHURN_REST_MS, UNSEEN_MS, createBuiltLooks, snapshotOf } from './surfaceHold'
 
 export { installSurfaceCompiler, surfaceCompilerOf, useSurfaceCompiled } from './surfaceCompiled'
+
+const crossingKey = (object: Parameters<typeof sharedKey>[0], built: THREE.Material, flags: Parameters<typeof flagsKey>[0], signature: string) => `${sharedKey(object, built, signature, false)} as ${flagsKey(flags)}`
 
 export interface SurfaceCompilation {
   /**
@@ -122,6 +124,8 @@ export function createSurfaceCompiler(renderer: WebGPURenderer, invalidate: () =
   }
   const queue = new Set<QueuedCompilation>()
   const records = new Map<THREE.Object3D, HeldObject>()
+  const looks = createBuiltLooks()
+  const release = looks.release
   let held = 0
   // The environment and fog every drawn look was built under.
   let drawnScene: SceneState | null = null
@@ -169,8 +173,7 @@ export function createSurfaceCompiler(renderer: WebGPURenderer, invalidate: () =
         continue
       }
       const builds = crossings(entry.materials).map(({ built, flags }) => {
-        const key = `${sharedKey(entry.object, built, entry.signature, false)} as ${flagsKey(flags)}`
-        return startBuildOnce(key, () => {
+        return startBuildOnce(crossingKey(entry.object, built, flags, entry.signature), () => {
           const clone = built.clone()
           entry.materials.push(clone)
           const started = startBuild(renderer, scene, camera, entry.object, clone)
@@ -197,9 +200,12 @@ export function createSurfaceCompiler(renderer: WebGPURenderer, invalidate: () =
     })
   }
   const lookFor = (scene: THREE.Scene, camera: THREE.Camera, object: Drawable, key: string, presenter: boolean, signature: string): Look => {
-    const look: Look = { key, signature, materials: passMaterials(object.material, presenter), built: false }
-    build(scene, camera, object, look.materials, signature, () => {
+    const materials = passMaterials(object.material, presenter)
+    const keys = [...materials.map((material) => sharedKey(object, material, signature, false)), ...crossings(materials).map(({ built, flags }) => crossingKey(object, built, flags, signature))]
+    const look: Look = { key, signature, materials, keys, built: looks.has(keys) }
+    build(scene, camera, object, materials, signature, () => {
       look.built = true
+      looks.add(look)
       invalidate()
     })
     return look
@@ -243,7 +249,11 @@ export function createSurfaceCompiler(renderer: WebGPURenderer, invalidate: () =
       return null
     }
     record.pending = lookFor(scene, camera, object, key, record.presenter, signature)
-    return standIn(object, record, signature)
+    if (!record.pending.built) return standIn(object, record, signature)
+    release(record.drawn)
+    record.drawn = record.pending
+    record.pending = null
+    return null
   }
   return {
     compile(mesh, material) {
@@ -377,7 +387,7 @@ export function createSurfaceCompiler(renderer: WebGPURenderer, invalidate: () =
       const builtUnder = owned.builtUnder
       const key = builtUnder ? pipelineKey(drawable, builtUnder.signature, true) : ''
       drawnScene ??= builtUnder
-      records.set(mesh, { presenter: true, drawn: { key, signature: builtUnder?.signature ?? '', materials: owned.materials, built: true }, pending: null, changes: [], churnUntil: 0, seen: performance.now() })
+      records.set(mesh, { presenter: true, drawn: { key, signature: builtUnder?.signature ?? '', materials: owned.materials, keys: [], built: true }, pending: null, changes: [], churnUntil: 0, seen: performance.now() })
     },
     holding: () => held + rest.pending(),
     draw: rest.draw,

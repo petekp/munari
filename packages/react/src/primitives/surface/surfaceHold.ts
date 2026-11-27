@@ -15,6 +15,8 @@ export interface Look {
   /** The scene the look was built under; drawn under another, it blocks. */
   readonly signature: string
   readonly materials: THREE.Material[]
+  /** The shared keys of every build the look needs, crossings included. */
+  readonly keys: readonly string[]
   built: boolean
 }
 
@@ -43,10 +45,48 @@ export const CHURN_REST_MS = 2000
 // judgment: long enough that a toggled object keeps its look.
 export const UNSEEN_MS = 10_000
 
-export function release(look: Look | null): void {
+function disposeLook(look: Look | null): void {
   if (!look) return
   for (const material of look.materials) material.dispose()
   look.materials.length = 0
+}
+
+/**
+ * The shared keys whose pipelines a built look's clones keep in three's
+ * cache. An object new to the hold whose keys are all here draws at once: a
+ * FrameSurface mounted again over the same source is a new mesh and
+ * material with the same keys, and holding it showed one clear frame per
+ * remount (gate:frame-surface, 2026-11-27).
+ */
+export interface BuiltLooks {
+  /** Count a look whose builds have finished. */
+  add(look: Look): void
+  has(keys: readonly string[]): boolean
+  /** Dispose a look's clones, and stop counting its keys. */
+  release(look: Look | null): void
+}
+
+export function createBuiltLooks(): BuiltLooks {
+  const counts = new Map<string, number>()
+  const counted = new WeakSet<Look>()
+  return {
+    add(look) {
+      if (counted.has(look)) return
+      counted.add(look)
+      for (const key of look.keys) counts.set(key, (counts.get(key) ?? 0) + 1)
+    },
+    has: (keys) => keys.every((key) => (counts.get(key) ?? 0) > 0),
+    release(look) {
+      if (look && counted.delete(look)) {
+        for (const key of look.keys) {
+          const left = (counts.get(key) ?? 1) - 1
+          if (left > 0) counts.set(key, left)
+          else counts.delete(key)
+        }
+      }
+      disposeLook(look)
+    },
+  }
 }
 
 /** The built clone that draws like `material` does now, for the look it stands in for. */
