@@ -3,7 +3,7 @@
 //
 // For each preset and source it loads the lab's material-finishes scene
 // (?bare, light=softbox, softbox=<source>) at 1440 × 900 CSS px, DPR 2, moves
-// the key through three viewport positions, waits for two identical
+// the key through three viewport positions, waits for three identical
 // screenshots in a row, and compares each card's pixels with the same
 // capture under softbox=three. "three-again" repeats the baseline in a new
 // page load, so its numbers are the run-to-run floor; "point" is the point key,
