@@ -44,6 +44,7 @@ const browser = await puppeteer.launch({
   headless: true,
   args: [...WEBGPU_CHROME_ARGS],
 })
+const chrome = await browser.version()
 const samples = []
 try {
   for (let run = 0; run < RUNS; run++) {
@@ -73,4 +74,4 @@ const summary = METHODS.map((method) => {
   const stat = (key) => ({ p10: quantile(rows.map((r) => r[key]), 0.1), median: quantile(rows.map((r) => r[key]), 0.5), p90: quantile(rows.map((r) => r[key]), 0.9) })
   return { method, n: rows.length, float32Filterable: rows[0].float, importMs: stat('importMs'), decodeMs: stat('decodeMs'), uploadMs: stat('uploadMs'), totalMs: stat('totalMs') }
 })
-console.log(JSON.stringify({ chrome: await browser.version().catch(() => null), summary, samples }, null, 2))
+console.log(JSON.stringify({ chrome, summary, samples }, null, 2))
