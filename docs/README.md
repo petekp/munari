@@ -9,6 +9,7 @@ output. Preserve both distinctions when resolving a conflict.
 | Evaluate Munari against raw HTML-in-canvas | [Why Munari](why-munari.md) | Current overview with JSX examples and lab links |
 | Make payload opt-in by effect class | [Payload optimization research](payload-optimization-research.md) | Measured bundle breakdown and proposed opt-in tiers; unbuilt |
 | Design opt-in payload | [Opt-in payload proposal](opt-in-dx-proposal.md) | Per-module build and budget check (built); R3F 10 migration, lazy canvas recipe, and rollout (unbuilt) |
+| Choose what `quality` levels trade | [Quality levels](quality/README.md) | Measured costs and a proposal; unbuilt |
 | Set up and use the package | [Root README](../README.md), public entry types | Current usage |
 | Choose a capture engine or enable snapDOM | [Capture engines](capture-engines.md) | Current usage |
 | Add custom scene content, materials and prewarming | [Custom scene content](scene-content.md) | Current usage |
