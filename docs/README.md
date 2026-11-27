@@ -38,6 +38,7 @@ output. Preserve both distinctions when resolving a conflict.
 | Check snapDOM input region performance | [Incremental capture report](incremental-capture.md) | Implementation and local benchmark evidence |
 | Add automatic canvas refresh without idle polling | [Automatic canvas refresh spec](automatic-canvas-refresh-spec.md) | Proposed, unbuilt; browser and pixel-lifetime gates are explicit |
 | Report when components first show complete content on load | [Loading spec](loading-spec.md) | Proposed, unbuilt; names and policy settled |
+| Make effects load without the user noticing | [Loading proposal](loading/README.md) | Proposed, unbuilt; measurements from 2026-11-26 and open decisions |
 | Add snapDOM as a second capture engine | [Decision #60](decisions/capture.md#60) (with #61–#64) | Shipped 2026-09-10; completed plan archived in Git history |
 | Read release notes for 0.4.1 and earlier | [Earlier changelog](changelog-0.4-and-earlier.md) | Released history; later releases are in [CHANGELOG.md](../CHANGELOG.md) |
 | Understand an architectural choice | [Decisions](decisions.md) | Current rules by number, grouped by area |
