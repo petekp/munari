@@ -6,6 +6,22 @@ import { deflateSync, inflateSync } from 'node:zlib'
 
 const SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])
 
+function paeth(a, b, c) {
+  const p = a + b - c
+  const pa = Math.abs(p - a)
+  const pb = Math.abs(p - b)
+  const pc = Math.abs(p - c)
+  return pa <= pb && pa <= pc ? a : pb <= pc ? b : c
+}
+
+function predictor(filter, a, b, c) {
+  if (filter === 1) return a
+  if (filter === 2) return b
+  if (filter === 3) return (a + b) >> 1
+  if (filter === 4) return paeth(a, b, c)
+  return 0
+}
+
 /** RGBA pixels of a PNG. */
 export function decodePng(buffer) {
   if (!buffer.subarray(0, 8).equals(SIGNATURE)) throw new Error('not a PNG')
@@ -41,18 +57,7 @@ export function decodePng(buffer) {
       const a = x >= channels ? current[x - channels] : 0
       const b = previous[x]
       const c = x >= channels ? previous[x - channels] : 0
-      let predictor = 0
-      if (filter === 1) predictor = a
-      else if (filter === 2) predictor = b
-      else if (filter === 3) predictor = (a + b) >> 1
-      else if (filter === 4) {
-        const p = a + b - c
-        const pa = Math.abs(p - a)
-        const pb = Math.abs(p - b)
-        const pc = Math.abs(p - c)
-        predictor = pa <= pb && pa <= pc ? a : pb <= pc ? b : c
-      }
-      current[x] = (line[x] + predictor) & 255
+      current[x] = (line[x] + predictor(filter, a, b, c)) & 255
     }
     for (let x = 0; x < width; x++) {
       out[(y * width + x) * 4] = current[x * channels]
