@@ -22,6 +22,7 @@ import { Button, Status, Tag } from '../../components/system'
 import { showChrome } from '../../bareMode'
 import { sceneUrl } from '../../captureMode'
 import { MaterialFinishesCompare } from './MaterialFinishesCompare'
+import { MaterialFinishesGlass } from './MaterialFinishesGlass'
 import { familyOf, familyOfFinish } from './materialFinishesFamilies'
 import { FinishCard, PointerTracker } from './MaterialFinishesSurface'
 import { MaterialFinishesTweaks } from './MaterialFinishesTweaks'
@@ -202,6 +203,7 @@ function Cards({ canvasId, inScene, finish, tilt }: CardsProps) {
 
 export function MaterialFinishesApp({ onReady }: { readonly onReady?: () => void }) {
   const [compare] = useState(() => new URLSearchParams(window.location.search).get('compare'))
+  if (compare === 'glass') return <MaterialFinishesGlass onReady={onReady} />
   const family = familyOf(compare)
   if (family) return <MaterialFinishesCompare family={family} onReady={onReady} />
   return <MaterialFinishesScene onReady={onReady} />

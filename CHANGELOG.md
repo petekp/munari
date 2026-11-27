@@ -26,8 +26,11 @@ prop that should let the pointer through, such as a shadow plane, a no-op
   `transparent` in the capture. Content that styles its background with
   `var(--munari-body)` shows the color on the page and the lit body in the
   scene.
-- `registry/finishes` holds 17 finish presets and a suggested text color
-  for each, to copy into a project.
+- A `transmission` layer on a finish makes it glass. The Surface shows what
+  the canvas drew behind it, bent by its edges and tinted by its `color`.
+  `roughness` frosts it and `dispersion` splits it by color.
+- `registry/finishes` holds 21 finish presets, including four glass
+  presets, and a suggested text color for each, to copy into a project.
 
 ### Breaking
 

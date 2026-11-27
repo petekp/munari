@@ -157,6 +157,7 @@ film's values to its own film code (materialFinishesNodes.ts:357-363).
 | `anisotropy`: `amount`, `rotation` | 0–1, radians in the Surface's UV frame | present or `null` |
 | `film`: `amount`, `ior`, `thickness`, `variation`, `scale` | 0–1, 1.0–2.333, nm at the thickest, fraction of the thickness, CSS px | present or `null` |
 | `scatter`: `amount` | share of the diffuse light scattering under the surface, 0–1 | present or `null` |
+| `transmission`: `amount`, `thickness`, `dispersion` | share of the body's light passing through, 0–1; CSS px; 20 / Abbe number, 0 for none. `color` is the tint ([#80](../decisions/renderer.md#80)) | present or `null` |
 | `edge`: `width`, `rimColor` | CSS px, 0 is flat; color or `null` | no |
 | `detail`: `kind`, `scale`, `depth` | kind; CSS px; slope | kind, or present or `null` |
 | `crackle`: `amount`, `scale` | 0–1, CSS px | present or `null` |
@@ -225,6 +226,7 @@ The module also exports `inks`, the suggested text colors per preset (see
 | `paper-office`, `paper-kraft`, `paper-cold-press` | `paper` | `office`, `kraft`, `cold-press` |
 | `rubber-black`, `rubber-grip`, `rubber-silicone` | `soft-touch-rubber` | `black`, `grip`, `silicone` |
 | `wax-candle`, `wax-beeswax`, `wax-silicone` | `translucent-wax` | `candle`, `beeswax`, `silicone` |
+| `glass-clear`, `glass-cobalt`, `glass-frosted`, `glass-crystal` | none | built on the finish API, shown at `?scene=material-finishes&compare=glass` |
 
 Names follow `<family>-<look>`. The family is a short material noun, so
 `polymer` replaces "satin polymer", which beside `velvet` reads as a
@@ -234,7 +236,8 @@ fabric. The longer words move into each preset's doc comment.
 
 The shared model held all nine lab finishes. Foil fits through the film
 layer and the `crumple` detail, paper through `fiber`, the grip rubber
-through `dots`, and wax through the scatter layer and `honeycomb`. A finish that needs new shading adds a layer
+through `dots`, and wax through the scatter layer and `honeycomb`. Glass added
+the transmission layer. A finish that needs new shading adds a layer
 or a detail kind, with its conformance check and a decision entry.
 three r186 also ships `MeshSSSNodeMaterial`, a physical material with
 its own scattering model, for a finish the scatter layer cannot reach.

@@ -361,3 +361,113 @@
   grid-column: 1 / -1;
   color: var(--m-quiet);
 }
+
+/* ── glass comparison ───────────────────────────────────────────── */
+
+.mfg-page {
+  min-height: 100vh;
+}
+
+.mfg-backdrop {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: linear-gradient(135deg, #f7d9a8 0%, #f39a7b 38%, #7c8fe0 72%, #2f3a7a 100%);
+}
+
+.mfg-stripes {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, rgb(20 24 28 / 0.85) 0 6px, transparent 6px 44px);
+  opacity: 0.55;
+}
+
+.mfg-disc {
+  position: absolute;
+  border-radius: 50%;
+}
+
+.mfg-disc--a { left: 8%; top: 14%; width: 260px; height: 260px; background: #ffd23f; }
+.mfg-disc--b { left: 58%; top: 52%; width: 340px; height: 340px; background: #19b38a; }
+.mfg-disc--c { left: 36%; top: 6%; width: 180px; height: 180px; background: #e8365d; }
+
+.mfg-poster {
+  position: absolute;
+  margin: 0;
+  color: #15181c;
+  font: 800 64px/1 var(--m-sans);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.mfg-poster--a { left: 4%; top: 40%; }
+.mfg-poster--b { left: 10%; top: 72%; font-size: 34px; font-weight: 600; color: #fffaf2; }
+.mfg-poster--c { left: 2%; top: 88%; font: 500 28px/1 ui-monospace, monospace; }
+
+.mfg-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, 300px);
+  gap: 40px 48px;
+  justify-content: center;
+  align-content: center;
+  min-height: 100vh;
+  pointer-events: none;
+}
+
+.mfg-item {
+  margin: 0;
+  pointer-events: auto;
+}
+
+.mfg-caption {
+  position: relative;
+  z-index: 20;
+  margin-bottom: 8px;
+  color: #15181c;
+  font: 600 12px/1.2 var(--m-sans);
+  text-shadow: 0 0 6px rgb(255 255 255 / 0.9);
+}
+
+.mfg-page[data-bare] .mfg-caption {
+  visibility: hidden;
+}
+
+.mfg-card {
+  box-sizing: border-box;
+  width: 300px;
+  padding: 22px 24px;
+  border-radius: 28px;
+  background: color-mix(in srgb, var(--munari-body) 55%, transparent);
+  color: var(--mfg-ink);
+}
+
+.mfg-label {
+  margin: 0 0 6px;
+  font: 600 12px/1 var(--m-sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mfg-title {
+  margin: 0 0 8px;
+  font: 700 28px/1.1 var(--m-sans);
+}
+
+.mfg-body {
+  margin: 0 0 16px;
+  font: 400 13px/1.4 var(--m-sans);
+}
+
+.mfg-button {
+  padding: 8px 16px;
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: 600 13px/1 var(--m-sans);
+}
+
+.mfg-button:hover {
+  background: color-mix(in srgb, currentcolor 12%, transparent);
+}

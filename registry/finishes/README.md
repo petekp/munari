@@ -1,6 +1,6 @@
 # finishes
 
-Seventeen tuned finishes for `Surface.Root`'s `finish` prop, and a
+Twenty-one tuned finishes for `Surface.Root`'s `finish` prop, and a
 suggested text color for each. A preset is a plain `SurfaceFinish` value:
 
 ```tsx
@@ -30,7 +30,21 @@ Each name is `<family>-<look>`: `lacquer-crimson`, `polymer-charcoal`,
 `aluminum-blue`, `velvet-midnight`, `ceramic-celadon`,
 `foil-holographic`, `foil-oil-slick`, `foil-crumpled`, `paper-office`,
 `paper-kraft`, `paper-cold-press`, `rubber-black`, `rubber-grip`,
-`rubber-silicone`, `wax-candle`, `wax-beeswax` and `wax-silicone`.
+`rubber-silicone`, `wax-candle`, `wax-beeswax`, `wax-silicone`, `glass-clear`,
+`glass-cobalt`, `glass-frosted` and `glass-crystal`.
+
+## Glass
+
+The `glass-` presets show what the canvas drew behind the card. `color` is
+the glass's tint, so `{ ...finishes['glass-cobalt'], color: '#d98a2b' }`
+is amber glass. A glass card shows only what drew before it, so draw the
+scene behind it first: give the glass card's `Surface.Mesh` a higher
+`renderOrder`. The page behind the canvas shows through unbent.
+The page copy cannot bend what is behind it, so paint it translucent, such
+as `color-mix(in srgb, var(--munari-body) 55%, transparent)`. An opaque
+`var(--munari-body)` shows a solid slab until the card moves into the
+scene.
+`docs/decisions/renderer.md` #80 has the costs.
 
 ## Text color
 

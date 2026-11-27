@@ -62,8 +62,9 @@ color:
   or a stock `map` multiplies it by alpha again, and translucent pixels draw
   darker than the page. `premultipliedAlpha: true` does not fix that.
 - A material that samples the canvas, such as Three's transmission or a
-  viewport-texture node, draws too bright. Render the scene behind it into a
-  render target and sample that instead, as `registry/glass/` does.
+  viewport-texture node, reads premultiplied sRGB. Divide out each sample's
+  alpha and decode it from sRGB before using it, or it draws too bright. A
+  finish with a `transmission` layer does this for you (decision #80).
 
 Opaque materials need neither. Custom materials are TSL node materials, because
 the renderer does not accept GLSL. [Decision #72](https://github.com/petekp/munari/blob/v0.4.1/docs/decisions.md) has the

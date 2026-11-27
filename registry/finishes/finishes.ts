@@ -1,4 +1,4 @@
-// Finish presets — seventeen tuned finishes for Surface.Root's `finish`,
+// Finish presets — twenty-one tuned finishes for Surface.Root's `finish`,
 // and an ink for each that reads on its body.
 //
 // A preset is a plain SurfaceFinish value, so a page passes it as is or
@@ -6,7 +6,8 @@
 // `finish={{ ...finishes['lacquer-crimson'], color: '#0d3b66' }}`. Names are
 // <family>-<look>. Each layer the finish carries (coat, sheen, anisotropy,
 // film, scatter, detail, crackle) compiles while its object is present, so
-// a tweak that moves an amount through zero rebuilds nothing.
+// a tweak that moves an amount through zero rebuilds nothing. A glass preset
+// (transmission) is tinted by its `color`: override `color` to retint it.
 //
 // Lobe values follow the MaterialX example presets (Apache-2.0) at
 // github.com/AcademySoftwareFoundation/MaterialX, resources/Materials/
@@ -58,6 +59,10 @@ export type FinishPreset =
   | 'wax-candle'
   | 'wax-beeswax'
   | 'wax-silicone'
+  | 'glass-clear'
+  | 'glass-cobalt'
+  | 'glass-frosted'
+  | 'glass-crystal'
 
 // Crimson car paint. open_pbr_carpaint: coat 1 at roughness 0.02 over a
 // base whose IOR equals the coat's. Orange peel within the catalog's
@@ -258,6 +263,53 @@ export const waxSilicone: Readonly<SurfaceFinish> = {
   edge: { width: 32, rimColor: '#ffb3a3' },
 }
 
+// Glass shows what the canvas drew behind the card, bent at the edge,
+// tinted by its color and frosted by its roughness. IOR 1.52 is soda-lime
+// glass on physicallybased.info; 1.6 is lead crystal. Dispersion is
+// 20 / Abbe number (KHR_materials_dispersion), about 0.55 for a flint
+// glass of Abbe 36, which splits nothing visible across a card's bevel.
+// Tints, thicknesses, edges and crystal's dispersion are by eye.
+export const glassClear: Readonly<SurfaceFinish> = {
+  color: '#eef4f1',
+  roughness: 0.04,
+  ior: 1.52,
+  transmission: { amount: 1, thickness: 14, dispersion: 0 },
+  edge: { width: 10, rimColor: null },
+  environment: 'gradient',
+}
+
+export const glassCobalt: Readonly<SurfaceFinish> = {
+  color: '#3d6fd6',
+  roughness: 0.03,
+  ior: 1.52,
+  transmission: { amount: 1, thickness: 22, dispersion: 0 },
+  edge: { width: 16, rimColor: null },
+  environment: 'gradient',
+}
+
+// Acid-etched glass: the rough face blurs what is behind and spreads the
+// highlight.
+export const glassFrosted: Readonly<SurfaceFinish> = {
+  color: '#f2f4f6',
+  roughness: 0.5,
+  ior: 1.52,
+  transmission: { amount: 1, thickness: 18, dispersion: 0 },
+  edge: { width: 8, rimColor: null },
+  environment: 'gradient',
+}
+
+// A thick slab with a wide rounded edge, which bends the backdrop hard at
+// the rim and splits it by color. Its dispersion is about ten times lead
+// crystal's, the least that fringes the backdrop where the bevel bends it.
+export const glassCrystal: Readonly<SurfaceFinish> = {
+  color: '#f7f7fa',
+  roughness: 0.02,
+  ior: 1.6,
+  transmission: { amount: 1, thickness: 40, dispersion: 6 },
+  edge: { width: 40, rimColor: null },
+  environment: 'gradient',
+}
+
 export const finishes: Readonly<Record<FinishPreset, Readonly<SurfaceFinish>>> = /* @__PURE__ */ Object.freeze({
   'lacquer-crimson': lacquerCrimson,
   'polymer-charcoal': polymerCharcoal,
@@ -276,6 +328,10 @@ export const finishes: Readonly<Record<FinishPreset, Readonly<SurfaceFinish>>> =
   'wax-candle': waxCandle,
   'wax-beeswax': waxBeeswax,
   'wax-silicone': waxSilicone,
+  'glass-clear': glassClear,
+  'glass-cobalt': glassCobalt,
+  'glass-frosted': glassFrosted,
+  'glass-crystal': glassCrystal,
 })
 
 /**
@@ -304,4 +360,8 @@ export const inks: Readonly<Record<FinishPreset, { readonly ink: string; readonl
   'wax-candle': { ink: '#15181c', quietInk: '#494947' },
   'wax-beeswax': { ink: '#15181c', quietInk: '#191b1d' },
   'wax-silicone': { ink: '#15181c', quietInk: '#15181c' },
+  'glass-clear': { ink: '#15181c', quietInk: '#4d5153' },
+  'glass-cobalt': { ink: '#f5f2ee', quietInk: '#f5f2ee' },
+  'glass-frosted': { ink: '#15181c', quietInk: '#4e5155' },
+  'glass-crystal': { ink: '#15181c', quietInk: '#525458' },
 })

@@ -42,6 +42,10 @@ export interface FinishUniforms {
   readonly filmVariation: UniformNode<'float', number>
   readonly filmScale: UniformNode<'float', number>
   readonly scatter: UniformNode<'float', number>
+  readonly transmission: UniformNode<'float', number>
+  /** CSS px. */
+  readonly thickness: UniformNode<'float', number>
+  readonly dispersion: UniformNode<'float', number>
   readonly emission: UniformNode<'float', number>
   /** 1 to shift the body toward `rimColor` over the edge, 0 to keep the body's own color. */
   readonly rimShift: UniformNode<'float', number>
@@ -63,6 +67,9 @@ export function createFinishUniforms(): FinishUniforms {
     filmVariation: uniform(0),
     filmScale: uniform(FILM_SCALE_PX),
     scatter: uniform(0),
+    transmission: uniform(0),
+    thickness: uniform(0),
+    dispersion: uniform(0),
     emission: uniform(0),
     rimShift: uniform(1),
     key: createKeySheenUniforms(),
@@ -80,6 +87,7 @@ export interface FinishLayers {
   readonly crackle: boolean
   readonly film: boolean
   readonly scatter: boolean
+  readonly transmission: boolean
   /** `camera`: the mesh shares the camera's rotation, so the card's frame is view space; `mesh`: rotate by the mesh's model-view. */
   readonly frame: 'camera' | 'mesh'
 }
@@ -95,6 +103,7 @@ export function finishLayersOf(finish: FinishValues, facesCamera: boolean): Fini
     crackle: finish.crackle !== null,
     film: finish.film !== null,
     scatter: finish.scatter !== null,
+    transmission: finish.transmission !== null,
   }
 }
 
@@ -108,6 +117,7 @@ export function sameFinishLayers(a: FinishLayers, b: FinishLayers): boolean {
     a.crackle === b.crackle &&
     a.film === b.film &&
     a.scatter === b.scatter &&
+    a.transmission === b.transmission &&
     a.frame === b.frame
   )
 }
@@ -156,10 +166,13 @@ function writeFilm(uniforms: FinishUniforms, film: FinishValues['film']): void {
   uniforms.filmScale.value = Math.max(film?.scale ?? FILM_SCALE_PX, 1)
 }
 
-/** The film, relief, crackle and scatter that this module's nodes draw. */
-function writeShape(uniforms: FinishUniforms, { film, crackle, detail, edge, scatter }: FinishValues): void {
+/** The film, relief, crackle, scatter and transmission that this module's nodes draw. */
+function writeShape(uniforms: FinishUniforms, { film, crackle, detail, edge, scatter, transmission }: FinishValues): void {
   writeFilm(uniforms, film)
   uniforms.scatter.value = scatter?.amount ?? 0
+  uniforms.transmission.value = Math.min(Math.max(transmission?.amount ?? 0, 0), 1)
+  uniforms.thickness.value = Math.max(transmission?.thickness ?? 0, 0)
+  uniforms.dispersion.value = Math.max(transmission?.dispersion ?? 0, 0)
   uniforms.edgeWidth.value = edge.width
   uniforms.detailScale.value = Math.max(detail?.scale ?? 1, 0.25)
   uniforms.detailDepth.value = detail?.depth ?? 0

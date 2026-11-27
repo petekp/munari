@@ -7,6 +7,9 @@
 // present when its object is present, and its amount is then a uniform. So
 // an amount that crosses zero rebuilds nothing, and a layer added or removed
 // rebuilds that one Surface's material (decisions.md #79).
+// A glass finish (`transmission`) is tinted by `color`, because glass's color
+// is the light its body absorbs: one field, read the same way on the page and
+// in the scene (decisions.md #80).
 //
 // `color` decides who paints the body. A color is painted by the material,
 // and Munari writes it as `--munari-body` on the page copy and
@@ -52,6 +55,18 @@ export interface FinishValues {
   film: { amount: number; ior: number; thickness: number; variation: number; scale: number } | null
   /** Share of the key's diffuse light that scatters under the surface, 0 to 1. */
   scatter: { amount: number } | null
+  /**
+   * Glass: `amount` of the body's light passes through, 0 to 1, showing what
+   * the canvas drew behind the Surface, bent by the face and frosted by
+   * `roughness`. `color` is the tint white takes through the flat face of a
+   * slab `thickness` CSS px deep, and a longer path deepens it. `dispersion`
+   * is 20 / Abbe number, 0 for none (KHR_materials_dispersion). The glass
+   * shows only what the canvas drew before it, so it draws after what it
+   * covers: a higher `renderOrder` on its mesh, or nearer the camera.
+   * Give glass a `color`: with `color: null`, reflections show only where
+   * the capture paints.
+   */
+  transmission: { amount: number; thickness: number; dispersion: number } | null
   /** A rounded edge `width` CSS px wide; `rimColor` (sRGB hex) is the body at the rim, null keeps `color`. */
   edge: { width: number; rimColor: string | null }
   /** Surface relief: `scale` is its feature size in CSS px, `depth` the steepest slope it adds. */
@@ -84,6 +99,7 @@ export const NEUTRAL_FINISH: Readonly<FinishValues> = Object.freeze({
   anisotropy: null,
   film: null,
   scatter: null,
+  transmission: null,
   edge: Object.freeze({ width: 0, rimColor: null }),
   detail: null,
   crackle: null,
