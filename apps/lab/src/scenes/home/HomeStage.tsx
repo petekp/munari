@@ -9,6 +9,7 @@
 // to the stage frame so the caption status matches it.
 import { useLayoutEffect, useRef, useState, type Ref } from 'react'
 import { CaptureEngineStatus } from '../../components/CaptureEngineStatus'
+import { useFramePageReady } from '../../components/siteOpening'
 import type { Demo } from '../../components/sceneCatalog'
 import { sceneUrl } from '../../captureMode'
 
@@ -23,6 +24,8 @@ export function HomeStage({ demo, ref }: { demo: Demo; ref?: Ref<HTMLElement> })
   const [width, setWidth] = useState(0)
   const [windowHeight, setWindowHeight] = useState(() => window.innerHeight)
   const [loaded, setLoaded] = useState('')
+  const frame = useRef<HTMLIFrameElement>(null)
+  useFramePageReady(frame, () => setLoaded(demo.id))
 
   useLayoutEffect(() => {
     const measure = () => setWindowHeight(window.innerHeight)
@@ -50,12 +53,12 @@ export function HomeStage({ demo, ref }: { demo: Demo; ref?: Ref<HTMLElement> })
       <div ref={panelRef} className="home-stage-panel" style={{ height: stageHeight || undefined }}>
         {width > 0 && (
           <iframe
+            ref={frame}
             key={demo.id}
             className="home-stage-frame"
             title={`${demo.title} demo`}
             src={sceneUrl(demo.id, { framed: true, bare: true })}
             data-loaded={loaded === demo.id || undefined}
-            onLoad={() => setLoaded(demo.id)}
             style={{ width: frameWidth, height: frameHeight, transform: `scale(${scale})` }}
           />
         )}

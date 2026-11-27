@@ -2,55 +2,36 @@
 // A stalled graphics setup falls back once to stable native content; it cannot
 // attach lighting later over a page the visitor is already using.
 import {useCallback, useEffect, useState} from 'react'
-import {announcePageReady} from '../../components/siteOpening'
 
-// Decision #57: a failure limit; a valid frame releases immediately.
+// Decision #57: a failure limit; a valid frame releases immediately. Counted
+// in the enclosing <Loading>'s frame time, so a hidden page adds none.
 const GRAPHICS_DEADLINE_MS = 4000
 type Phase = 'fonts' | 'graphics' | 'enhanced' | 'native'
 
-export function useLightOpening(onReady: () => void = announcePageReady) {
+/**
+ * The page's opening. Render `late` on a <Loading> around the page, and
+ * <LoadingPending> inside it until `ready`.
+ */
+export function useLightOpening() {
   const [phase, setPhase] = useState<Phase>('fonts')
   useEffect(() => {
     let alive = true
-    void document.fonts.ready.then(() => { if (alive) setPhase('graphics') })
+    void document.fonts.ready.then(() => { if (alive) setPhase(current => current === 'fonts' ? 'graphics' : current) })
     return () => { alive = false }
   }, [])
-  useEffect(() => {
-    if (phase !== 'graphics') return
-    // A hidden page runs no animation frames, so its graphics cannot finish;
-    // only visible time counts toward the deadline.
-    let remaining = GRAPHICS_DEADLINE_MS
-    let runningSince: number | null = null
-    let timer = 0
-    const expire = () => setPhase(current => current === 'graphics' ? 'native' : current)
-    const syncToVisibility = () => {
-      if (document.hidden && runningSince !== null) {
-        window.clearTimeout(timer)
-        remaining -= performance.now() - runningSince
-        runningSince = null
-      } else if (!document.hidden && runningSince === null) {
-        runningSince = performance.now()
-        timer = window.setTimeout(expire, remaining)
-      }
-    }
-    syncToVisibility()
-    document.addEventListener('visibilitychange', syncToVisibility)
-    return () => {
-      window.clearTimeout(timer)
-      document.removeEventListener('visibilitychange', syncToVisibility)
-    }
-  }, [phase])
+  const [settled, setSettled] = useState(false)
   useEffect(() => {
     // Enhanced readiness already follows a completed draw and layout recheck;
     // changing graphics -> enhanced does not change the rendered children.
-    if (phase === 'enhanced') { onReady(); return }
+    if (phase === 'enhanced') { setSettled(true); return }
     if (phase !== 'native') return
     // Native fallback first commits its final controls and removes the canvases.
-    let frame = requestAnimationFrame(() => { frame = requestAnimationFrame(onReady) })
+    let frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => setSettled(true)) })
     return () => cancelAnimationFrame(frame)
-  }, [phase, onReady])
+  }, [phase])
   const reportReady = useCallback((mode: 'enhanced' | 'native') => {
     setPhase(current => current === 'graphics' ? mode : current)
   }, [])
-  return {effectsEnabled: phase === 'graphics' || phase === 'enhanced', native: phase === 'native', ready: phase === 'native' || phase === 'enhanced', onReady: reportReady}
+  const [late] = useState(() => ({afterMs: GRAPHICS_DEADLINE_MS, onLate: () => setPhase(current => current === 'enhanced' ? current : 'native')}))
+  return {effectsEnabled: phase === 'graphics' || phase === 'enhanced', native: phase === 'native', ready: phase === 'native' || phase === 'enhanced', settled, onReady: reportReady, late}
 }

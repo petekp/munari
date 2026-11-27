@@ -9,6 +9,7 @@ import {HEADLINE_GLYPHS} from './lightHeadlineGlyphs'
 import {createHeadlineMaterial,createHeadlineValues} from './lightHeadlineNodes'
 import {lampPixelRatio,readEnclosingViewport} from './lightLampViewport'
 import {GLYPH_STANDOFF} from './lightLaw'
+import {waitForDrawPipelines} from '@petepetrash/munari/advanced'
 import type {LightShadowMaterial} from './lightShadowMaterial'
 
 // Room for the bevel and tilted side faces at the largest heading size (#56).
@@ -32,6 +33,9 @@ export function createHeadlineTreatments(heading:HTMLElement,lighting:LightShado
   if(!context)return null
   const canvas=document.createElement('canvas')
   canvas.className='light-headline-canvas';canvas.setAttribute('aria-hidden','true')
+  // Shown first where its first layout puts it; moved there from its static
+  // place, it shifted the page by 0.029 on every load.
+  canvas.style.display='none'
   let renderer:WebGPURenderer
   try{renderer=new WebGPURenderer({canvas,antialias:true,alpha:true})}catch{return null}
   // Renderer tone mapping stays off: the pipeline would apply it to every
@@ -40,6 +44,7 @@ export function createHeadlineTreatments(heading:HTMLElement,lighting:LightShado
   renderer.outputColorSpace=THREE.SRGBColorSpace
   // Converts each fragment as it lands on the canvas, as WebGL did (decisions.md #72).
   const pipeline=new DirectRenderPipeline(renderer)
+  const wait=waitForDrawPipelines(renderer,wake)
   heading.append(canvas)
   const scene=new THREE.Scene(),camera=new THREE.OrthographicCamera(0,1,1,0,1,2000)
   camera.position.z=1000
@@ -139,7 +144,8 @@ export function createHeadlineTreatments(heading:HTMLElement,lighting:LightShado
       shaderWord.position.set(inkLeft+inkWidth/2,-inkTop-inkHeight/2,elevation)
       shaderWord.scale.set(inkWidth,inkHeight,1)
       values.aspect.value=word.width/word.height
-      pipeline.render(scene,camera)
+      wait.draw(()=>pipeline.render(scene,camera))
+      if(wait.building()>0)return false
       if(!heading.dataset.headlineReady)heading.dataset.headlineReady='true'
       return true
     },
@@ -147,7 +153,7 @@ export function createHeadlineTreatments(heading:HTMLElement,lighting:LightShado
       alive=false;delete heading.dataset.headlineReady
       solid.removeEventListener('pointermove',move);solid.removeEventListener('pointerleave',leave)
       shaded.removeEventListener('pointermove',ripple);shaded.removeEventListener('pointerdown',ripple)
-      renderer.onDeviceLost=report
+      renderer.onDeviceLost=report;wait.dispose()
       geometry.dispose();face.dispose();side.dispose();plane.dispose();material.dispose();ink.dispose();pipeline.dispose()
       // dispose() skips the backend while init is pending, so wait for it. After
       // a failed init, dispose() re-awaits the rejected init without handling it,

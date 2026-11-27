@@ -40,7 +40,7 @@ import {
 } from 'react'
 import { flushSync as flushThree, useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
-import { PMREMGenerator, WebGPURenderer } from 'three/webgpu'
+import type { PMREMGenerator } from 'three/webgpu'
 import {
   SceneSurface,
   SurfaceCanvas,
@@ -54,6 +54,8 @@ import {
 } from '@petepetrash/munari'
 import { cameraDistance } from '@petepetrash/munari/advanced'
 import { KnobsArt } from './KnobsArt'
+import { KnobsPanelPlaceholder } from './KnobsPanelPlaceholder'
+import { useEnvironmentBake } from './knobsEnvironmentBake'
 import { createCoronaMaterial, createCoronaValues } from './knobsNodes'
 import { KnobsPanel } from './KnobsPanel'
 import {
@@ -273,7 +275,6 @@ interface EnvRig {
 }
 
 function ArtEnvironment() {
-  const gl = useThree((s) => s.gl)
   const scene = useThree((s) => s.scene)
   const size = useThree((s) => s.size)
   const state = useMemo<EnvRig>(() => {
@@ -303,20 +304,7 @@ function ArtEnvironment() {
     }
   }, [])
 
-  useEffect(() => {
-    // Fiber types the renderer as WebGLRenderer; SurfaceCanvas supplies a
-    // WebGPURenderer, whose PMREM generator builds node materials.
-    if (!(gl instanceof WebGPURenderer)) throw new Error('Knobs needs the WebGPURenderer from SurfaceCanvas')
-    state.pmrem = new PMREMGenerator(gl)
-    return () => {
-      scene.environment = null
-      state.rt?.dispose()
-      state.rt = null
-      state.pmrem?.dispose()
-      state.pmrem = null
-      state.tex.dispose()
-    }
-  }, [gl, scene, state])
+  useEnvironmentBake(state)
 
   // Solid angle per flat texel. Depends on the page and the art plane's
   // depth alone, so it is built on resize, not per refresh.
@@ -2789,6 +2777,8 @@ export function KnobsApp() {
           viewport.current.extent = element
         }}
       />
+
+      <KnobsPanelPlaceholder width={RAIL_W} />
 
       {/* `pointer-events` is the host's: the shared canvas is clear
           except over a Surface mesh, and it is the host's gate that says

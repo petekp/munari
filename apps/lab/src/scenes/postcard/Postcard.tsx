@@ -2,7 +2,7 @@
 // The lamp lights the page and the card, so the card casts its shadow in both
 // presentations; the form keeps its React state through every handoff.
 import { useMemo, useRef } from 'react'
-import { useCaptureSupport } from '@petepetrash/munari'
+import { Loading, LoadingPending, useCaptureSupport } from '@petepetrash/munari'
 import { LightLamp } from '../light/LightLamp'
 import { useLightOpening } from '../light/lightOpening'
 import { useLightReducedMotion } from '../light/lightMotion'
@@ -26,6 +26,8 @@ function PostcardPage() {
   const opening = useLightOpening()
   const flyer = useMemo(createLightFlyerStore, [])
   return (
+    <Loading late={opening.late}>
+    {!opening.settled && <LoadingPending label="light" />}
     <div ref={pageRef} data-page-ready={opening.ready || undefined} className="light-page absolute inset-0 overflow-y-auto overscroll-contain">
       <main ref={innerRef} className="light-inner mx-auto max-w-[1260px]">
         <LightLamp flyer={flyer} pageRef={pageRef} innerRef={innerRef} effectsEnabled={opening.effectsEnabled} onReady={opening.onReady}>
@@ -37,5 +39,6 @@ function PostcardPage() {
         </LightLamp>
       </main>
     </div>
+    </Loading>
   )
 }

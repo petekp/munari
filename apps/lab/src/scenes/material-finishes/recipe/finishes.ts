@@ -28,6 +28,10 @@
 // marked pure: a bundler otherwise keeps a top-level call, and with it
 // every preset the table names.
 //
+// `pageLook` is the page copy's stand-in for the lit card while the scene
+// prepares: a light gradient over the body color and the edge's shading, by
+// eye from the lit cards, unmeasured. The lit scene does not read it.
+//
 // Ownership: this file is copied into a project (registry/finishes) and
 // byte-welded to the lab's reference copy by tests/registry/finishesPack.test.ts.
 
@@ -72,6 +76,10 @@ export const lacquerCrimson: Readonly<SurfaceFinish> = {
   edge: { width: 6, rimColor: null },
   detail: { kind: 'orange-peel', scale: 18, depth: 0.004 },
   environment: 'gradient',
+  pageLook: {
+    image: 'linear-gradient(180deg, rgb(255 255 255 / 0.22), rgb(255 255 255 / 0.05) 20%, rgb(0 0 0 / 0) 45%, rgb(0 0 0 / 0.18))',
+    shadow: 'inset 0 1px 0 rgb(255 255 255 / 0.35), inset 0 -6px 8px -4px rgb(0 0 0 / 0.35)',
+  },
 }
 
 // Charcoal satin polymer. standard_surface_plastic: one dielectric lobe at
@@ -82,6 +90,10 @@ export const polymerCharcoal: Readonly<SurfaceFinish> = {
   roughness: 0.36,
   ior: 1.49,
   edge: { width: 12, rimColor: null },
+  pageLook: {
+    image: 'linear-gradient(180deg, rgb(255 255 255 / 0.09), rgb(255 255 255 / 0) 50%, rgb(0 0 0 / 0.14))',
+    shadow: 'inset 0 1px 0 rgb(255 255 255 / 0.12), inset 0 -10px 14px -8px rgb(0 0 0 / 0.35)',
+  },
 }
 
 // Blue anodized aluminum. open_pbr_aluminum_brushed: roughness 0.2,
@@ -96,6 +108,10 @@ export const aluminumBlue: Readonly<SurfaceFinish> = {
   anisotropy: { amount: 0.65, rotation: Math.PI / 2 },
   edge: { width: 3, rimColor: null },
   detail: { kind: 'brushed', scale: 1.2, depth: 0.06 },
+  pageLook: {
+    image: 'repeating-linear-gradient(180deg, rgb(255 255 255 / 0.05) 0 1px, rgb(0 0 0 / 0.04) 1px 2px), linear-gradient(90deg, rgb(0 0 0 / 0.12), rgb(255 255 255 / 0.28) 50%, rgb(0 0 0 / 0.12))',
+    shadow: 'inset 0 1px 0 rgb(255 255 255 / 0.4), inset 0 -3px 4px -2px rgb(0 0 0 / 0.3)',
+  },
 }
 
 // Midnight velvet. standard_surface_velvet: base specular 0, sheen 1, with
@@ -115,6 +131,10 @@ export const velvetMidnight: Readonly<SurfaceFinish> = {
   edge: { width: 48, rimColor: null },
   detail: { kind: 'pile', scale: 24, depth: 0.08 },
   lightGain: VELVET_LIGHT_GAIN,
+  pageLook: {
+    image: 'radial-gradient(120% 120% at 50% 40%, rgb(0 0 0 / 0) 55%, rgb(184 196 255 / 0.2))',
+    shadow: 'inset 0 0 28px rgb(184 196 255 / 0.16)',
+  },
 }
 
 // Celadon glazed ceramic. A glass glaze on a porcelain body
@@ -132,6 +152,10 @@ export const ceramicCeladon: Readonly<SurfaceFinish> = {
   detail: { kind: 'glaze', scale: 120, depth: 0.035 },
   crackle: { amount: 0.2, scale: 90 },
   environment: 'gradient',
+  pageLook: {
+    image: 'linear-gradient(180deg, rgb(255 255 255 / 0.24), rgb(255 255 255 / 0.06) 20%, rgb(0 0 0 / 0) 45%, rgb(0 0 0 / 0.12))',
+    shadow: 'inset 0 0 0 2px rgb(230 238 226 / 0.5), inset 0 -6px 10px -6px rgb(0 0 0 / 0.25)',
+  },
 }
 
 // A foil is a metal sheet under a thin film (Belcour and Barla 2017),
@@ -146,6 +170,10 @@ export const foilHolographic: Readonly<SurfaceFinish> = {
   ior: 1.5,
   film: { amount: 1, ior: 1.45, thickness: 700, variation: 0.6, scale: 70 },
   edge: { width: 3, rimColor: null },
+  pageLook: {
+    image: 'linear-gradient(115deg, rgb(255 120 200 / 0.22), rgb(120 220 255 / 0.22) 35%, rgb(180 255 150 / 0.2) 60%, rgb(255 220 120 / 0.22) 85%)',
+    shadow: 'inset 0 1px 0 rgb(255 255 255 / 0.6), inset 0 -3px 4px -2px rgb(0 0 0 / 0.2)',
+  },
 }
 
 export const foilOilSlick: Readonly<SurfaceFinish> = {
@@ -155,6 +183,10 @@ export const foilOilSlick: Readonly<SurfaceFinish> = {
   ior: 1.5,
   film: { amount: 1, ior: 1.4, thickness: 900, variation: 0.55, scale: 260 },
   edge: { width: 4, rimColor: null },
+  pageLook: {
+    image: 'linear-gradient(125deg, rgb(120 60 200 / 0.35), rgb(30 160 160 / 0.3) 40%, rgb(200 160 40 / 0.3) 70%, rgb(160 40 120 / 0.3))',
+    shadow: 'inset 0 1px 0 rgb(255 255 255 / 0.25), inset 0 -4px 5px -3px rgb(0 0 0 / 0.35)',
+  },
 }
 
 export const foilCrumpled: Readonly<SurfaceFinish> = {
@@ -165,6 +197,10 @@ export const foilCrumpled: Readonly<SurfaceFinish> = {
   film: { amount: 1, ior: 1.35, thickness: 550, variation: 0.45, scale: 140 },
   edge: { width: 2, rimColor: null },
   detail: { kind: 'crumple', scale: 20, depth: 0.07 },
+  pageLook: {
+    image: 'conic-gradient(from 30deg at 40% 45%, rgb(255 255 255 / 0.22), rgb(0 0 0 / 0.1), rgb(255 255 255 / 0.16), rgb(0 0 0 / 0.08), rgb(255 255 255 / 0.22)), linear-gradient(115deg, rgb(255 150 200 / 0.16), rgb(130 220 255 / 0.16) 50%, rgb(255 230 130 / 0.16))',
+    shadow: 'inset 0 1px 0 rgb(255 255 255 / 0.5)',
+  },
 }
 
 // Paper is matte stock: office paper's albedo 0.794/0.834/0.884 linear
@@ -177,6 +213,10 @@ export const paperOffice: Readonly<SurfaceFinish> = {
   specularIntensity: 0.35,
   edge: { width: 1, rimColor: null },
   detail: { kind: 'fiber', scale: 3.5, depth: 0.045 },
+  pageLook: {
+    image: 'linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(0 0 0 / 0.04))',
+    shadow: 'inset 0 0 0 1px rgb(0 0 0 / 0.06)',
+  },
 }
 
 export const paperKraft: Readonly<SurfaceFinish> = {
@@ -186,6 +226,10 @@ export const paperKraft: Readonly<SurfaceFinish> = {
   specularIntensity: 0.4,
   edge: { width: 1, rimColor: null },
   detail: { kind: 'fiber', scale: 3.5, depth: 0.06 },
+  pageLook: {
+    image: 'linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(0 0 0 / 0.06))',
+    shadow: 'inset 0 0 0 1px rgb(0 0 0 / 0.08)',
+  },
 }
 
 export const paperColdPress: Readonly<SurfaceFinish> = {
@@ -195,6 +239,10 @@ export const paperColdPress: Readonly<SurfaceFinish> = {
   specularIntensity: 0.4,
   edge: { width: 1, rimColor: null },
   detail: { kind: 'fiber', scale: 4, depth: 0.06 },
+  pageLook: {
+    image: 'linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(0 0 0 / 0.05))',
+    shadow: 'inset 0 0 0 1px rgb(0 0 0 / 0.07)',
+  },
 }
 
 // Soft-touch rubber is roughness 0.7 to 0.9 with specularIntensity 0.3 to
@@ -207,6 +255,10 @@ export const rubberBlack: Readonly<SurfaceFinish> = {
   specularIntensity: 0.25,
   sheen: { amount: 0.8, color: '#8a8d93', roughness: 0.8 },
   edge: { width: 20, rimColor: null },
+  pageLook: {
+    image: 'linear-gradient(180deg, rgb(255 255 255 / 0.06), rgb(0 0 0 / 0.12))',
+    shadow: 'inset 0 2px 8px rgb(138 141 147 / 0.25), inset 0 -14px 18px -12px rgb(0 0 0 / 0.5)',
+  },
 }
 
 export const rubberGrip: Readonly<SurfaceFinish> = {
@@ -216,6 +268,10 @@ export const rubberGrip: Readonly<SurfaceFinish> = {
   specularIntensity: 0.4,
   edge: { width: 22, rimColor: null },
   detail: { kind: 'dots', scale: 8, depth: 0.6 },
+  pageLook: {
+    image: 'linear-gradient(180deg, rgb(255 255 255 / 0.1), rgb(0 0 0 / 0.12))',
+    shadow: 'inset 0 2px 6px rgb(255 255 255 / 0.18), inset 0 -16px 20px -14px rgb(0 0 0 / 0.4)',
+  },
 }
 
 export const rubberSilicone: Readonly<SurfaceFinish> = {
@@ -225,6 +281,10 @@ export const rubberSilicone: Readonly<SurfaceFinish> = {
   specularIntensity: 0.5,
   sheen: { amount: 0.25, color: '#dfe9e2', roughness: 0.6 },
   edge: { width: 44, rimColor: null },
+  pageLook: {
+    image: 'linear-gradient(180deg, rgb(255 255 255 / 0.12), rgb(0 0 0 / 0.08))',
+    shadow: 'inset 0 3px 14px rgb(223 233 226 / 0.35), inset 0 -24px 30px -20px rgb(0 0 0 / 0.25)',
+  },
 }
 
 // Wax and silicone scatter light under the surface, past the shading's
@@ -237,6 +297,10 @@ export const waxCandle: Readonly<SurfaceFinish> = {
   specularIntensity: 0.45,
   scatter: { amount: 0.45 },
   edge: { width: 18, rimColor: '#f7efdf' },
+  pageLook: {
+    image: 'linear-gradient(180deg, rgb(255 255 255 / 0.12), rgb(0 0 0 / 0.04))',
+    shadow: 'inset 0 0 18px rgb(247 239 223 / 0.8)',
+  },
 }
 
 export const waxBeeswax: Readonly<SurfaceFinish> = {
@@ -247,6 +311,10 @@ export const waxBeeswax: Readonly<SurfaceFinish> = {
   scatter: { amount: 0.5 },
   edge: { width: 18, rimColor: '#ecbd6a' },
   detail: { kind: 'honeycomb', scale: 10, depth: 0.18 },
+  pageLook: {
+    image: 'linear-gradient(180deg, rgb(255 255 255 / 0.12), rgb(0 0 0 / 0.08))',
+    shadow: 'inset 0 0 18px rgb(236 189 106 / 0.7)',
+  },
 }
 
 export const waxSilicone: Readonly<SurfaceFinish> = {
@@ -256,6 +324,10 @@ export const waxSilicone: Readonly<SurfaceFinish> = {
   specularIntensity: 1,
   scatter: { amount: 0.8 },
   edge: { width: 32, rimColor: '#ffb3a3' },
+  pageLook: {
+    image: 'linear-gradient(180deg, rgb(255 255 255 / 0.3), rgb(255 255 255 / 0.06) 25%, rgb(0 0 0 / 0) 50%, rgb(0 0 0 / 0.08))',
+    shadow: 'inset 0 0 28px rgb(255 179 163 / 0.7)',
+  },
 }
 
 export const finishes: Readonly<Record<FinishPreset, Readonly<SurfaceFinish>>> = /* @__PURE__ */ Object.freeze({

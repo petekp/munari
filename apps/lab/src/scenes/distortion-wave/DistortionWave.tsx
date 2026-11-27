@@ -1,12 +1,11 @@
 // Distortion wave — six native controls with an independent captured transition layer.
-import { useLayoutEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   SurfaceCanvas,
   useCaptureTransition,
   useCaptureSupport,
 } from '@petepetrash/munari'
 import { WaveHighlight, WaveIcon } from './distortionWaveArtwork'
-import { announcePageReady } from '../../components/siteOpening'
 import {
   DistortionWaveEffect,
   type WaveOptions,
@@ -28,7 +27,6 @@ function controlPalette(trigger: HTMLElement): WavePalette {
 }
 
 export function DistortionWaveApp() {
-  useLayoutEffect(announcePageReady, [])
   const supported = useCaptureSupport()
   const transition = useCaptureTransition<WaveOptions>()
   const [light, setLight] = useState(false)

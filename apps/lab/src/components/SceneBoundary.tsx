@@ -15,7 +15,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { sceneUrl } from '../captureMode'
-import { revealSite } from './siteOpening'
+import { announcePageReady } from './siteOpening'
 
 interface Props {
   /**
@@ -42,7 +42,7 @@ export class SceneBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo) {
     // Lift the cold-load opening curtain and clear `#root[inert]` so an error
     // during initial mount is visible and interactive rather than hidden behind it.
-    revealSite()
+    announcePageReady()
     console.error('[lab] scene threw:', error)
     this.setState({ stack: info.componentStack ?? null })
   }

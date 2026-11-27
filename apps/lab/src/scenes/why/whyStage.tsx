@@ -11,6 +11,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Button, Ruler, TextButton } from '../../components/system'
 import { sceneUrl, type CaptureMode } from '../../captureMode'
 import type { RelatedSceneLink } from './whyData'
+import { useFramePageReady } from '../../components/siteOpening'
 
 const DESKTOP_WIDTH = 1100
 const PHONE_WIDTH = 720
@@ -43,6 +44,7 @@ export function WhyLiveStage({
   const panelRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
   const [loadedKey, setLoadedKey] = useState('')
+  const frame = useRef<HTMLIFrameElement>(null)
   const [engineMode, setEngineMode] = useState<CaptureMode>('auto')
 
   useLayoutEffect(() => {
@@ -89,6 +91,7 @@ export function WhyLiveStage({
   const stageHeight = width > 0 ? Math.round(Math.min(width * (narrow ? 0.78 : 0.56), 540)) : 380
   const frameHeight = Math.round(stageHeight / scale)
   const frameKey = `${demoId}:${engineMode}`
+  useFramePageReady(frame, () => setLoadedKey(frameKey))
 
   return (
     <figure ref={containerRef} className="why-stage" aria-label={`${title} live demo`}>
@@ -101,12 +104,12 @@ export function WhyLiveStage({
         )}
         {active && width > 0 && (
           <iframe
+            ref={frame}
             key={frameKey}
             className="why-stage-frame"
             title={`${title} live demo`}
             src={sceneUrl(demoId, { framed: true, bare: true, capture: engineMode })}
             data-loaded={loadedKey === frameKey || undefined}
-            onLoad={() => setLoadedKey(frameKey)}
             style={{ width: frameWidth, height: frameHeight, transform: `scale(${scale})` }}
           />
         )}

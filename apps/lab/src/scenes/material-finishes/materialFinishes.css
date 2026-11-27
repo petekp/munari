@@ -87,6 +87,8 @@
  * capture's alpha is what tells text from body. */
 .mf-card {
   background: var(--munari-body);
+  background-image: var(--munari-body-image, none);
+  box-shadow: var(--munari-body-shadow, none);
 }
 
 .mf-card--page {

@@ -2,6 +2,7 @@
 // The page scrolls inside the demo viewport; the bulb stays in its overlay.
 // Native fallback keeps the same headline without the lighting canvases.
 import { useMemo, useRef } from 'react'
+import { Loading, LoadingPending } from '@petepetrash/munari'
 import { LightLamp } from './LightLamp'
 import { LightHeadline } from './LightHeadline'
 import { useLightOpening } from './lightOpening'
@@ -21,12 +22,15 @@ function LightPage() {
   // No postcard on this page, so the flyer store stays empty.
   const flyer = useMemo(createLightFlyerStore, [])
   return (
-    <div ref={pageRef} data-page-ready={opening.ready || undefined} className="light-page absolute inset-0 overflow-y-auto overscroll-contain">
-      <main ref={innerRef} className="light-inner mx-auto max-w-[1260px]">
-        <LightLamp flyer={flyer} pageRef={pageRef} innerRef={innerRef} effectsEnabled={opening.effectsEnabled} onReady={opening.onReady}>
-          {content => <LightHeadline {...content} />}
-        </LightLamp>
-      </main>
-    </div>
+    <Loading late={opening.late}>
+      {!opening.settled && <LoadingPending label="light" />}
+      <div ref={pageRef} data-page-ready={opening.ready || undefined} className="light-page absolute inset-0 overflow-y-auto overscroll-contain">
+        <main ref={innerRef} className="light-inner mx-auto max-w-[1260px]">
+          <LightLamp flyer={flyer} pageRef={pageRef} innerRef={innerRef} effectsEnabled={opening.effectsEnabled} onReady={opening.onReady}>
+            {content => <LightHeadline {...content} />}
+          </LightLamp>
+        </main>
+      </div>
+    </Loading>
   )
 }

@@ -30,12 +30,12 @@
 
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react'
 import * as THREE from 'three'
-import { DirectRenderPipeline, PMREMGenerator, WebGPURenderer } from 'three/webgpu'
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+import { DirectRenderPipeline, WebGPURenderer } from 'three/webgpu'
+import { waitForDrawPipelines, type DrawPipelineWait } from '@petepetrash/munari/advanced'
 import type { LightFlyerStore } from './lightFlyer'
 import { DemoOverlay } from '../../components/DemoHost'
 import { createLightShadowMaterial, maskTexture, setLightFlyerUniform, setLightInkMask, setLightFrame, setLightReliefMask, type LightShadowMaterial } from './lightShadowMaterial'
-import { BULB_RADIUS, createLightBulb, type LightBulb } from './lightBulb'
+import { createLightBulb, type LightBulb } from './lightBulb'
 import { LIGHT_HEIGHT, POSTCARD_STANDOFF } from './lightLaw'
 import { buildInkMask, domPainter, measureRelief, paintRelief, type InkMask, type Mask } from './lightRelief'
 import type { ReliefReply, ReliefRequest } from './lightReliefWorker'
@@ -48,26 +48,17 @@ import { createLightDisplay } from './lightDisplay'
 import { createLampViewportUpdater, watchLampViewport } from './lightLampViewport'
 import { createHeadlineTreatments } from './lightHeadlineTreatments'
 import { useRendererReplacement } from '../../lib/rendererReplacement'
+import { clampToViewport, ellipseOffset, initialLightPosition, type Point } from './lightLampPosition'
+import { bakeRoom } from './lightRoomEnvironment'
 
-// Small idle motion stays inside the gap above the headline (decision #50).
-const DRIFT_RADIUS_X = 12
-const DRIFT_RADIUS_Y = 3
-const DRIFT_PERIOD_MS = 24000
 // Raising selected type lengthens its shadow on the page (decision #50).
 const SELECTED_TYPE_LIFT = 64
 // Relief is rebuilt this long after the last layout change or interaction.
 const RELIEF_SETTLE_MS = 120
-// The bulb can be dragged this close to the viewport's edge.
-const LIGHT_MARGIN = BULB_RADIUS + 8
 // The shadow band spans this many viewport heights, and is re-seated once
 // the viewport has used this fraction of the slack on either side.
 const BAND_FACTOR = 2
 const BAND_SLACK = 0.6
-
-interface Point {
-  x: number
-  y: number
-}
 
 interface ShadowPass {
   scene: THREE.Scene
@@ -82,6 +73,9 @@ interface ShadowPass {
 interface BulbPass {
   renderer: WebGPURenderer | null
   pipeline: DirectRenderPipeline | null
+  wait: DrawPipelineWait | null
+  /** The bulb's last draw ran, so its pipelines are built. */
+  drew: boolean
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   bulb: LightBulb | null
@@ -110,16 +104,11 @@ function createLightState(): LightState {
     width: 0,
     height: 0,
     shadow: { scene: shadowScene, camera: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), mesh, ink: null, relief: null, paper: null, layoutCurrent: () => false },
-    bulb: { renderer: null, pipeline: null, scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), bulb: null, lastFrame: 0, backdrop: null, queued: false, updateViewport:null },
+    bulb: { renderer: null, pipeline: null, wait: null, drew: false, scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(), bulb: null, lastFrame: 0, backdrop: null, queued: false, updateViewport:null },
     draw: () => {},
     start: () => {},
     stop: () => {},
   }
-}
-
-function ellipseOffset(elapsedMs: number): Point {
-  const angle = (elapsedMs / DRIFT_PERIOD_MS) * Math.PI * 2
-  return { x: Math.sin(angle) * DRIFT_RADIUS_X, y: (1 - Math.cos(angle)) * DRIFT_RADIUS_Y }
 }
 
 const pageFlyerCorners = new Float32Array(12)
@@ -148,27 +137,6 @@ function createReliefWorker(): Worker | null {
   } catch {
     return null
   }
-}
-
-function clampToViewport(point: Point, page: HTMLElement | null): Point {
-  return {
-    x: Math.min(Math.max(point.x, LIGHT_MARGIN), Math.max(LIGHT_MARGIN, (page?.clientWidth ?? 0) - LIGHT_MARGIN)),
-    y: Math.min(Math.max(point.y, LIGHT_MARGIN), Math.max(LIGHT_MARGIN, (page?.clientHeight ?? 0) - LIGHT_MARGIN)),
-  }
-}
-
-// Above the postcard when the page has one, otherwise above the headline's
-// right side, so the first shadows fall across the content.
-function initialLightPosition(line: HTMLElement | null, masthead: HTMLElement | null, page: HTMLElement | null): Point {
-  if (!page || !masthead) return { x: LIGHT_MARGIN, y: LIGHT_MARGIN }
-  const viewport = page.getBoundingClientRect()
-  const box = masthead.getBoundingClientRect()
-  const heading = line?.getBoundingClientRect()
-  const card = masthead.querySelector('.postcard-hero-viewport')?.getBoundingClientRect()
-  const desktop = viewport.width > 760
-  const x = card ? card.left + card.width / 2 : heading ? heading.left + heading.width * 0.75 : box.right - LIGHT_MARGIN
-  const top = card?.top ?? heading?.top ?? box.top
-  return clampToViewport({ x: x - viewport.left, y: desktop ? top - viewport.top - 54 : 68 }, page)
 }
 
 /** What the lamp hands its content: refs to attach, and the light's height. */
@@ -326,6 +294,7 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
     }
     // Converts each fragment as it lands on the canvas, as WebGL did (decisions.md #72).
     const pipeline = new DirectRenderPipeline(renderer)
+    const wait = waitForDrawPipelines(renderer, () => redraw())
     const pass = state.shadow
     let display: ReturnType<typeof createLightDisplay> | null = null
     let headline: ReturnType<typeof createHeadlineTreatments> = null
@@ -335,7 +304,7 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
 
     let raf = 0, openingFrame = 0, complete = false, headlineReady = false
     const ready = () => document.fonts.status === 'loaded' && pass.layoutCurrent() && headlineReady &&
-      !!state.bulb.renderer && !!state.bulb.backdrop?.ready()
+      !!state.bulb.renderer && !!state.bulb.backdrop?.ready() && wait.building() === 0 && state.bulb.wait?.building() === 0
     const checkOpening = () => {
       if (complete || openingFrame || !ready()) return
       openingFrame = requestAnimationFrame(() => {
@@ -348,18 +317,24 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
     const draw = () => {
       if (!display) return
       pass.paper?.update(flyer.read())
-      display.render(pass.scene, pass.camera, pass.paper)
+      const shown = display
+      const drew = wait.draw(() => shown.render(pass.scene, pass.camera, pass.paper))
       headlineReady = headline?.render(reducedMotionRef.current) ?? true
       // The postcard's pre-draw callback reaches here before its canvas has
-      // drawn. A microtask samples that completed canvas in the same frame.
-      if (!state.bulb.queued) {
+      // drawn. A microtask samples that completed canvas in the same frame,
+      // only if this frame drew it.
+      if (drew && !state.bulb.queued) {
         state.bulb.queued = true
         queueMicrotask(() => {
           state.bulb.queued = false
-          if (!state.bulb.pipeline) return
+          const { pipeline: bulbPipeline, wait: bulbWait } = state.bulb
+          if (!bulbPipeline || !bulbWait) return
           state.bulb.updateViewport?.()
-          state.bulb.backdrop?.update(canvas)
-          state.bulb.pipeline.render(state.bulb.scene, state.bulb.camera)
+          // A skipped bulb render builds asynchronously, and three uploads
+          // the backdrop's canvas textures inside that build, after this
+          // frame. A WebGPU canvas copied then is an invalid texture.
+          if (state.bulb.drew && bulbWait.building() === 0) state.bulb.backdrop?.update(canvas)
+          state.bulb.drew = bulbWait.draw(() => bulbPipeline.render(state.bulb.scene, state.bulb.camera))
           checkOpening()
         })
       }
@@ -460,6 +435,7 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
       state.draw = () => {}
       state.start = () => {}
       state.stop = () => {}
+      wait.dispose()
       display?.dispose()
       headline?.dispose()
       pass.paper?.dispose()
@@ -519,23 +495,7 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
     void init.then(
       () => {
         if (cancelled) return
-        const pmrem = new PMREMGenerator(renderer)
-        environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
-        pmrem.dispose()
-        pass.scene.environment = environment
-        backdrop = createLampBackdrop(page, redraw, flyer)
-        pass.backdrop = backdrop
-        bulb = createLightBulb(backdrop, renderer.coordinateSystem)
-        pass.scene.add(bulb.group)
-        pass.bulb = bulb
-        pass.renderer = renderer
-        pass.pipeline = pipeline
-        pass.lastFrame = 0
-        pass.updateViewport = createLampViewportUpdater(renderer,pass.camera,page)
-        pass.updateViewport()
-        stopViewport = watchLampViewport(redraw)
-        setBulbless(false)
-        redraw()
+        return bakeRoom(renderer)
       },
       () => {
         if (cancelled) return
@@ -543,7 +503,26 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
         setBulbless(true)
         reportReady('native')
       },
-    )
+    ).then((room) => {
+      if (cancelled || !room) return
+      environment = room
+      pass.scene.environment = environment
+      backdrop = createLampBackdrop(page, redraw, flyer)
+      pass.backdrop = backdrop
+      bulb = createLightBulb(backdrop, renderer.coordinateSystem)
+      pass.scene.add(bulb.group)
+      pass.bulb = bulb
+      pass.renderer = renderer
+      pass.pipeline = pipeline
+      pass.wait = waitForDrawPipelines(renderer, () => redraw())
+      pass.drew = false
+      pass.lastFrame = 0
+      pass.updateViewport = createLampViewportUpdater(renderer,pass.camera,page)
+      pass.updateViewport()
+      stopViewport = watchLampViewport(redraw)
+      setBulbless(false)
+      redraw()
+    })
 
     return () => {
       cancelled = true
@@ -559,6 +538,8 @@ export function LightLamp({ pageRef, innerRef, children, effectsEnabled, onReady
       pass.bulb = null
       pass.renderer = null
       pass.pipeline = null
+      pass.wait?.dispose()
+      pass.wait = null
       pipeline.dispose()
       // Same mid-init disposal guard as the shadow renderer above.
       void init.then(() => { void renderer.dispose() }, () => {})

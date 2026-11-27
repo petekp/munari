@@ -4,6 +4,7 @@ import { Environment, OrbitControls } from '@react-three/drei'
 import { ContactShadows } from './lib/ContactShadows'
 import {
   FocusScene,
+  LoadingPending,
   SurfaceCanvas,
   useCaptureSupport,
 } from '@petepetrash/munari'
@@ -15,6 +16,7 @@ import { SceneNav } from './components/SceneNav'
 import { BROWSER_GUIDE, DEMOS, demoFor, type DemoId } from './components/sceneCatalog'
 import { SceneBoundary } from './components/SceneBoundary'
 import { revealSite } from './components/siteOpening'
+import { DemoFrame, SceneLoading } from './components/SceneLoading'
 import { sceneUrl } from './captureMode'
 import { DEMO_PAGES } from './demoPages'
 
@@ -396,13 +398,7 @@ export default function App() {
           }}
         />
         <main className="site-content" id="site-content" tabIndex={-1}>
-          <iframe
-            key={frameSrc}
-            src={frameSrc}
-            title={`${demoFor(scene)?.title ?? scene} demo`}
-            className="site-frame"
-            onLoad={revealSite}
-          />
+          <DemoFrame key={frameSrc} src={frameSrc} title={`${demoFor(scene)?.title ?? scene} demo`} />
         </main>
       </div>
     )
@@ -419,7 +415,9 @@ export default function App() {
     return (
       <>
         <SceneBoundary key={scene} scene={scene}>
-          <Suspense fallback={null}>{page}</Suspense>
+          <SceneLoading>
+            <Suspense fallback={<LoadingPending label="scene code" />}>{page}</Suspense>
+          </SceneLoading>
         </SceneBoundary>
         {notice}
       </>
@@ -428,6 +426,7 @@ export default function App() {
 
   return (
     <SceneBoundary key={scene} scene={scene}>
+      <SceneLoading>
       <div className="app">
         <SurfaceProviderProbe value="lab">
           <SurfaceCanvas
@@ -453,6 +452,7 @@ export default function App() {
 
         {showChrome && <Suspense fallback={null}><SceneHud scene={scene} /></Suspense>}
       </div>
+      </SceneLoading>
     </SceneBoundary>
   )
 }
