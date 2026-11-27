@@ -51,6 +51,7 @@ describe('munari CLI & Materials registry', () => {
       'vignette',
       'tilt-shadow',
       'glass-refract',
+      'lacquer-ltc',
     ])
     expect(parsed.materials.find((m) => m.name === 'glass-refract')?.needsBackdrop).toBe(true)
     expect(parsed.tools.map((t) => t.name)).toContain('finishes')
@@ -247,5 +248,92 @@ export default defineManifestMaterial({ name: 'implicit-conv', vertex, fragment 
     )
     expect(badOpt.status).toBe(0)
     expect(badOpt.stderr).toContain('options.manifestImport')
+  })
+
+  it('supports defineGpuMaterial, composeShades, fast source-hash check, and munari info --json', () => {
+    const dir = makeTempWorkspace()
+    symlinkSync(join(ROOT, 'node_modules'), join(dir, 'node_modules'), 'dir')
+    const stackedPath = join(dir, 'stackedCard.material.ts')
+    writeFileSync(
+      stackedPath,
+      `import tgpu from 'typegpu'
+import * as d from 'typegpu/data'
+import { SurfaceFragmentIn, defineGpuMaterial } from '@petepetrash/munari-cli/author'
+const tint = tgpu.fn([SurfaceFragmentIn], d.vec4f)((ctx) => {
+  'use gpu'
+  return d.vec4f(ctx.color.mul(d.vec3f(0.8, 1.0, 0.9)), ctx.alpha)
+})
+const boost = tgpu.fn([SurfaceFragmentIn], d.vec4f)((ctx) => {
+  'use gpu'
+  return d.vec4f(ctx.color.add(d.vec3f(0.05, 0.02, 0.0)), ctx.alpha)
+})
+export default defineGpuMaterial({ name: 'stacked-card', shades: [tint, boost] })
+`,
+      'utf8',
+    )
+
+    const compileRes = runCli(dir, ['compile', stackedPath])
+    expect(compileRes.stderr).toBe('')
+    expect(compileRes.status).toBe(0)
+    const genPath = join(dir, 'stackedCard.material.gen.ts')
+    const genText = readFileSync(genPath, 'utf8')
+    expect(genText).toContain('version: 2')
+    expect(genText).toContain('// munari-body-sha256:')
+    expect(genText).toContain('sourceHash:')
+    expect(genText).toContain('encodeSurfaceOutput')
+
+    expect(runCli(dir, ['check', stackedPath]).status).toBe(0)
+    expect(runCli(dir, ['check', stackedPath, '--deep']).status).toBe(0)
+
+    writeFileSync(genPath, genText.replace('version: 2', 'version: 2 // edit'), 'utf8')
+    expect(runCli(dir, ['check', stackedPath]).status).toBe(1)
+
+    expect(runCli(dir, ['compile', stackedPath]).status).toBe(0)
+    writeFileSync(stackedPath, `${readFileSync(stackedPath, 'utf8')}\n// src change\n`, 'utf8')
+    expect(runCli(dir, ['check', stackedPath]).status).toBe(1)
+
+    const infoRes = runCli(dir, ['info', '--json', '--registry', REGISTRY_DIR])
+    expect(infoRes.status).toBe(0)
+    // SAFETY: `munari info --json` returns structured JSON summary.
+    const info = JSON.parse(infoRes.stdout) as {
+      manifestVersion: number
+      compilerAbi: string
+      frameUniforms: { byteSize: number }
+      catalog: { materials: string[] }
+    }
+    expect(info.manifestVersion).toBe(2)
+    expect(info.compilerAbi).toMatch(/^v2\.1-[0-9a-f]{16}$/)
+    expect(info.frameUniforms.byteSize).toBe(256)
+    expect(info.catalog.materials).toContain('lacquer-ltc')
+
+    const customDir = makeTempWorkspace()
+    symlinkSync(join(ROOT, 'node_modules'), join(customDir, 'node_modules'), 'dir')
+    const customImport = './custom-gpu'
+    expect(
+      runCli(customDir, ['add', 'foil', '--manifest-import', customImport, '--registry', REGISTRY_DIR]).status,
+    ).toBe(0)
+    expect(
+      runCli(customDir, ['check', 'src/materials/foil.material.ts', '--manifest-import', customImport]).status,
+    ).toBe(0)
+
+    const badStaticPath = join(dir, 'badStatic.material.ts')
+    writeFileSync(
+      badStaticPath,
+      `import tgpu from 'typegpu'
+import * as d from 'typegpu/data'
+import { LTC_STATIC_TEXTURES, SurfaceFragmentIn, defineGpuMaterial } from '@petepetrash/munari-cli/author'
+const shade = tgpu.fn([SurfaceFragmentIn], d.vec4f)((ctx) => {
+  'use gpu'
+  return d.vec4f(ctx.color, ctx.alpha)
+})
+export default defineGpuMaterial({ name: 'bad-static', staticTextures: LTC_STATIC_TEXTURES, shade })
+`,
+      'utf8',
+    )
+    const badStaticCompile = runCli(dir, ['compile', badStaticPath])
+    expect(badStaticCompile.status).toBe(1)
+    expect(badStaticCompile.stderr).toContain('WGSL missing @group(1) @binding(2)')
+
+    expect(runCli(ROOT, ['check', '--deep', 'registry/materials/lacquerLtc.material.ts']).status).toBe(0)
   })
 })

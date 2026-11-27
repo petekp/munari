@@ -5,9 +5,9 @@ import * as d from 'typegpu/data'
 import * as std from 'typegpu/std'
 import {
   defineManifestMaterial,
-  sampleSurface,
+  encodeSurfaceOutput,
+  sampleSurfaceLinear,
   surfaceLayout,
-  surfaceRadiusMask,
 } from '@petepetrash/munari-cli/author'
 
 const vertex = tgpu.vertexFn({
@@ -43,19 +43,15 @@ const fragment = tgpu.fragmentFn({
   out: d.vec4f,
 })((input) => {
   'use gpu'
-  const frame = surfaceLayout.$.frame
-  const c = sampleSurface(input.uv)
+  const c = sampleSurfaceLinear(input.uv)
   const n = std.normalize(d.vec3f(0.0, input.slope, 1.0))
   const L = std.normalize(d.vec3f(-0.3, 0.42, 0.86))
   const shade = std.mix(0.94, 1.0, std.max(std.dot(n, L), 0.0))
   const H = std.normalize(L.add(d.vec3f(0.0, 0.0, 1.0)))
   const spec = std.pow(std.max(std.dot(n, H), 0.0), 64.0)
   const rim = std.smoothstep(0.02, 0.14, input.lens) * (1.0 - std.smoothstep(0.14, 0.5, input.lens))
-  const lit = std.add(c.rgb.mul(shade), (spec * 0.32 + rim * 0.1) * c.a)
-  const mask = surfaceRadiusMask(input.uv, frame.size, frame.radii)
-  const outCol = d.vec4f(lit.mul(mask), c.a * mask)
-  if (outCol.a < 0.004) std.discard()
-  return outCol
+  const lit = c.rgb.mul(shade).add(d.vec3f(spec * 0.22 + rim * 0.08))
+  return encodeSurfaceOutput(lit, c.a, input.uv)
 })
 
 export default defineManifestMaterial({

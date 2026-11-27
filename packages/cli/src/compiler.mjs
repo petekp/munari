@@ -13,6 +13,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import tgpu from 'typegpu'
 import * as d from 'typegpu/data'
+import { computeMaterialSourceHash, formatManifestFile } from './checkFast.mjs'
 
 const VERTEX_ATTR_SPECS = {
   f32: { format: 'float32', stride: 4, makeLayout: () => tgpu.vertexLayout((n) => d.arrayOf(d.f32, n)) },
@@ -253,21 +254,7 @@ function pascalName(name) {
   return c.charAt(0).toUpperCase() + c.slice(1)
 }
 
-export async function generateMaterialSource(absPath, options = {}) {
-  const rawImport = options?.manifestImport
-  if (rawImport !== undefined && (rawImport === null || rawImport.constructor !== String || rawImport.trim() === '')) {
-    throw new Error(`${absPath}: options.manifestImport must be a non-empty string`)
-  }
-  const manifestImport = rawImport ?? '@petepetrash/munari/gpu'
-  installWebGpuNodeGlobals()
-  const mod = await import(`${pathToFileURL(absPath).href}?t=${Date.now()}`)
-  const def = mod.default
-  assert.ok(def && def.name && def.vertex && def.fragment, `${absPath}: missing default export from defineManifestMaterial()`)
-
-  const { device, shaders, writes } = createStubDevice()
-  const root = tgpu.initFromDevice({ device })
-  const { attribs, manifestAttrs } = collectVertexAttributes(def)
-
+function initPipelineStrict(root, attribs, def) {
   const pipeline = root.createRenderPipeline({
     attribs,
     vertex: def.vertex,
@@ -294,45 +281,112 @@ export async function generateMaterialSource(absPath, options = {}) {
       `${def.name}: implicit TypeGPU conversion warning(s) (use explicit d.f32(...) casts):\n${implicitWarnings.join('\n')}`,
     )
   }
+}
+
+function formatStaticTexturesField(staticSpecs) {
+  if (staticSpecs.length === 0) return ''
+  const rows = staticSpecs
+    .map((s) => {
+      const loaderExpr = s.loader === 'ltc-1' ? '() => loadLtcTable(1)' : '() => loadLtcTable(2)'
+      const fields = [
+        `name: ${JSON.stringify(s.name)}`,
+        `cacheKey: ${JSON.stringify(s.cacheKey)}`,
+        `textureBinding: ${s.textureBinding}`,
+        ...(s.samplerBinding !== undefined ? [`samplerBinding: ${s.samplerBinding}`] : []),
+        ...(s.filter ? [`filter: ${JSON.stringify(s.filter)}`] : []),
+        ...(s.addressMode ? [`addressMode: ${JSON.stringify(s.addressMode)}`] : []),
+        `load: ${loaderExpr}`,
+      ]
+      return `    { ${fields.join(', ')} },`
+    })
+    .join('\n')
+  return `\n  staticTextures: [\n${rows}\n  ],`
+}
+
+function resolveManifestImport(absPath, options) {
+  const rawImport = options?.manifestImport
+  if (rawImport !== undefined && (rawImport === null || rawImport.constructor !== String || rawImport.trim() === '')) {
+    throw new Error(`${absPath}: options.manifestImport must be a non-empty string`)
+  }
+  return rawImport ?? '@petepetrash/munari/gpu'
+}
+
+function formatUniformSection(root, writes, uniforms) {
+  if (!uniforms) return { uniformBlock: 'null', valuesTypeName: 'Record<string, never>', helperPrefix: '', uniformBytes: 0 }
+  const { schema, initial, sampleValue } = uniforms
+  const { byteSize, typeSig, packBody, helperSource } = generatePackSource(schema)
+  verifyPackParity(root, writes, schema, sampleValue ?? initial, packBody)
+  const plainInitial = serializePlainValue(schema, initial)
+  return {
+    uniformBlock: `{\n    byteSize: ${byteSize},\n    initial: ${JSON.stringify(plainInitial)},\n    pack(values: ${typeSig}, view: DataView, base: number): void {\n${packBody}\n    },\n  }`,
+    valuesTypeName: typeSig,
+    helperPrefix: helperSource ? `${helperSource}\n\n` : '',
+    uniformBytes: d.sizeOf(schema),
+  }
+}
+
+function verifyStaticTextureBindings(def, wgsl) {
+  for (const st of def.staticTextures ?? []) {
+    const texRe = new RegExp(
+      `@group\\(1\\)\\s+@binding\\(${st.textureBinding}\\)\\s+var\\s+[A-Za-z0-9_]+\\s*:\\s*texture_2d<`,
+    )
+    assert.ok(
+      texRe.test(wgsl),
+      `${def.name}: WGSL missing @group(1) @binding(${st.textureBinding}) texture_2d binding for "${st.name}"`,
+    )
+    if (st.samplerBinding !== undefined) {
+      const sampRe = new RegExp(
+        `@group\\(1\\)\\s+@binding\\(${st.samplerBinding}\\)\\s+var\\s+[A-Za-z0-9_]+\\s*:\\s*sampler\\b`,
+      )
+      assert.ok(
+        sampRe.test(wgsl),
+        `${def.name}: WGSL missing @group(1) @binding(${st.samplerBinding}) sampler binding for "${st.name}"`,
+      )
+    }
+  }
+}
+
+export async function generateMaterialSource(absPath, options = {}) {
+  const manifestImport = resolveManifestImport(absPath, options)
+  installWebGpuNodeGlobals()
+  const mod = await import(`${pathToFileURL(absPath).href}?t=${Date.now()}`)
+  const def = mod.default
+  assert.ok(def && def.name && def.vertex && def.fragment, `${absPath}: missing default export from defineManifestMaterial()`)
+
+  const { device, shaders, writes } = createStubDevice()
+  const root = tgpu.initFromDevice({ device })
+  const { attribs, manifestAttrs } = collectVertexAttributes(def)
+  initPipelineStrict(root, attribs, def)
 
   const wgsl = shaders[0]
   assert.ok(wgsl && wgsl.includes('@group(0)'), `${def.name}: resolved WGSL did not bind @group(0) surfaceLayout`)
+  verifyStaticTextureBindings(def, wgsl)
   const { vertexEntry, fragmentEntry } = extractEntryPoints(wgsl)
+  const { uniformBlock, valuesTypeName, helperPrefix, uniformBytes } = formatUniformSection(root, writes, def.uniforms)
 
-  let uniformBlock = 'null'
-  let valuesTypeName = 'Record<string, never>'
-  let helperPrefix = ''
-  if (def.uniforms) {
-    const { schema, initial, sampleValue } = def.uniforms
-    const { byteSize, typeSig, packBody, helperSource } = generatePackSource(schema)
-    verifyPackParity(root, writes, schema, sampleValue ?? initial, packBody)
-    const plainInitial = serializePlainValue(schema, initial)
-    valuesTypeName = typeSig
-    if (helperSource) helperPrefix = `${helperSource}\n\n`
-    uniformBlock = `{
-    byteSize: ${byteSize},
-    initial: ${JSON.stringify(plainInitial)},
-    pack(values: ${typeSig}, view: DataView, base: number): void {
-${packBody}
-    },
-  }`
-  }
+  const sourceHash = computeMaterialSourceHash(readFileSync(absPath, 'utf8'), manifestImport)
+  const staticSpecs = def.staticTextures ?? []
+  const usesLtc = staticSpecs.some((s) => s.loader === 'ltc-1' || s.loader === 'ltc-2')
+  const importStmt = usesLtc
+    ? `import { loadLtcTable, type MaterialManifest } from '${manifestImport}'`
+    : `import type { MaterialManifest } from '${manifestImport}'`
+  const staticField = formatStaticTexturesField(staticSpecs)
 
   const outPath = absPath.replace(/\.material\.ts$/, '.material.gen.ts')
-  const code = `// Generated by \`munari compile\` from ${path.basename(absPath)}. Zero TypeGPU runtime dependencies.
-
-import type { MaterialManifest } from '${manifestImport}'
+  const bodyCode = `${importStmt}
 
 ${helperPrefix}export type ${pascalName(def.name)}Uniforms = ${valuesTypeName}
 
 export const ${camelName(def.name)}Manifest: MaterialManifest<${valuesTypeName}> = {
+  version: 2,
+  sourceHash: ${JSON.stringify(sourceHash)},
   name: ${JSON.stringify(def.name)},
   wgsl: ${JSON.stringify(wgsl)},
   vertexEntry: ${JSON.stringify(vertexEntry)},
   fragmentEntry: ${JSON.stringify(fragmentEntry)},
   sampleViewFormat: ${JSON.stringify(def.sampleViewFormat ?? 'rgba8unorm')},
   attributes: ${JSON.stringify(manifestAttrs)},
-  customUniforms: ${uniformBlock},
+  customUniforms: ${uniformBlock},${staticField}
   cullMode: ${JSON.stringify(def.doubleSided ? 'none' : 'back')},
   depthWrite: ${Boolean(def.depthWrite)},
   depthTest: ${def.depthTest ?? true},
@@ -340,12 +394,13 @@ export const ${camelName(def.name)}Manifest: MaterialManifest<${valuesTypeName}>
   animated: ${Boolean(def.animated)},
 }
 `
+  const code = formatManifestFile(path.basename(absPath), bodyCode)
   return {
     name: def.name,
     outPath,
     code,
     wgslBytes: Buffer.byteLength(wgsl),
-    uniformBytes: def.uniforms ? d.sizeOf(def.uniforms.schema) : 0,
+    uniformBytes,
   }
 }
 

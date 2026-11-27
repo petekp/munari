@@ -24,7 +24,7 @@ import {
   mat4Multiply,
   mat4PerspectiveZeroToOne,
 } from './math'
-import { createGpuRenderer, type GpuDrawItem, type GpuRenderer } from './webgpu'
+import { createGpuRenderer, resolveFrameContext, type GpuDrawItem, type GpuRenderer } from './webgpu'
 import { GpuHostContext, getOrCreateGpuHost, hostInternals, installPointerGate } from './host'
 
 // Same 10s guard window as Three SurfaceCanvas (decisions.md #73).
@@ -85,6 +85,7 @@ export function SurfaceCanvas({
     let scheduled = false
     let prevTime = performance.now()
     const startTime = prevTime
+    const frameTail = new Float32Array(24)
     let renderer: GpuRenderer | null = null
     let stopGate = () => {}
 
@@ -124,7 +125,7 @@ export function SurfaceCanvas({
           if (item) items.push(item)
         }
       }
-      renderer.render(items)
+      renderer.render(items, resolveFrameContext(host.viewport, host.lighting, now - startTime, dtMs, frameTail))
       host.renderCount += 1
 
       if (frameloopRef.current === 'always' || host.workClaims() > 0) {

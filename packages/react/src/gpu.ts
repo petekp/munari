@@ -6,7 +6,8 @@
 
 export { Surface, type GpuViewport, type SurfaceFrameContext, type SurfacePose, type SurfacePresentation, type SurfaceProps } from './gpu/Surface'
 export { SurfaceCanvas, type SurfaceCanvasProps } from './gpu/SurfaceCanvas'
-export { createManifestDriver, unlitSurfaceManifest, type ManifestAttribute, type ManifestDriver, type ManifestMaterial, type ManifestUniformSpec, type MaterialManifest } from './gpu/manifest'
+export { createManifestDriver, unlitSurfaceManifest, type ManifestAttribute, type ManifestDriver, type ManifestMaterial, type ManifestStaticTexture, type ManifestStaticTextureData, type ManifestUniformSpec, type MaterialManifest } from './gpu/manifest'
+export { loadLtcTable } from './gpu/ltc'
 export { getGpuHostStats, requestGpuFrame, simulateGpuDeviceLoss, type GpuHostStats } from './gpu/host'
 export { supportsCapture } from './primitives/surface/surfaceSupport'
 export type { DeformedPoint, GpuGeometry, GpuMaterial, GpuMaterialFactory, GpuRenderer } from './gpu/webgpu'

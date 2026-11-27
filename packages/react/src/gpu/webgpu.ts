@@ -16,6 +16,7 @@ import {
   GPU_TEXTURE_USAGE,
   type CachedPipelines,
   type GpuDrawItem,
+  type GpuFrameContext,
   type GpuRenderer,
 } from './gpuGeometry'
 
@@ -26,15 +27,19 @@ export {
   createGpuSurfaceTexture,
   createPlaneGeometry,
   deformGpuGeometry,
+  resolveFrameContext,
   type CachedPipelines,
   type DeformedPoint,
   type GpuDrawItem,
+  type GpuFrameContext,
   type GpuGeometry,
   type GpuMaterial,
   type GpuMaterialFactory,
   type GpuPassReceipt,
   type GpuRenderer,
   type GpuSurfaceTexture,
+  type StaticTexturePayload,
+  type StaticTextureResource,
 } from './gpuGeometry'
 
 const MIPMAP_PASS_WGSL = /* wgsl */ `
@@ -141,17 +146,16 @@ function createFrameRing(device: GPUDevice) {
       modelWorld: Mat4,
       size: readonly [number, number],
       radii: readonly [number, number, number, number],
+      frameCtx: GpuFrameContext,
     ) {
       scratch.set(mvp, 0)
       scratch.set(modelWorld, 16)
       scratch[32] = size[0]
       scratch[33] = size[1]
-      scratch[34] = 0
-      scratch[35] = 0
-      scratch[36] = radii[0]
-      scratch[37] = radii[1]
-      scratch[38] = radii[2]
-      scratch[39] = radii[3]
+      scratch[34] = frameCtx.viewportW
+      scratch[35] = frameCtx.viewportH
+      scratch.set(radii, 36)
+      scratch.set(frameCtx.tail, 40)
       device.queue.writeBuffer(buffer, slot * stride, scratch)
     },
     dispose() {
@@ -321,6 +325,7 @@ export async function createGpuRenderer(
   }
 
   const pipelineCache = new Map<string, Promise<CachedPipelines>>()
+  const disposeHooks: (() => void)[] = []
 
   return {
     device,
@@ -347,6 +352,10 @@ export async function createGpuRenderer(
         pipelineCache.set(key, cached)
       }
       return cached
+    },
+    onDispose(fn) {
+      if (intentionallyDisposed) fn()
+      else disposeHooks.push(fn)
     },
     resize(width, height) {
       const w = Math.min(maxTextureDimension2D, Math.max(1, Math.round(width)))
@@ -380,7 +389,7 @@ export async function createGpuRenderer(
       device.queue.submit([encoder.finish()])
       popDevScope(device, pushValidationError)
     },
-    render(items) {
+    render(items, frameCtx) {
       pushDevScope(device)
       frameRing.ensureCapacity(items.length)
       const baseIndices: number[] = []
@@ -388,7 +397,7 @@ export async function createGpuRenderer(
       for (let i = 0; i < items.length; i++) {
         const item = items[i]!
         if (item.material.usesDynamicFrameOffset) {
-          frameRing.write(i, item.mvp, item.modelWorld, item.size, item.radii)
+          frameRing.write(i, item.mvp, item.modelWorld, item.size, item.radii, frameCtx)
         } else {
           item.material.updateFrameUniforms(item.mvp, item.modelWorld, item.size, item.radii)
         }
@@ -469,6 +478,7 @@ export async function createGpuRenderer(
     dispose() {
       intentionallyDisposed = true
       pipelineCache.clear()
+      while (disposeHooks.length > 0) disposeHooks.pop()?.()
       frameRing.dispose()
       depthTex?.destroy()
       depthTex = null

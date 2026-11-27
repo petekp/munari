@@ -42,6 +42,13 @@
       "manifest": "glassRefractManifest",
       "needsBackdrop": true,
       "summary": "Refractive frosted glass sampling the two-pass @group(2) canvas backdrop with Fresnel highlight."
+    },
+    {
+      "name": "lacquer-ltc",
+      "file": "lacquerLtc",
+      "manifest": "lacquerLtcManifest",
+      "needsBackdrop": false,
+      "summary": "Opaque clearcoat lacquer shaded by Heitz 2016 LTC rectangular softbox LUTs."
     }
   ],
   "tools": [

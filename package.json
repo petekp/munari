@@ -21,6 +21,7 @@
     "gate:slider-drag": "node instruments/slider-drag/run.mjs",
     "gate:frame-surface": "node instruments/frame-surface/run.mjs",
     "gate:gpu": "node instruments/gpu-runtime/run.mjs",
+    "gate:oracle": "node instruments/gpu-oracle/run.mjs",
     "gate:glass-effects": "node instruments/glass-effects/run.mjs",
     "gate:genie-duplicate": "node instruments/genie-drain/no-duplicate-drag.mjs",
     "gate:genie-film": "node instruments/genie-drain/film-window.mjs",

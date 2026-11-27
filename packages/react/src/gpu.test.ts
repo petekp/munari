@@ -7,6 +7,7 @@ const GPU_ENTRY = [
   'Surface',
   'SurfaceCanvas',
   'createManifestDriver',
+  'loadLtcTable',
   'unlitSurfaceManifest',
   'getGpuHostStats',
   'requestGpuFrame',

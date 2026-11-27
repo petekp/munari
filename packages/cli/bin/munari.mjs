@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 
 const command = process.argv[2] ?? ''
-const needsTypeGpuLoader = command === 'compile' || command === 'check'
+const needsTypeGpuLoader = command === 'compile' || (command === 'check' && process.argv.includes('--deep'))
 
 if (needsTypeGpuLoader && !process.env.MUNARI_CLI_PRELOADED) {
   const preloadPath = join(import.meta.dirname, '..', 'src', 'preload.mjs')

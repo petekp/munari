@@ -17,6 +17,7 @@ import {
   type GpuMaterial,
   type GpuMaterialFactory,
   type GpuRenderer,
+  type StaticTexturePayload,
 } from './webgpu'
 
 const GPU_BUFFER_USAGE = {
@@ -25,6 +26,18 @@ const GPU_BUFFER_USAGE = {
 } as const
 
 const GPU_COLOR_WRITE_ALL = 0xf
+
+export type ManifestStaticTextureData = StaticTexturePayload
+
+export interface ManifestStaticTexture {
+  readonly name: string
+  readonly cacheKey: string
+  readonly textureBinding: number
+  readonly samplerBinding?: number
+  readonly filter?: 'linear' | 'nearest'
+  readonly addressMode?: GPUAddressMode
+  readonly load: () => Promise<ManifestStaticTextureData> | ManifestStaticTextureData
+}
 
 export interface ManifestAttribute {
   readonly name: string
@@ -40,6 +53,8 @@ export interface ManifestUniformSpec<TValues> {
 }
 
 export interface MaterialManifest<TValues = Record<string, never>> {
+  readonly version?: 1 | 2
+  readonly sourceHash?: string
   readonly name: string
   readonly wgsl: string
   readonly vertexEntry?: string
@@ -47,6 +62,7 @@ export interface MaterialManifest<TValues = Record<string, never>> {
   readonly sampleViewFormat: 'rgba8unorm' | 'rgba8unorm-srgb'
   readonly attributes: readonly ManifestAttribute[]
   readonly customUniforms: ManifestUniformSpec<TValues> | null
+  readonly staticTextures?: readonly ManifestStaticTexture[]
   readonly cullMode: GPUCullMode
   readonly depthWrite: boolean
   readonly depthTest: boolean
@@ -111,8 +127,12 @@ export function createManifestMaterial<TValues>(
     .filter((attr) => attr.location >= 2)
     .map((attr) => attr.location)
 
+  const staticSpecs = manifest.staticTextures ?? []
+  const staticKey = staticSpecs
+    .map((s) => `${s.cacheKey}@${s.textureBinding}:${s.samplerBinding ?? ''}`)
+    .join(';')
   const attrKey = manifest.attributes.map((a) => `${a.location}:${a.format}:${a.stride}`).join(',')
-  const cacheKey = `${manifest.name}|${manifest.vertexEntry ?? ''}|${manifest.fragmentEntry ?? ''}|${manifest.cullMode}|${String(manifest.depthWrite)}|${String(manifest.depthTest)}|${Boolean(customBuffer)}|${Boolean(manifest.needsBackdrop)}|${attrKey}|${format}|${manifest.wgsl}`
+  const cacheKey = `${manifest.name}|${manifest.vertexEntry ?? ''}|${manifest.fragmentEntry ?? ''}|${manifest.cullMode}|${String(manifest.depthWrite)}|${String(manifest.depthTest)}|${Boolean(customBuffer)}|${staticKey}|${Boolean(manifest.needsBackdrop)}|${attrKey}|${format}|${manifest.wgsl}`
 
   let colorPipe: GPURenderPipeline | null = null
   let warmPipe: GPURenderPipeline | null = null
@@ -123,19 +143,21 @@ export function createManifestMaterial<TValues>(
   let cachedFrameBuffer: GPUBuffer | null = null
   let cachedBindGroup: GPUBindGroup | null = null
 
-  const customBindGroup = customBuffer
-    ? device.createBindGroup({
-        layout: renderer.customBindGroupLayout,
-        entries: [{ binding: 0, resource: { buffer: customBuffer } }],
-      })
-    : null
+  const hasStatic = staticSpecs.length > 0
+  let customBindGroup: GPUBindGroup | null =
+    customBuffer && !hasStatic
+      ? device.createBindGroup({
+          layout: renderer.customBindGroupLayout,
+          entries: [{ binding: 0, resource: { buffer: customBuffer } }],
+        })
+      : null
 
-  const ready = renderer
-    .getOrCreatePipelines(cacheKey, async () => {
+  const compilePipelines = (group1Layout: GPUBindGroupLayout | null) =>
+    renderer.getOrCreatePipelines(cacheKey, async () => {
       const module = device.createShaderModule({ label: `${manifest.name}-shader`, code: manifest.wgsl })
       const bindGroupLayouts: GPUBindGroupLayout[] = [renderer.surfaceBindGroupLayout]
-      if (customBuffer || manifest.needsBackdrop) {
-        bindGroupLayouts.push(customBuffer ? renderer.customBindGroupLayout : renderer.emptyBindGroupLayout)
+      if (group1Layout || manifest.needsBackdrop) {
+        bindGroupLayouts.push(group1Layout ?? renderer.emptyBindGroupLayout)
       }
       if (manifest.needsBackdrop) {
         bindGroupLayouts.push(renderer.backdropBindGroupLayout)
@@ -181,17 +203,26 @@ export function createManifestMaterial<TValues>(
       const [color, warm] = await Promise.all([makePipeline(true), makePipeline(false)])
       return { color, warm }
     })
-    .then((pipes) => {
-      if (disposed) return
-      colorPipe = pipes.color
-      warmPipe = pipes.warm
-      built = true
-    })
+
+  const ready = (
+    hasStatic
+      ? import('./staticTextures')
+          .then(({ resolveStaticGroup1 }) => resolveStaticGroup1(renderer, customBuffer, staticSpecs))
+          .then(async (group1) => {
+            customBindGroup = group1.bindGroup
+            return compilePipelines(group1.layout)
+          })
+      : compilePipelines(customBuffer ? renderer.customBindGroupLayout : null)
+  ).then((pipes) => {
+    if (disposed) return
+    colorPipe = pipes.color
+    warmPipe = pipes.warm
+    built = true
+  })
 
   const extraBindGroups = (() => {
-    if (!customBindGroup && !manifest.needsBackdrop) return undefined
-    const first = customBindGroup ?? renderer.emptyBindGroup
-    return () => [first]
+    if (!customBuffer && !hasStatic && !manifest.needsBackdrop) return undefined
+    return () => [customBindGroup ?? renderer.emptyBindGroup]
   })()
 
   return {

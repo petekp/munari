@@ -1,14 +1,12 @@
-// Directional card tilt bevel and warm/cool elevation shading.
+// Directional card tilt bevel and warm/cool elevation shading in linear color.
 
 import tgpu from 'typegpu'
 import * as d from 'typegpu/data'
 import * as std from 'typegpu/std'
 import {
+  SurfaceFragmentIn,
   createMaterialUniformLayout,
-  defineManifestMaterial,
-  sampleSurface,
-  surfaceLayout,
-  surfaceRadiusMask,
+  defineGpuMaterial,
 } from '@petepetrash/munari-cli/author'
 
 export const TiltShadowUniforms = d.struct({
@@ -19,48 +17,18 @@ export const TiltShadowUniforms = d.struct({
 
 const customLayout = createMaterialUniformLayout(TiltShadowUniforms)
 
-const vertex = tgpu.vertexFn({
-  in: {
-    position: d.location(0, d.vec3f),
-    uv: d.location(1, d.vec2f),
-  },
-  out: {
-    pos: d.builtin.position,
-    uv: d.vec2f,
-  },
-})((input) => {
+const shade = tgpu.fn([SurfaceFragmentIn], d.vec4f)((ctx) => {
   'use gpu'
-  const frame = surfaceLayout.$.frame
-  return {
-    pos: frame.mvp.mul(d.vec4f(input.position, 1.0)),
-    uv: input.uv,
-  }
-})
-
-const fragment = tgpu.fragmentFn({
-  in: { uv: d.vec2f },
-  out: d.vec4f,
-})((input) => {
-  'use gpu'
-  const frame = surfaceLayout.$.frame
   const u = customLayout.$.u
-  const c = sampleSurface(input.uv)
-  const centered = input.uv.sub(0.5)
+  const centered = ctx.uv.sub(0.5)
   const grad = std.dot(centered, u.tilt)
-  const shade = 1.0 + grad * u.depth
+  const shadeGain = 1.0 + grad * u.depth
   const tint = d.vec3f(1.0 + u.warmth * 0.08, 1.0, 1.0 - u.warmth * 0.06)
-  const mask = surfaceRadiusMask(input.uv, frame.size, frame.radii)
-  const outCol = d.vec4f(c.rgb.mul(shade).mul(tint).mul(mask), c.a * mask)
-  if (outCol.a < 0.004) std.discard()
-  return outCol
+  return d.vec4f(ctx.color.mul(shadeGain).mul(tint), ctx.alpha)
 })
 
-export default defineManifestMaterial({
+export default defineGpuMaterial({
   name: 'tilt-shadow',
-  sampleViewFormat: 'rgba8unorm',
-  doubleSided: false,
-  depthTest: true,
-  depthWrite: false,
   uniforms: {
     schema: TiltShadowUniforms,
     layout: customLayout,
@@ -70,6 +38,5 @@ export default defineManifestMaterial({
       warmth: 0.35,
     },
   },
-  vertex,
-  fragment,
+  shade,
 })

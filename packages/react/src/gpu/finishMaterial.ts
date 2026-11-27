@@ -56,8 +56,14 @@ struct FrameUniforms {
   mvp: mat4x4f,
   modelWorld: mat4x4f,
   size: vec2f,
-  _pad: vec2f,
+  viewport: vec2f,
   radii: vec4f,
+  camera: vec4f,
+  keyPos: vec4f,
+  keySize: vec4f,
+  rimDir: vec4f,
+  uvRect: vec4f,
+  _r1: vec4f,
 };
 
 struct FinishUniforms {

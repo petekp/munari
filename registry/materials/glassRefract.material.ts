@@ -1,17 +1,14 @@
-// Refractive frosted glass sampling the two-pass @group(2) canvas backdrop with Fresnel highlight.
+// Refractive frosted glass sampling the two-pass @group(2) canvas backdrop in linear color.
 
 import tgpu from 'typegpu'
 import * as d from 'typegpu/data'
 import * as std from 'typegpu/std'
 import {
+  SurfaceFragmentIn,
   backdropLayout,
   createMaterialUniformLayout,
-  defineManifestMaterial,
+  defineGpuMaterial,
   sampleBackdropLinear,
-  sampleSurface,
-  srgbOetf,
-  surfaceLayout,
-  surfaceRadiusMask,
 } from '@petepetrash/munari-cli/author'
 
 export const GlassRefractUniforms = d.struct({
@@ -23,58 +20,28 @@ export const GlassRefractUniforms = d.struct({
 
 const customLayout = createMaterialUniformLayout(GlassRefractUniforms)
 
-const vertex = tgpu.vertexFn({
-  in: {
-    position: d.location(0, d.vec3f),
-    uv: d.location(1, d.vec2f),
-  },
-  out: {
-    pos: d.builtin.position,
-    uv: d.vec2f,
-  },
-})((input) => {
+const shade = tgpu.fn([SurfaceFragmentIn], d.vec4f)((ctx) => {
   'use gpu'
-  const frame = surfaceLayout.$.frame
-  return {
-    pos: frame.mvp.mul(d.vec4f(input.position, 1.0)),
-    uv: input.uv,
-  }
-})
-
-const fragment = tgpu.fragmentFn({
-  in: {
-    pos: d.builtin.position,
-    uv: d.vec2f,
-  },
-  out: d.vec4f,
-})((input) => {
-  'use gpu'
-  const frame = surfaceLayout.$.frame
   const u = customLayout.$.u
   const dims = d.vec2f(std.textureDimensions(backdropLayout.$.tex))
-  const edgeBias = (input.uv.sub(0.5)).mul(0.03)
-  const screenUv = input.pos.xy.div(std.max(dims, d.vec2f(1.0))).add(u.shift).sub(edgeBias)
+  const edgeBias = ctx.uv.sub(0.5).mul(0.03)
+  const screenUv = ctx.screenPos.xy.div(std.max(dims, d.vec2f(1.0))).add(u.shift).sub(edgeBias)
   const bg = sampleBackdropLinear(screenUv)
-  const dom = sampleSurface(input.uv)
   const tinted = bg.rgb.mul(u.tint)
-  const fresnel = std.pow(std.clamp(std.length(input.uv.sub(0.5)) * 1.9, 0.0, 1.0), 2.5) * u.highlight
-  const straightGlass = srgbOetf(std.mix(bg.rgb, tinted, u.amount).add(d.vec3f(fresnel)))
+  const fresnel = std.pow(std.clamp(std.length(ctx.uv.sub(0.5)) * 1.9, 0.0, 1.0), 2.5) * u.highlight
+  const glassLinear = std.mix(bg.rgb, tinted, u.amount).add(d.vec3f(fresnel))
   const glassAlpha = std.max(bg.a * 0.92, 0.18)
-  const premulGlass = straightGlass.mul(glassAlpha)
-  const blendedRgb = dom.rgb.add(premulGlass.mul(1.0 - dom.a))
-  const alpha = dom.a + glassAlpha * (1.0 - dom.a)
-  const mask = surfaceRadiusMask(input.uv, frame.size, frame.radii)
-  const outCol = d.vec4f(blendedRgb.mul(mask), alpha * mask)
-  if (outCol.a < 0.004) std.discard()
-  return outCol
+  const alpha = ctx.alpha + glassAlpha * (1.0 - ctx.alpha)
+  const straightOut = ctx.color
+    .mul(ctx.alpha)
+    .add(glassLinear.mul(glassAlpha * (1.0 - ctx.alpha)))
+    .div(std.max(alpha, d.f32(1e-4)))
+  return d.vec4f(straightOut, alpha)
 })
 
-export default defineManifestMaterial({
+export default defineGpuMaterial({
   name: 'glass-refract',
-  sampleViewFormat: 'rgba8unorm',
   doubleSided: true,
-  depthTest: true,
-  depthWrite: false,
   needsBackdrop: true,
   uniforms: {
     schema: GlassRefractUniforms,
@@ -92,6 +59,5 @@ export default defineManifestMaterial({
       highlight: 0.18,
     },
   },
-  vertex,
-  fragment,
+  shade,
 })

@@ -10,6 +10,12 @@
 // GPU geometry & surface texture wrappers; `webgpu.ts` owns the device & pass loop.
 
 import { uploadNeedsRealloc, type DomTextureSource } from '@munari/core'
+import {
+  KEY_HEIGHT_PX,
+  KEY_REST_Y,
+  isSurfaceLight,
+  type SurfaceLighting,
+} from '../primitives/surface/surfaceLight'
 import { computeAabb, type Aabb, type Mat4 } from './math'
 
 export const GPU_BUFFER_USAGE = {
@@ -31,7 +37,97 @@ export const GPU_SHADER_STAGE = {
   FRAGMENT: 0x2,
 } as const
 
-export const FRAME_UNIFORM_BYTES = 160
+export const FRAME_UNIFORM_BYTES = 256
+
+export interface GpuFrameContext {
+  readonly viewportW: number
+  readonly viewportH: number
+  readonly tail: Float32Array<ArrayBuffer>
+}
+
+function readLightingValues(
+  lighting: SurfaceLighting,
+  vw: number,
+  vh: number,
+  left: number,
+  top: number,
+) {
+  const hasWin = 'window' in globalThis
+  let keyX = hasWin ? window.innerWidth / 2 : left + vw / 2
+  let keyY = hasWin ? window.innerHeight * KEY_REST_Y : top + vh * KEY_REST_Y
+  let keyZ = KEY_HEIGHT_PX
+  let keyBrightness = lighting === 'none' ? 0 : 1
+  let keyW = 0
+  let keyH = 0
+  let rimBrightness = lighting === 'none' ? 0 : 1
+  let rimElev = 15
+  let envIntensity = lighting === 'none' ? 0 : 1
+
+  if (lighting !== 'studio' && lighting !== 'none') {
+    const k = lighting.key
+    if (k) {
+      const pos = isSurfaceLight(k) ? k.get() : k
+      keyX = pos.x ?? keyX
+      keyY = pos.y ?? keyY
+      keyZ = pos.z ?? KEY_HEIGHT_PX
+      keyBrightness = pos.brightness ?? 1
+      if (pos.size) {
+        keyW = pos.size[0]
+        keyH = pos.size[1]
+      }
+    }
+    if (lighting.rim === false) rimBrightness = 0
+    else if (lighting.rim) {
+      rimBrightness = lighting.rim.brightness ?? 1
+      rimElev = lighting.rim.elevation ?? 15
+    }
+    envIntensity = lighting.environmentIntensity ?? 1
+  }
+  return { keyX, keyY, keyZ, keyBrightness, keyW, keyH, rimBrightness, rimElev, envIntensity }
+}
+
+/** Converts React `SurfaceLighting` + viewport into world-space frame uniforms once per frame. */
+export function resolveFrameContext(
+  viewport: {
+    readonly left: number
+    readonly top: number
+    readonly width: number
+    readonly height: number
+    readonly cameraZ: number
+    readonly dpr: number
+  },
+  lighting: SurfaceLighting,
+  elapsedMs: number,
+  dtMs: number,
+  tail: Float32Array<ArrayBuffer> = new Float32Array(24),
+): GpuFrameContext {
+  const vw = viewport.width
+  const vh = viewport.height
+  const rig = readLightingValues(lighting, vw, vh, viewport.left, viewport.top)
+  const rimRad = (rig.rimElev * Math.PI) / 180
+  tail[0] = viewport.cameraZ
+  tail[1] = viewport.dpr
+  tail[2] = elapsedMs * 0.001
+  tail[3] = dtMs * 0.001
+  tail[4] = rig.keyX - viewport.left - vw / 2
+  tail[5] = vh / 2 - (rig.keyY - viewport.top)
+  tail[6] = rig.keyZ
+  tail[7] = rig.keyBrightness
+  tail[8] = rig.keyW
+  tail[9] = rig.keyH
+  tail[10] = rig.envIntensity
+  tail[11] = rig.rimBrightness
+  tail[12] = -0.35
+  tail[13] = Math.sin(rimRad) + 0.55
+  tail[14] = Math.cos(rimRad)
+  tail[15] = 0
+  tail[16] = 0
+  tail[17] = 0
+  tail[18] = 1
+  tail[19] = 1
+  tail.fill(0, 20, 24)
+  return { viewportW: vw, viewportH: vh, tail }
+}
 
 export const SURFACE_WGSL_COMMON = /* wgsl */ `
 fn srgbOetf(c: vec3f) -> vec3f {
@@ -69,8 +165,14 @@ struct FrameUniforms {
   mvp: mat4x4f,
   modelWorld: mat4x4f,
   size: vec2f,
-  _pad: vec2f,
+  viewport: vec2f,
   radii: vec4f,
+  camera: vec4f,
+  keyPos: vec4f,
+  keySize: vec4f,
+  rimDir: vec4f,
+  uvRect: vec4f,
+  _r1: vec4f,
 };
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
@@ -379,6 +481,20 @@ export interface CachedPipelines {
   readonly warm: GPURenderPipeline
 }
 
+export interface StaticTextureResource {
+  readonly texture: GPUTexture
+  readonly view: GPUTextureView
+  readonly sampler: GPUSampler
+}
+
+export interface StaticTexturePayload {
+  readonly width: number
+  readonly height: number
+  readonly format: 'rgba8unorm' | 'rgba16float'
+  readonly data: Uint8Array<ArrayBuffer> | Uint16Array<ArrayBuffer>
+  readonly bytesPerRow: number
+}
+
 export interface GpuRenderer {
   readonly device: GPUDevice
   readonly format: GPUTextureFormat
@@ -393,9 +509,10 @@ export interface GpuRenderer {
   readonly frameUniformBuffer: GPUBuffer
   readonly validationErrors: readonly string[]
   getOrCreatePipelines(key: string, build: () => Promise<CachedPipelines>): Promise<CachedPipelines>
+  onDispose(fn: () => void): void
   resize(width: number, height: number): void
   generateMipmaps(texture: GPUTexture, mipCount: number): void
-  render(items: readonly GpuDrawItem[]): number
+  render(items: readonly GpuDrawItem[], frameCtx: GpuFrameContext): number
   simulateDeviceLoss(): void
   dispose(): void
 }

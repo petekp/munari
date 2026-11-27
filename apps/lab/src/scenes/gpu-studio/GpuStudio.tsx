@@ -21,6 +21,7 @@ import { fisheyeLensManifest } from './materials/fisheyeLens.material.gen'
 import { flightCardManifest } from './materials/flightCard.material.gen'
 import { foilManifest } from './materials/foil.material.gen'
 import { glassRefractManifest } from './materials/glassRefract.material.gen'
+import { lacquerLtcManifest } from './materials/lacquerLtc.material.gen'
 import {
   FISHEYE_PARAMS,
   fisheyeDisplace,
@@ -346,6 +347,13 @@ function MaterialsPanel({ onPresChange }: { readonly onPresChange: (p: SurfacePr
           <div className="gpu-foil-card">
             <strong>Foil Manifest</strong>
             <span>0 TypeGPU runtime</span>
+          </div>
+        </Surface>
+
+        <Surface canvasId={CANVAS_ID} inScene size={[210, 150]} material={lacquerLtcManifest}>
+          <div className="gpu-finish-card" data-testid="manifest-lacquer-ltc" style={{ color: '#fde8e8', background: 'transparent' }}>
+            <strong>Lacquer LTC</strong>
+            <span>Heitz 64x64 rgba16float</span>
           </div>
         </Surface>
       </div>

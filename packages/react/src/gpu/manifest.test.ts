@@ -3,9 +3,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createManifestDriver, createManifestMaterial, unlitSurfaceManifest, type MaterialManifest } from './manifest'
 import { getOrCreateGpuHost, hitPassesSurfaceMask, hostInternals, requestGpuFrame, type RegisteredSurface, type ViewportState } from './host'
+import { loadLtcTable } from './ltc'
 import { mat4Identity, type RayHit } from './math'
 import { IDENTITY_POSE, computeBasePose, matchDomPose } from './surfaceDom'
-import type { CachedPipelines, GpuRenderer } from './webgpu'
+import { FRAME_UNIFORM_BYTES, resolveFrameContext, type CachedPipelines, type GpuRenderer } from './webgpu'
 
 function asGpu<T>(partial: Partial<T>): T {
   // SAFETY: test double implements only the WebGPU members exercised by createManifestMaterial.
@@ -16,18 +17,36 @@ function makeFakeRenderer() {
   const writes: { readonly bytes: number[] }[] = []
   const pipelineLayouts: { readonly count: number }[] = []
   const pipelineCache = new Map<string, Promise<CachedPipelines>>()
+  const layoutEntriesLog: GPUBindGroupLayoutEntry[][] = []
+  const bindGroupEntriesLog: GPUBindGroupEntry[][] = []
+  const samplerOptsLog: GPUSamplerDescriptor[] = []
+  const disposeHooks: (() => void)[] = []
   let pipelineBuildCalls = 0
   const dummyLayout = asGpu<GPUBindGroupLayout>({ label: '' })
   const dummyBg = asGpu<GPUBindGroup>({ label: '' })
+  const dummyView = asGpu<GPUTextureView>({ label: 'static-view' })
+  const dummyTex = asGpu<GPUTexture>({ createView: () => dummyView, destroy: vi.fn() })
+  const dummySampler = asGpu<GPUSampler>({ label: 'static-sampler' })
   const device = asGpu<GPUDevice>({
     createBuffer: ({ size }: GPUBufferDescriptor) => asGpu<GPUBuffer>({ size, destroy: vi.fn() }),
     createShaderModule: () => asGpu<GPUShaderModule>({}),
-    createBindGroupLayout: () => dummyLayout,
+    createBindGroupLayout: ({ entries }: GPUBindGroupLayoutDescriptor) => {
+      layoutEntriesLog.push([...entries])
+      return dummyLayout
+    },
+    createTexture: () => dummyTex,
+    createSampler: (desc: GPUSamplerDescriptor = {}) => {
+      samplerOptsLog.push(desc)
+      return dummySampler
+    },
     createPipelineLayout: ({ bindGroupLayouts }: GPUPipelineLayoutDescriptor) => {
       pipelineLayouts.push({ count: [...bindGroupLayouts].length })
       return asGpu<GPUPipelineLayout>({})
     },
-    createBindGroup: () => dummyBg,
+    createBindGroup: ({ entries }: GPUBindGroupDescriptor) => {
+      bindGroupEntriesLog.push([...entries])
+      return dummyBg
+    },
     createRenderPipelineAsync: () => {
       pipelineBuildCalls++
       return Promise.resolve(asGpu<GPURenderPipeline>({}))
@@ -36,6 +55,7 @@ function makeFakeRenderer() {
       writeBuffer: (_buf, _off, data) => {
         if (data instanceof ArrayBuffer) writes.push({ bytes: [...new Uint8Array(data)] })
       },
+      writeTexture: vi.fn(),
     }),
   })
   const frameUniformBuffer = asGpu<GPUBuffer>({ label: '' })
@@ -61,13 +81,26 @@ function makeFakeRenderer() {
       }
       return entry
     },
+    onDispose(fn) {
+      disposeHooks.push(fn)
+    },
     resize: vi.fn(),
     generateMipmaps: vi.fn(),
     render: () => 0,
     simulateDeviceLoss: vi.fn(),
-    dispose: vi.fn(),
+    dispose: () => {
+      while (disposeHooks.length > 0) disposeHooks.pop()?.()
+    },
   }
-  return { renderer, writes, pipelineLayouts, getPipelineBuildCalls: () => pipelineBuildCalls }
+  return {
+    renderer,
+    writes,
+    pipelineLayouts,
+    layoutEntriesLog,
+    bindGroupEntriesLog,
+    samplerOptsLog,
+    getPipelineBuildCalls: () => pipelineBuildCalls,
+  }
 }
 
 describe('MaterialManifest runtime', () => {
@@ -172,5 +205,53 @@ describe('MaterialManifest runtime', () => {
     hostInternals.get(host)?.setScheduler(invalidateSpy, vi.fn())
     requestGpuFrame(hostId)
     expect(invalidateSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses 256B FrameUniforms with offset key coordinates, uvRect, and lazy static textures', async () => {
+    expect(FRAME_UNIFORM_BYTES).toBe(256)
+
+    const frameCtx = resolveFrameContext(
+      { left: 40, top: 120, width: 800, height: 600, cameraZ: 780, dpr: 2 },
+      { key: { x: 440, y: 420, z: 300, brightness: 1 } },
+      500,
+      16,
+    )
+    expect([...frameCtx.tail.slice(4, 8)]).toEqual([0, 0, 300, 1])
+    expect([...frameCtx.tail.slice(16, 20)]).toEqual([0, 0, 1, 1])
+
+    const [ltc1, ltc2] = await Promise.all([loadLtcTable(1), loadLtcTable(2)])
+    expect(ltc1).toMatchObject({ width: 64, height: 64, format: 'rgba16float', bytesPerRow: 512 })
+    expect(ltc2).toMatchObject({ width: 64, height: 64, format: 'rgba16float', bytesPerRow: 512 })
+    expect(ltc1.data).toBeInstanceOf(Uint16Array)
+    expect(ltc2.data).toBeInstanceOf(Uint16Array)
+    expect(ltc1.data.length).toBe(64 * 64 * 4)
+    expect(ltc2.data.length).toBe(64 * 64 * 4)
+    expect(ltc1.data.some((v) => v !== 0)).toBe(true)
+    expect(ltc2.data[3]).toBe(0x3c00)
+
+    const { renderer, layoutEntriesLog, bindGroupEntriesLog, pipelineLayouts, samplerOptsLog } = makeFakeRenderer()
+    const matA = createManifestMaterial(renderer, {
+      ...unlitSurfaceManifest,
+      version: 2,
+      name: 'ltc-test',
+      staticTextures: [
+        { name: 'ltc1', cacheKey: 'munari:ltc-1', samplerBinding: 1, textureBinding: 2, filter: 'linear', load: () => loadLtcTable(1) },
+        { name: 'ltc2', cacheKey: 'munari:ltc-2', textureBinding: 3, load: () => loadLtcTable(2) },
+      ],
+    })
+    const matB = createManifestMaterial(renderer, {
+      ...unlitSurfaceManifest,
+      version: 2,
+      name: 'ltc-test-nearest',
+      staticTextures: [
+        { name: 'ltc1', cacheKey: 'munari:ltc-1', samplerBinding: 1, textureBinding: 2, filter: 'nearest', load: () => loadLtcTable(1) },
+      ],
+    })
+    await Promise.all([matA.ready, matB.ready])
+    expect(pipelineLayouts[0]?.count).toBe(2)
+    expect(layoutEntriesLog[0]?.map((e) => e.binding)).toEqual([1, 2, 3])
+    expect(bindGroupEntriesLog[0]?.map((e) => e.binding)).toEqual([1, 2, 3])
+    expect(samplerOptsLog.map((s) => s.magFilter)).toContain('nearest')
+    renderer.dispose()
   })
 })

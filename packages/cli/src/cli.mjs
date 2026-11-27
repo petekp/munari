@@ -10,6 +10,7 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { rewriteManifestImport } from './checkFast.mjs'
 
 const DEFAULT_CONFIG = {
   materialsDir: 'src/materials',
@@ -49,6 +50,7 @@ function parseFlags(args) {
     noSource: false,
     source: false,
     force: false,
+    deep: false,
     json: false,
   }
   for (let i = 0; i < args.length; i++) {
@@ -61,6 +63,7 @@ function parseFlags(args) {
     else if (a === '--no-source' || a === '--compiled-only') flags.noSource = true
     else if (a === '--source') flags.source = true
     else if (a === '--force') flags.force = true
+    else if (a === '--deep') flags.deep = true
     else if (a === '--json') flags.json = true
     else if (!a.startsWith('-')) positionals.push(a)
     else throw new Error(`Unknown flag: ${a}`)
@@ -130,10 +133,9 @@ function copyPresetFiles(opts) {
       throw new Error(`Refusing to overwrite existing ${path.relative(cwd, dst)} (pass --force)`)
     }
     if (fileName.endsWith('.material.gen.ts') && manifestImport !== '@petepetrash/munari/gpu') {
-      const rewritten = readFileSync(src, 'utf8').replace(
-        "'@petepetrash/munari/gpu'",
-        `'${manifestImport}'`,
-      )
+      const srcMaterialPath = path.join(srcDir, `${entry.file}.material.ts`)
+      const srcMaterialText = existsSync(srcMaterialPath) ? readFileSync(srcMaterialPath, 'utf8') : ''
+      const rewritten = rewriteManifestImport(readFileSync(src, 'utf8'), srcMaterialText, manifestImport)
       writeFileSync(dst, rewritten, 'utf8')
     } else {
       copyFileSync(src, dst)
@@ -229,15 +231,62 @@ async function runCheck(args) {
   const files = positionals.length > 0 ? positionals.map((p) => path.resolve(cwd, p)) : findMaterialFiles(cwd)
   if (files.length === 0) throw new Error('No *.material.ts files found.')
 
-  const { checkMaterialFile } = await import('./compiler.mjs')
   const manifestImport = flags.manifestImport || cfg.manifestImport
   const checked = []
-  for (const absPath of files) {
-    const res = await checkMaterialFile(absPath, { manifestImport })
-    checked.push({ name: res.name, outPath: path.relative(cwd, res.outPath), ok: res.ok, reason: res.reason })
+  if (flags.deep) {
+    const { checkMaterialFile } = await import('./compiler.mjs')
+    for (const absPath of files) {
+      const res = await checkMaterialFile(absPath, { manifestImport })
+      checked.push({ name: res.name, outPath: path.relative(cwd, res.outPath), ok: res.ok, reason: res.reason })
+    }
+  } else {
+    const { checkMaterialFileFast } = await import('./checkFast.mjs')
+    for (const absPath of files) {
+      const res = checkMaterialFileFast(absPath, { manifestImport })
+      checked.push({ name: res.name, outPath: path.relative(cwd, res.outPath), ok: res.ok, reason: res.reason })
+    }
   }
   console.log(JSON.stringify({ checked }, null, 2))
   if (checked.some((c) => !c.ok)) process.exitCode = 1
+}
+
+async function runInfo(args) {
+  const cwd = process.cwd()
+  const cfg = loadConfig(cwd)
+  const { flags } = parseFlags(args)
+  const pkg = JSON.parse(readFileSync(path.resolve(import.meta.dirname, '..', 'package.json'), 'utf8'))
+  const { getCompilerAbi, checkMaterialFileFast } = await import('./checkFast.mjs')
+  const files = findMaterialFiles(cwd)
+  const localMaterials = files.map((absPath) => {
+    const res = checkMaterialFileFast(absPath, { manifestImport: flags.manifestImport || cfg.manifestImport })
+    return { name: res.name, srcPath: path.relative(cwd, absPath), outPath: path.relative(cwd, res.outPath), ok: res.ok, reason: res.reason }
+  })
+  let catalog = null
+  try {
+    catalog = loadCatalog(findRegistryRoot(flags.registry))
+  } catch {
+    catalog = null
+  }
+  const info = {
+    cliVersion: pkg.version,
+    manifestVersion: 2,
+    compilerAbi: getCompilerAbi(),
+    config: cfg,
+    frameUniforms: {
+      byteSize: 256,
+      fields: ['mvp', 'modelWorld', 'size', 'viewport', 'radii', 'camera', 'keyPos', 'keySize', 'rimDir', 'uvRect', '_r1'],
+    },
+    bindGroups: {
+      group0: 'SurfaceFrameUniforms (256B dynamic) + DOM sampler + DOM texture',
+      group1: 'Custom uniform struct + optional static textures (e.g. ltc1/ltc2)',
+      group2: 'Backdrop sampler + texture when needsBackdrop is true',
+    },
+    catalog: catalog
+      ? { materials: catalog.materials.map((m) => m.name), tools: (catalog.tools ?? []).map((t) => t.name) }
+      : null,
+    localMaterials,
+  }
+  console.log(JSON.stringify(info, null, 2))
 }
 
 function printHelp() {
@@ -248,7 +297,8 @@ Usage:
   munari list [--json]
   munari add <name...> [--dir <dir>] [--no-source] [--force]
   munari compile [files...] [--manifest-import <spec>]
-  munari check [files...] [--manifest-import <spec>]`)
+  munari check [files...] [--manifest-import <spec>] [--deep]
+  munari info [--json] [--registry <dir>]`)
 }
 
 export async function runCli(argv) {
@@ -275,6 +325,10 @@ export async function runCli(argv) {
   }
   if (command === 'check') {
     await runCheck(rest)
+    return
+  }
+  if (command === 'info') {
+    await runInfo(rest)
     return
   }
   throw new Error(`Unknown command "${command}". Run \`munari --help\`.`)
