@@ -9,12 +9,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { finishes } from '../material-finishes/recipe/finishes'
 import { Button } from '../../components/system'
-import { FINISH_ORDER, type FinishId, type LightRig, type TextLighting } from '../material-finishes/materialFinishesTuning'
+import { FINISH_ORDER, type CardTilt, type FinishId, type LightRig, type TextLighting } from '../material-finishes/materialFinishesTuning'
 import { CODE_NOTE, DemoBar } from './FinishDemoBar'
 import { CONTEXTS, ContextCard, contextOf, type ContextId } from './FinishDemoContexts'
 import { Choice, CodeListing, CopyCode, FinishPicker, GROUND_OPTIONS, KnobControl, RIG_OPTIONS, TEXT_OPTIONS } from './FinishDemoControls'
 import { BASE_KNOBS, ownKnobs } from './finishDemoFinishes'
-import { adjustLines, cardLines, createCard, IMPORT_LINES, keyLight, keySize, setupLines, type BenchCard, type CodeLine, type PageSetup } from './finishDemoRecipe'
+import { adjustLines, cardLines, createCard, importLines, keyLight, restPointerLight, setupLines, sizeKeys, type BenchCard, type CodeLine, type PageSetup } from './finishDemoRecipe'
 import { FinishStage, moveKey, useKeyPosition, type PageGround } from './FinishDemoStage'
 
 // The finish each card starts in: four finishes whose lobes differ (a coat,
@@ -47,6 +47,18 @@ function keyFor(targetX: number, targetY: number): readonly [number, number] {
 
 type CodeTab = 'apply' | 'adjust'
 
+type KeyFollow = 'drag' | 'pointer'
+
+const FOLLOW_OPTIONS: readonly (readonly [KeyFollow, string])[] = [
+  ['drag', 'Drag'],
+  ['pointer', 'Follows pointer'],
+]
+
+const TILT_OPTIONS: readonly (readonly [CardTilt, string])[] = [
+  ['none', 'Flat'],
+  ['pointer', 'Tilt to pointer'],
+]
+
 const CODE_TABS: readonly (readonly [CodeTab, string])[] = [
   ['apply', 'Apply'],
   ['adjust', 'Adjust'],
@@ -64,6 +76,9 @@ export function FinishDemoApp({ onReady }: { readonly onReady?: () => void }) {
   const [ground, setGround] = useState<PageGround>('light')
   const [pageHtml, setPageHtml] = useState(false)
   const [tab, setTab] = useState<CodeTab>('apply')
+  const [follow, setFollow] = useState<KeyFollow>('drag')
+  const [tilt, setTilt] = useState<CardTilt>('none')
+  const followsPointer = follow === 'pointer'
   const gridRef = useRef<HTMLElement>(null)
   const keyPlaced = useRef(false)
 
@@ -83,13 +98,17 @@ export function FinishDemoApp({ onReady }: { readonly onReady?: () => void }) {
   const chooseFinish = (preset: FinishId) => replaceCard(createCard(selected, preset))
   const chooseRig = (next: LightRig) => {
     setRig(next)
-    keyLight.set({ size: keySize(next) })
+    sizeKeys(next)
+  }
+  const chooseFollow = (next: KeyFollow) => {
+    restPointerLight()
+    setFollow(next)
   }
 
   return (
-    <FinishStage ground={ground} className="fd-bench" pageHtml={pageHtml} onReady={onReady}>
+    <FinishStage ground={ground} className="fd-bench" pageHtml={pageHtml} followsPointer={followsPointer} tilts={tilt === 'pointer'} onReady={onReady}>
       {(inScene) => {
-        const page: PageSetup = { rig, text, inScene }
+        const page: PageSetup = { rig, text, inScene, followsPointer, tilt }
         return (
           <>
             <DemoBar inScene={inScene} />
@@ -133,6 +152,11 @@ export function FinishDemoApp({ onReady }: { readonly onReady?: () => void }) {
                 <Choice label="Text lighting" value={text} options={TEXT_OPTIONS} onSelect={setText} />
                 <Choice label="Page" value={ground} options={GROUND_OPTIONS} onSelect={setGround} />
                 <Choice label="Light" value={rig} options={RIG_OPTIONS} onSelect={chooseRig} />
+              </section>
+              <section>
+                <h2 className="fd-heading">Pointer</h2>
+                <Choice label="Key light" value={follow} options={FOLLOW_OPTIONS} onSelect={chooseFollow} />
+                <Choice label="Cards" value={tilt} options={TILT_OPTIONS} onSelect={setTilt} />
                 <Button compact variant="outline" onClick={() => setPageHtml((on) => !on)}>
                   {pageHtml ? 'Show finishes' : 'Show page HTML'}
                 </Button>
@@ -171,9 +195,9 @@ interface BenchCodeProps {
 /** The listing follows the key light itself, so a light drag re-renders only the listing. */
 function BenchCode({ cards, card, page, tab, onTab }: BenchCodeProps) {
   const key = useKeyPosition(keyLight)
-  const apply: CodeLine[] = [...IMPORT_LINES, '', ...setupLines(cards, page.rig, key)]
+  const apply: CodeLine[] = [...importLines(page), '', ...setupLines(cards, page, key)]
   for (const item of cards) apply.push('', ...cardLines(item, page, contextOf(item.context).content))
-  const lines = tab === 'apply' ? apply : adjustLines(card, key)
+  const lines = tab === 'apply' ? apply : adjustLines(card, page, key)
   return (
     <aside className="fd-rail fd-rail--code">
       <div className="fd-code-head">

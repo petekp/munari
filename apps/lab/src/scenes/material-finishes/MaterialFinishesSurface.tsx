@@ -1,5 +1,5 @@
 // Finish card — retained HTML on a Surface that wears a finish, optionally
-// tilting toward the pointer.
+// tilting toward the pointer, and the pointer tracker the tilt reads.
 //
 // The law: the HTML owns text, focus, form state and input; the finish owns
 // shading only, so the pointer still maps through the mesh UV and hit
@@ -9,6 +9,10 @@
 // The content root paints `var(--munari-body)`, which Munari sets to the
 // finish's color on the page copy and to transparent in the capture, so the
 // capture's alpha separates text from body.
+//
+// The tracker writes the pointer to a plain object and asks for a frame, so a
+// pointer move costs no React render. Under prefers-reduced-motion it
+// reports no pointer, and every card rests flat.
 //
 // Ownership: the library builds and lights the material; this module owns
 // the card's markup and the tilt.
@@ -45,6 +49,32 @@ export interface PagePointer {
 }
 
 export const pagePointer: PagePointer = { position: null }
+
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
+
+/** Inside a SurfaceCanvas: track the pointer for tilting cards, and draw a frame whenever it moves. */
+export function PointerTracker() {
+  const invalidate = useThree((state) => state.invalidate)
+  useEffect(() => {
+    const reduced = window.matchMedia(REDUCED_MOTION)
+    const place = (position: PagePointer['position']) => {
+      pagePointer.position = reduced.matches ? null : position
+      invalidate()
+    }
+    const move = (event: globalThis.PointerEvent) => place({ x: event.clientX, y: event.clientY })
+    const leave = () => place(null)
+    window.addEventListener('pointermove', move, { passive: true })
+    document.documentElement.addEventListener('pointerleave', leave)
+    reduced.addEventListener('change', leave)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      document.documentElement.removeEventListener('pointerleave', leave)
+      reduced.removeEventListener('change', leave)
+      pagePointer.position = null
+    }
+  }, [invalidate])
+  return null
+}
 
 interface TiltState {
   pitch: number
@@ -97,7 +127,7 @@ function stepTilt(state: TiltState, tilt: UniformNode<'mat3', THREE.Matrix3>, fr
 
 
 /** The Surface's finish with its normal turned by the card's tilt. */
-function TiltedFinish() {
+export function TiltedFinish() {
   const [tilt] = useState(() => uniform(new THREE.Matrix3()))
   // SAFETY: a mat3 times a vec3 is a vec3; three's published types leave the
   // product untyped.
@@ -139,8 +169,6 @@ export interface FinishCardProps {
 
 export function FinishCard({ canvasId, inScene, finish, tilt, className = '', style, children }: FinishCardProps) {
   const place = inScene ? 'mf-card--scene' : 'mf-card--page'
-  // A tilting card bends its own plane, so it cannot share the default one.
-  const tilting = tilt === 'pointer'
   return (
     <Surface.Root canvasId={canvasId} inScene={inScene} finish={finish}>
       <Surface.HTML>
@@ -150,13 +178,22 @@ export function FinishCard({ canvasId, inScene, finish, tilt, className = '', st
         </div>
       </Surface.HTML>
       <Surface.Scene>
-        <Surface.Mesh
-          key={tilt}
-          placement="match-dom"
-          geometry={tilting ? <planeGeometry args={[1, 1]} /> : undefined}
-          material={tilting ? <TiltedFinish /> : undefined}
-        />
+        <FinishMesh tilt={tilt} />
       </Surface.Scene>
     </Surface.Root>
+  )
+}
+
+/** A card's mesh: flat in the default material slot, or bending its own plane toward the pointer. */
+export function FinishMesh({ tilt }: { readonly tilt: CardTilt }) {
+  // A tilting card bends its own plane, so it cannot share the default one.
+  const tilting = tilt === 'pointer'
+  return (
+    <Surface.Mesh
+      key={tilt}
+      placement="match-dom"
+      geometry={tilting ? <planeGeometry args={[1, 1]} /> : undefined}
+      material={tilting ? <TiltedFinish /> : undefined}
+    />
   )
 }

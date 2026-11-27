@@ -2,7 +2,7 @@
 // real UI cards, each with its text lit with the body or laid over it unlit,
 // under a choice of studio light rigs, flat or tilting toward the pointer
 // (?scene=material-finishes&finish=<id>&text=lit|unlit
-// &light=softbox|point&tilt=none|pointer). With
+// &light=softbox|point&tilt=none|pointer&follow=drag|pointer). With
 // &compare=<family id> the page shows the presets of one material side by
 // side instead.
 //
@@ -11,17 +11,19 @@
 // one even tint, so the key light stands a few hundred CSS px over the
 // cards, dragged or swept across them under a perspective camera. The
 // finish, lights and environments are the library's: each card's Root takes
-// the live finish, and the canvas takes the studio as `lighting`.
+// the live finish, and the canvas takes the studio as `lighting`. With
+// follow=pointer the key is a createSurfaceLight handle made with
+// `follow: 'pointer'`, so the light moves with the mouse and no React render
+// runs; under reduced motion it rests where the dragged light stood.
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent } from 'react'
-import { useThree } from '@react-three/fiber'
 import { SurfaceCanvas, useCaptureSupport, type SurfaceCanvasId, type SurfaceFinish } from '@petepetrash/munari'
 import { Button, Status, Tag } from '../../components/system'
 import { showChrome } from '../../bareMode'
 import { sceneUrl } from '../../captureMode'
 import { MaterialFinishesCompare } from './MaterialFinishesCompare'
 import { familyOf, familyOfFinish } from './materialFinishesFamilies'
-import { FinishCard, pagePointer } from './MaterialFinishesSurface'
+import { FinishCard, PointerTracker } from './MaterialFinishesSurface'
 import { MaterialFinishesTweaks } from './MaterialFinishesTweaks'
 import {
   applyFinish,
@@ -64,6 +66,36 @@ interface SceneParams {
   readonly text: TextLighting
   readonly light: LightRig
   readonly tilt: CardTilt
+  readonly follow: KeyFollow
+}
+
+/** Whether the key stays where it is dragged or follows the pointer. */
+type KeyFollow = 'drag' | 'pointer'
+
+type PillOptions<T extends string> = readonly (readonly [T, string])[]
+
+const TEXT_PILLS: PillOptions<TextLighting> = [['unlit', 'Unlit text'], ['lit', 'Lit text']]
+const RIG_PILLS: PillOptions<LightRig> = LIGHT_RIGS.map((item) => [item.id, item.label] as const)
+const TILT_PILLS: PillOptions<CardTilt> = [['none', 'Flat'], ['pointer', 'Tilt to pointer']]
+const FOLLOW_PILLS: PillOptions<KeyFollow> = [['drag', 'Drag light'], ['pointer', 'Light follows pointer']]
+
+interface PillsProps<T extends string> {
+  readonly label: string
+  readonly value: T
+  readonly options: PillOptions<T>
+  readonly onSelect: (next: T) => void
+}
+
+function Pills<T extends string>({ label, value, options, onSelect }: PillsProps<T>) {
+  return (
+    <div className="mf-pills" role="group" aria-label={label}>
+      {options.map(([id, text]) => (
+        <Button key={id} compact variant={value === id ? 'solid' : 'outline'} aria-pressed={value === id} onClick={() => onSelect(id)}>
+          {text}
+        </Button>
+      ))}
+    </div>
+  )
 }
 
 function readParams(): SceneParams {
@@ -75,16 +107,18 @@ function readParams(): SceneParams {
     text: params.get('text') === 'lit' ? 'lit' : 'unlit',
     light: isLightRig(light) ? light : 'softbox',
     tilt: params.get('tilt') === 'pointer' ? 'pointer' : 'none',
+    follow: params.get('follow') === 'pointer' ? 'pointer' : 'drag',
   }
 }
 
-function writeParams({ finish, text, light, tilt }: SceneParams): void {
+function writeParams({ finish, text, light, tilt, follow }: SceneParams): void {
   const params = new URLSearchParams(window.location.search)
   params.set('scene', 'material-finishes')
   params.set('finish', finish)
   params.set('text', text)
   params.set('light', light)
   params.set('tilt', tilt)
+  params.set('follow', follow)
   window.history.replaceState(null, '', `?${params.toString()}`)
 }
 
@@ -97,29 +131,6 @@ type OnInkStyle = CSSProperties & { readonly '--mf-on-ink'?: string }
 /** Text on a solid ink fill, such as a primary button, reads in the body color. */
 function onInkStyle(finish: SurfaceFinish): OnInkStyle {
   return finish.color ? { '--mf-on-ink': finish.color } : {}
-}
-
-/** Track the pointer for tilting cards, and draw a frame whenever it moves. */
-function PointerTracker() {
-  const invalidate = useThree((state) => state.invalidate)
-  useEffect(() => {
-    const move = (event: globalThis.PointerEvent) => {
-      pagePointer.position = { x: event.clientX, y: event.clientY }
-      invalidate()
-    }
-    const leave = () => {
-      pagePointer.position = null
-      invalidate()
-    }
-    window.addEventListener('pointermove', move, { passive: true })
-    document.documentElement.addEventListener('pointerleave', leave)
-    return () => {
-      window.removeEventListener('pointermove', move)
-      document.documentElement.removeEventListener('pointerleave', leave)
-      pagePointer.position = null
-    }
-  }, [invalidate])
-  return null
 }
 
 interface CardsProps {
@@ -210,6 +221,8 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
   const [text, setText] = useState<TextLighting>(initial.text)
   const [rig, setRig] = useState<LightRig>(initial.light)
   const [tilt, setTilt] = useState<CardTilt>(initial.tilt)
+  const [follow, setFollow] = useState<KeyFollow>(initial.follow)
+  const followsPointer = follow === 'pointer'
   const [inScene, setInScene] = useState(true)
   const [sweeping, setSweeping] = useState(false)
   const handleRef = useRef<HTMLButtonElement>(null)
@@ -218,7 +231,7 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
   const live = liveFinish()
   const worn = useMemo(() => ({ ...live, text }), [live, text])
   // Read each render: a tweak to the rim or the environment re-renders the page.
-  const lighting = lightingOf()
+  const lighting = lightingOf(followsPointer)
 
   // The handle follows the key, and the key keeps its place in the viewport
   // when the window resizes.
@@ -265,7 +278,7 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
     return () => cancelAnimationFrame(frame)
   }, [sweeping, moveLight])
 
-  const current: SceneParams = { finish, text, light: rig, tilt }
+  const current: SceneParams = { finish, text, light: rig, tilt, follow }
   const selectFinish = (next: FinishId) => {
     setFinish(next)
     applyFinish(next)
@@ -283,6 +296,13 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
   const selectTilt = (next: CardTilt) => {
     setTilt(next)
     writeParams({ ...current, tilt: next })
+  }
+  const selectFollow = (next: KeyFollow) => {
+    setFollow(next)
+    // Both handles rest where the dragged light stands.
+    placeKey(rig)
+    if (next === 'pointer') setSweeping(false)
+    writeParams({ ...current, follow: next })
   }
 
   const onHandlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
@@ -339,35 +359,16 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
             </Button>
           ))}
         </nav>
-        <div className="mf-pills" role="group" aria-label="Text lighting">
-          <Button compact variant={text === 'unlit' ? 'solid' : 'outline'} aria-pressed={text === 'unlit'} onClick={() => selectText('unlit')}>
-            Unlit text
-          </Button>
-          <Button compact variant={text === 'lit' ? 'solid' : 'outline'} aria-pressed={text === 'lit'} onClick={() => selectText('lit')}>
-            Lit text
-          </Button>
-        </div>
-        <div className="mf-pills" role="group" aria-label="Light">
-          {LIGHT_RIGS.map((item) => (
-            <Button key={item.id} compact variant={rig === item.id ? 'solid' : 'outline'} aria-pressed={rig === item.id} onClick={() => selectRig(item.id)}>
-              {item.label}
-            </Button>
-          ))}
-        </div>
-        <div className="mf-pills" role="group" aria-label="Tilt">
-          <Button compact variant={tilt === 'none' ? 'solid' : 'outline'} aria-pressed={tilt === 'none'} onClick={() => selectTilt('none')}>
-            Flat
-          </Button>
-          <Button compact variant={tilt === 'pointer' ? 'solid' : 'outline'} aria-pressed={tilt === 'pointer'} onClick={() => selectTilt('pointer')}>
-            Tilt to pointer
-          </Button>
-        </div>
+        <Pills label="Text lighting" value={text} options={TEXT_PILLS} onSelect={selectText} />
+        <Pills label="Light" value={rig} options={RIG_PILLS} onSelect={selectRig} />
+        <Pills label="Tilt" value={tilt} options={TILT_PILLS} onSelect={selectTilt} />
+        <Pills label="Key light" value={follow} options={FOLLOW_PILLS} onSelect={selectFollow} />
       </header>
       )}
 
       <Cards canvasId={canvasId} inScene={showsScene} finish={worn} tilt={tilt} />
 
-      {supported && (
+      {supported && !followsPointer && (
         <button
           ref={handleRef}
           type="button"
@@ -389,14 +390,14 @@ function MaterialFinishesScene({ onReady }: { readonly onReady?: () => void }) {
             Compare {family.label.toLowerCase()} presets
           </a>
         )}
-        <Button compact variant={sweeping ? 'solid' : 'outline'} aria-pressed={sweeping} disabled={!showsScene} onClick={() => setSweeping((on) => !on)}>
+        <Button compact variant={sweeping ? 'solid' : 'outline'} aria-pressed={sweeping} disabled={!showsScene || followsPointer} onClick={() => setSweeping((on) => !on)}>
           {sweeping ? 'Stop sweep' : 'Sweep light'}
         </Button>
         <Button compact variant="outline" disabled={!supported} onClick={() => setInScene((on) => !on)}>
           {inScene ? 'Show page HTML' : 'Show finish'}
         </Button>
         <Status status={showsScene ? 'live' : 'fallback'}>{showsScene ? 'Finish on Surfaces' : 'Page HTML'}</Status>
-        <Tag>Drag the light</Tag>
+        <Tag>{followsPointer ? 'Move the pointer' : 'Drag the light'}</Tag>
       </footer>
       )}
 

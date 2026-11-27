@@ -6,13 +6,17 @@
 // the key light's position, so a value on screen and a value in the listing
 // cannot differ.
 //
+// The key either stays where it is dragged or follows the pointer. Each is
+// its own createSurfaceLight handle, because `follow` is fixed when a handle
+// is made; the canvas is lit by one of them.
+//
 // Ownership: the preset table (material-finishes/recipe/finishes.ts) owns
 // the finish values and the library owns the material and lights. This
 // module owns which finish each card wears and where the key stands.
 
 import { createSurfaceLight, type LightPosition, type SurfaceCanvasProps, type SurfaceFinish } from '@petepetrash/munari'
 import { finishes } from '../material-finishes/recipe/finishes'
-import { LIGHT_RIGS, type FinishId, type LightRig, type TextLighting } from '../material-finishes/materialFinishesTuning'
+import { LIGHT_RIGS, type CardTilt, type FinishId, type LightRig, type TextLighting } from '../material-finishes/materialFinishesTuning'
 import type { ContextId } from './FinishDemoContexts'
 import { BASE_KNOBS, knobValue, ownKnobs, type FinishKnob } from './finishDemoFinishes'
 
@@ -30,6 +34,9 @@ export interface PageSetup {
   readonly rig: LightRig
   readonly text: TextLighting
   readonly inScene: boolean
+  /** The key follows the pointer instead of staying where it was dragged. */
+  readonly followsPointer: boolean
+  readonly tilt: CardTilt
 }
 
 export function createCard(context: ContextId, preset: FinishId): BenchCard {
@@ -49,6 +56,21 @@ export function keySize(rig: LightRig): readonly [number, number] | undefined {
 /** The page's key light. Every card is lit by it, so dragging it moves the light over all of them at once. */
 export const keyLight = createSurfaceLight({ size: SOFTBOX_SIZE })
 
+/** The key while it follows the pointer. It rests, and stays under reduced motion, where keyLight stood. */
+export const pointerLight = createSurfaceLight({ follow: 'pointer', size: SOFTBOX_SIZE })
+
+/** Rest the pointer's key where the dragged key stands. */
+export function restPointerLight(): void {
+  const { x, y } = keyLight.get()
+  pointerLight.set({ x: x ?? undefined, y: y ?? undefined })
+}
+
+/** Give both keys a rig's size. */
+export function sizeKeys(rig: LightRig): void {
+  keyLight.set({ size: keySize(rig) })
+  pointerLight.set({ size: keySize(rig) })
+}
+
 // ── props ──────────────────────────────────────────────────────────────
 
 /** The props this page gives SurfaceCanvas, apart from its id and children. */
@@ -60,6 +82,9 @@ export const CANVAS_PROPS = {
   style: { position: 'fixed', inset: 0, zIndex: 10 },
   lighting: { key: keyLight },
 } as const satisfies Partial<SurfaceCanvasProps>
+
+/** The canvas's lighting while the key follows the pointer. */
+export const POINTER_LIGHTING = { key: pointerLight } as const satisfies SurfaceCanvasProps['lighting']
 
 /** The Surface props a card takes from its finish and the page. */
 export interface CardProps {
@@ -86,25 +111,41 @@ const finishName = (card: BenchCard) => `${card.context}Finish`
 const setterName = (card: BenchCard) => `set${card.context[0].toUpperCase()}${card.context.slice(1)}Finish`
 const px = (value: number | null) => String(Math.round(value ?? 0))
 
-export const IMPORT_LINES: readonly CodeLine[] = [
+/** The imports the listing's code needs. The tilt's parts are this lab's code, built on the public API. */
+export function importLines(page: PageSetup): readonly CodeLine[] {
+  const tilting = page.tilt === 'pointer'
+  return [
   "import { useId, useState } from 'react'",
   "import { createSurfaceLight, Surface, SurfaceCanvas, useCaptureSupport, type SurfaceFinish } from '@petepetrash/munari'",
   "import { finishes } from './finishes'  // registry/finishes",
-  "import { RecaptureOnStyle } from '../material-finishes/MaterialFinishesSurface'",
+  tilting
+    ? "import { PointerTracker, RecaptureOnStyle, TiltedFinish } from '../material-finishes/MaterialFinishesSurface'"
+    : "import { RecaptureOnStyle } from '../material-finishes/MaterialFinishesSurface'",
   "import { bodyOf, inkStyle } from '../finish-demo/finishDemoFinishes'",
   "import '../material-finishes/materialFinishes.css'",
-]
+  ]
+}
 
-function lightLine(rig: LightRig, key: LightPosition): CodeLine {
-  const size = keySize(rig)
+function lightLines(page: PageSetup, key: LightPosition): readonly CodeLine[] {
+  const size = keySize(page.rig)
   const sizeText = size ? `, size: [${size.join(', ')}]` : ''
-  return `const keyLight = createSurfaceLight({ x: ${px(key.x)}, y: ${px(key.y)}${sizeText} })`
+  if (!page.followsPointer) return [`const keyLight = createSurfaceLight({ x: ${px(key.x)}, y: ${px(key.y)}${sizeText} })`]
+  return [
+    '// Follows the mouse and pen with no React render. x and y are where it rests:',
+    '// off the page, and always under prefers-reduced-motion.',
+    `const keyLight = createSurfaceLight({ follow: 'pointer', x: ${px(key.x)}, y: ${px(key.y)}${sizeText} })`,
+  ]
+}
+
+function canvasCloseLines(page: PageSetup): readonly CodeLine[] {
+  if (page.tilt !== 'pointer') return ['  />']
+  return ['  >', '    {/* Tilts each TiltedFinish toward the pointer; flat under reduced motion */}', '    <PointerTracker />', '  </SurfaceCanvas>']
 }
 
 /** The key light, the canvas, and each card's finish state. */
-export function setupLines(cards: readonly BenchCard[], rig: LightRig, key: LightPosition): readonly CodeLine[] {
+export function setupLines(cards: readonly BenchCard[], page: PageSetup, key: LightPosition): readonly CodeLine[] {
   return [
-    lightLine(rig, key),
+    ...lightLines(page, key),
     '',
     'const supported = useCaptureSupport()',
     'const canvasId = useId()',
@@ -120,7 +161,7 @@ export function setupLines(cards: readonly BenchCard[], rig: LightRig, key: Ligh
     '    lighting={{ key: keyLight }}',
     '    onCreated={({ gl }) => gl.setClearAlpha(0)}',
     `    style={{ position: '${CANVAS_PROPS.style.position}', inset: ${CANVAS_PROPS.style.inset}, zIndex: ${CANVAS_PROPS.style.zIndex} }}`,
-    '  />',
+    ...canvasCloseLines(page),
     ')}',
   ]
 }
@@ -138,7 +179,9 @@ export function cardLines(card: BenchCard, page: PageSetup, content: string): re
     '    </div>',
     '  </Surface.HTML>',
     '  <Surface.Scene>',
-    '    <Surface.Mesh placement="match-dom" />',
+    page.tilt === 'pointer'
+      ? '    <Surface.Mesh placement="match-dom" geometry={<planeGeometry args={[1, 1]} />} material={<TiltedFinish />} />'
+      : '    <Surface.Mesh placement="match-dom" />',
     '  </Surface.Scene>',
     '</Surface.Root>',
   ]
@@ -172,11 +215,15 @@ function changedEntries(card: BenchCard): readonly string[] {
 }
 
 /** The calls that bring a card from its preset to what is on screen, and the key light's position. */
-export function adjustLines(card: BenchCard, key: LightPosition): readonly CodeLine[] {
+export function adjustLines(card: BenchCard, page: PageSetup, key: LightPosition): readonly CodeLine[] {
   const entries = changedEntries(card)
   const lines: CodeLine[] = [`const preset = finishes['${card.preset}']`]
   lines.push(entries.length === 0 ? `${setterName(card)}(preset)` : `${setterName(card)}({ ...preset, ${entries.join(', ')} })`)
-  lines.push(`keyLight.set({ x: ${px(key.x)}, y: ${px(key.y)} })  // redraws every canvas it lights, with no React render`)
+  lines.push(
+    page.followsPointer
+      ? '// keyLight follows the pointer: each move redraws every canvas it lights, with no React render'
+      : `keyLight.set({ x: ${px(key.x)}, y: ${px(key.y)} })  // redraws every canvas it lights, with no React render`,
+  )
   return lines
 }
 

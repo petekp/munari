@@ -4,7 +4,10 @@
 // The law: each card's Surface.Root takes its own finish, so cards with
 // different finishes share the canvas, and the canvas lights them all with
 // one key. The key is a createSurfaceLight handle: dragging it redraws the
-// canvas and moves the handle with no React render. Each card's ink follows
+// canvas and moves the handle with no React render. While the key follows the
+// pointer, the canvas is lit by a second handle made with `follow: 'pointer'`
+// and the drag handle is hidden; with tilt on, each card bends toward the
+// pointer. Neither renders React on a pointer move. Each card's ink follows
 // its own body color, so its text stays legible while the color is tuned.
 //
 // Ownership: the library owns the material and lights. This module mounts
@@ -13,9 +16,9 @@
 
 import { createContext, useContext, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
 import { Surface, SurfaceCanvas, useCaptureSupport, type LightPosition, type SurfaceCanvasId, type SurfaceLight } from '@petepetrash/munari'
-import { RecaptureOnStyle } from '../material-finishes/MaterialFinishesSurface'
+import { FinishMesh, PointerTracker, RecaptureOnStyle } from '../material-finishes/MaterialFinishesSurface'
 import { bodyOf, inkStyle } from './finishDemoFinishes'
-import { CANVAS_PROPS, cardProps, keyLight, type BenchCard, type PageSetup } from './finishDemoRecipe'
+import { CANVAS_PROPS, cardProps, keyLight, POINTER_LIGHTING, type BenchCard, type PageSetup } from './finishDemoRecipe'
 import '../material-finishes/materialFinishes.css'
 import './finishDemo.css'
 
@@ -104,12 +107,14 @@ interface FinishStageProps {
   readonly className: string
   /** Show the cards as page HTML instead of on Surfaces. */
   readonly pageHtml: boolean
+  readonly followsPointer: boolean
+  readonly tilts: boolean
   readonly onReady?: () => void
   /** The page, given whether the cards are drawn on Surfaces. */
   readonly children: (inScene: boolean) => ReactNode
 }
 
-export function FinishStage({ ground, className, pageHtml, onReady, children }: FinishStageProps) {
+export function FinishStage({ ground, className, pageHtml, followsPointer, tilts, onReady, children }: FinishStageProps) {
   const supported = useCaptureSupport()
   const canvasId = useId()
   useEffect(() => {
@@ -125,9 +130,13 @@ export function FinishStage({ ground, className, pageHtml, onReady, children }: 
 
   return (
     <div className={`fd-page ${className}`} data-page-ground={ground}>
-      {supported && <SurfaceCanvas id={canvasId} {...CANVAS_PROPS} onCreated={({ gl }) => gl.setClearAlpha(0)} />}
+      {supported && (
+        <SurfaceCanvas id={canvasId} {...CANVAS_PROPS} lighting={followsPointer ? POINTER_LIGHTING : CANVAS_PROPS.lighting} onCreated={({ gl }) => gl.setClearAlpha(0)}>
+          {tilts && <PointerTracker />}
+        </SurfaceCanvas>
+      )}
       <StageContext value={canvasId}>{children(inScene)}</StageContext>
-      {inScene && <LightHandle />}
+      {inScene && !followsPointer && <LightHandle />}
     </div>
   )
 }
@@ -154,7 +163,7 @@ export function FinishedCard({ card, page, children }: FinishedCardProps) {
         </div>
       </Surface.HTML>
       <Surface.Scene>
-        <Surface.Mesh placement="match-dom" />
+        <FinishMesh tilt={page.tilt} />
       </Surface.Scene>
     </Surface.Root>
   )

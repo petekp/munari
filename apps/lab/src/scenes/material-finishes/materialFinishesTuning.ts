@@ -5,7 +5,8 @@
 // (recipe/finishes.ts); a tweak replaces it with a changed copy, and the
 // page renders the new value onto every card. The key light is a
 // createSurfaceLight handle, so dragging it redraws the canvas with no React
-// render. The rest of the studio is SurfaceCanvas's `lighting` object, in
+// render. A second handle follows the pointer, and the page lights its cards
+// with one or the other. The rest of the studio is SurfaceCanvas's `lighting` object, in
 // its units: 1 is the studio's own brightness.
 //
 // Ownership: this module holds the live values and their listeners; the
@@ -117,15 +118,20 @@ export const studio: StudioTuning = { ...STUDIO_START }
 /** The page's key light. Every card on every canvas of the page is lit by it. */
 export const keyLight = createSurfaceLight()
 
+/** The key when it follows the pointer. It rests where keyLight stands, which is also where it stays under reduced motion. */
+export const pointerLight = createSurfaceLight({ follow: 'pointer' })
+
 /** Stand the key where the studio says, in the rig's kind. */
 export function placeKey(rig: LightRig): void {
-  keyLight.set({
+  const key = {
     x: studio.keyX * window.innerWidth,
     y: studio.keyY * window.innerHeight,
     z: studio.keyHeight,
     brightness: studio.keyBrightness,
-    size: rig === 'softbox' ? [studio.softboxWidth, studio.softboxHeight] : undefined,
-  })
+    size: rig === 'softbox' ? ([studio.softboxWidth, studio.softboxHeight] as const) : undefined,
+  }
+  keyLight.set(key)
+  pointerLight.set(key)
 }
 
 /** Restart the studio at its start values and stand the key there. */
@@ -135,9 +141,9 @@ export function startStudio(rig: LightRig): void {
 }
 
 /** The canvas's lighting for the studio's current values. */
-export function lightingOf(): SurfaceLighting {
+export function lightingOf(followsPointer: boolean): SurfaceLighting {
   return {
-    key: keyLight,
+    key: followsPointer ? pointerLight : keyLight,
     rim: { brightness: studio.rimBrightness, elevation: studio.rimElevation },
     environmentIntensity: studio.environmentIntensity,
   }
