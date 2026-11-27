@@ -10,6 +10,15 @@ import { finishes, inks } from './finishes'
 <Surface.Root finish={{ ...finishes['lacquer-crimson'], color: '#0d3b66' }}>…</Surface.Root>
 ```
 
+Each preset is also exported under its own name, in camelCase. A page that
+imports only the presets it uses leaves the rest out of its bundle:
+
+```tsx
+import { lacquerCrimson } from './finishes'
+
+<Surface.Root finish={lacquerCrimson}>…</Surface.Root>
+```
+
 ## What to copy
 
 `finishes.ts`. Its only import is the `SurfaceFinish` type from
