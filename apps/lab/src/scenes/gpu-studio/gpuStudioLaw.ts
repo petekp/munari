@@ -34,8 +34,8 @@ export function fisheyeDisplaceX(
 
 export function domMatchPose(rect: DOMRect, viewport: GpuViewport): SurfacePose {
   return {
-    x: rect.left + rect.width / 2 - viewport.width / 2,
-    y: viewport.height / 2 - (rect.top + rect.height / 2),
+    x: rect.left - viewport.left + rect.width / 2 - viewport.width / 2,
+    y: viewport.height / 2 - (rect.top - viewport.top + rect.height / 2),
     z: 0,
     rx: 0,
     ry: 0,
@@ -97,7 +97,7 @@ export function projectSurfaceLocalPoint(
   const dist = Math.max(1, viewport.cameraZ - wz)
   const scale = viewport.cameraZ / dist
   return {
-    x: viewport.width / 2 + wx * scale,
-    y: viewport.height / 2 - wy * scale,
+    x: viewport.left + viewport.width / 2 + wx * scale,
+    y: viewport.top + viewport.height / 2 - wy * scale,
   }
 }

@@ -53,7 +53,7 @@ const alias = [
 
 const gzipBytes = (code) => gzipSync(code, { level: 9 }).length
 
-async function measure(name) {
+async function measure(name, external = []) {
   const result = await build({
     configFile: false,
     root: here,
@@ -65,7 +65,7 @@ async function measure(name) {
       minify: true,
       reportCompressedSize: false,
       modulePreload: false,
-      rollupOptions: { input: join(here, 'entries', `${name}.js`) },
+      rollupOptions: { input: join(here, 'entries', `${name}.js`), external },
     },
   })
   const chunks = (Array.isArray(result) ? result : [result])
@@ -107,6 +107,11 @@ for (const result of results) {
       (result.ok ? 'ok' : 'OVER BUDGET'),
   )
 }
+
+const gpuExternal = await measure('gpuSurface', ['react', 'react-dom', 'react-dom/client', 'react/jsx-runtime'])
+console.log(
+  `gpuSurface (react external): ${gpuExternal.loadedBytes} loaded / ${gpuExternal.deferredBytes} deferred (gzip bytes, info only)`,
+)
 
 const failed = results.filter((result) => !result.ok)
 if (failed.length > 0) {

@@ -152,6 +152,11 @@ export function Surface<TUniforms = Record<string, never>>({
   liveRootRef.current = liveRoot
   const factoryRef = useRef(effectiveFactory)
   factoryRef.current = effectiveFactory
+  const segmentsRef = useRef(segments)
+  segmentsRef.current = segments
+  const prevLiveRef = useRef(live)
+  const geoMetaRef = useRef<{ w: number; h: number; sx: number; sy: number } | null>(null)
+  const activeMatRef = useRef<{ readonly isFinish: boolean; readonly factory: typeof effectiveFactory } | null>(null)
 
   const sourceRef = useRef<DomTextureSource | null>(null)
   const texRef = useRef<GpuSurfaceTexture | null>(null)
@@ -233,42 +238,44 @@ export function Surface<TUniforms = Record<string, never>>({
     const renderer = host.renderer
     if (!renderer) return
     const curMat = matRef.current
-    if (finish && isFinishMaterial(curMat)) {
-      curMat.updateFinish(finish, host.lighting, host.viewport.width, host.viewport.height, host.viewport.cameraZ)
+    const isFin = Boolean(finish)
+    const active = activeMatRef.current
+    const kindChanged =
+      !curMat || !active || active.isFinish !== isFin || (!isFin && active.factory !== effectiveFactory)
+    if (!kindChanged && curMat) {
+      if (finish && isFinishMaterial(curMat)) {
+        curMat.updateFinish(finish, host.lighting, host.viewport.width, host.viewport.height, host.viewport.cameraZ)
+      } else if (!isFin && uniforms !== undefined && isManifestMaterial<TUniforms>(curMat)) {
+        curMat.setUniforms(uniforms)
+      }
       host.invalidate()
       return
     }
-    if (!finish && curMat && !isFinishMaterial(curMat)) {
-      if (uniforms !== undefined && isManifestMaterial<TUniforms>(curMat)) {
-        curMat.setUniforms(uniforms)
-        host.invalidate()
-      }
-      return
-    }
-    matRef.current?.dispose()
+    curMat?.dispose()
     const nextMat = buildMaterialFor(renderer)
     matRef.current = nextMat
+    activeMatRef.current = nextMat ? { isFinish: isFin, factory: effectiveFactory } : null
     if (nextMat) {
       if (uniforms !== undefined && isManifestMaterial<TUniforms>(nextMat)) nextMat.setUniforms(uniforms)
       void nextMat.ready.then(() => host.invalidate())
     }
     host.invalidate()
-  }, [host, finish, finishMod, materialProp, materialFactory, uniforms, buildMaterialFor])
+  }, [host, finish, finishMod, effectiveFactory, uniforms, buildMaterialFor])
 
   useLayoutEffect(() => {
     let source: DomTextureSource | null = null
     const setupGpu = () => {
       const renderer = host.renderer
       if (!renderer || texRef.current) return
+      const [w, h] = sizeRef.current
+      const [sx, sy] = segmentsRef.current
       texRef.current = createGpuSurfaceTexture(renderer)
-      geoRef.current = createPlaneGeometry(
-        renderer.device,
-        sizeRef.current[0],
-        sizeRef.current[1],
-        segments[0],
-        segments[1],
-      )
+      geoRef.current = createPlaneGeometry(renderer.device, w, h, sx, sy)
+      geoMetaRef.current = { w, h, sx, sy }
       matRef.current = buildMaterialFor(renderer)
+      activeMatRef.current = matRef.current
+        ? { isFinish: Boolean(finishRef.current), factory: factoryRef.current }
+        : null
       uploadStateRef.current.lastPaint = -1
       const nextCrossing = crossingRequest(crossingRef.current, inSceneRef.current)
       if (nextCrossing !== crossingRef.current) {
@@ -324,8 +331,10 @@ export function Surface<TUniforms = Record<string, never>>({
         workClaimRef.current = null
         matRef.current?.dispose()
         matRef.current = null
+        activeMatRef.current = null
         geoRef.current?.dispose()
         geoRef.current = null
+        geoMetaRef.current = null
         texRef.current?.dispose()
         texRef.current = null
         uploadStateRef.current.lastPaint = -1
@@ -372,6 +381,9 @@ export function Surface<TUniforms = Record<string, never>>({
           snapPose: (x, y, mag) => snapSurfacePose(x, y, sizeRef.current, viewport, src, mag),
           deform: (place) => deformGpuGeometry(geo, sizeRef.current, place),
           setExtraAttribute: (slot, data) => geo.setExtraAttribute(slot, data),
+          setUniforms: (values) => {
+            if (isManifestMaterial<TUniforms>(mat)) mat.setUniforms(values)
+          },
           setCustomUniforms: (data) => mat.writeCustomUniforms(data),
         })
 
@@ -430,8 +442,10 @@ export function Surface<TUniforms = Record<string, never>>({
       identityRef.current = surfaceRelease(identityRef.current, token)
       matRef.current?.dispose()
       matRef.current = null
+      activeMatRef.current = null
       geoRef.current?.dispose()
       geoRef.current = null
+      geoMetaRef.current = null
       texRef.current?.dispose()
       texRef.current = null
       source?.dispose()
@@ -440,6 +454,39 @@ export function Surface<TUniforms = Record<string, never>>({
     // Intentional mount-scoped setup for capture/GPU resource lifetime.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, captureRoot, surfaceId])
+
+  const [sizeW, sizeH] = effectiveSize
+  const [segX, segY] = segments
+
+  useLayoutEffect(() => {
+    const renderer = host.renderer
+    const curGeo = geoRef.current
+    if (!renderer || !curGeo) return
+    const prev = geoMetaRef.current
+    if (prev && prev.w === sizeW && prev.h === sizeH && prev.sx === segX && prev.sy === segY) return
+    curGeo.dispose()
+    geoRef.current = createPlaneGeometry(renderer.device, sizeW, sizeH, segX, segY)
+    geoMetaRef.current = { w: sizeW, h: sizeH, sx: segX, sy: segY }
+    host.invalidate()
+  }, [host, sizeW, sizeH, segX, segY])
+
+  useLayoutEffect(() => {
+    const src = sourceRef.current
+    if (!src) return
+    const nextScale = resolveInitialScale(resolution, [sizeW, sizeH])
+    if (src.scale() !== nextScale) {
+      src.setScale(nextScale)
+      host.invalidate()
+    }
+  }, [host, resolution, sizeW, sizeH])
+
+  useLayoutEffect(() => {
+    const src = sourceRef.current
+    if (!src || prevLiveRef.current === live) return
+    prevLiveRef.current = live
+    src.setLive(live)
+    host.invalidate()
+  }, [host, live])
 
   useLayoutEffect(() => {
     const [w, h] = effectiveSize

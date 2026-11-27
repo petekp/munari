@@ -97,13 +97,15 @@ export interface SurfacePose {
 }
 
 export interface GpuViewport {
+  readonly left: number
+  readonly top: number
   readonly width: number
   readonly height: number
   readonly dpr: number
   readonly cameraZ: number
 }
 
-export interface SurfaceFrameContext {
+export interface SurfaceFrameContext<TUniforms = never> {
   readonly dtMs: number
   readonly elapsedMs: number
   readonly progress: number
@@ -120,6 +122,7 @@ export interface SurfaceFrameContext {
   snapPose(x: number, y: number, mag?: number): PixelGridSnap
   deform(place: (x: number, y: number, index: number) => DeformedPoint): void
   setExtraAttribute(slot: number, data: Float32Array<ArrayBuffer>): void
+  setUniforms(values: TUniforms): void
   setCustomUniforms(data: Float32Array<ArrayBuffer>): void
 }
 
@@ -138,9 +141,9 @@ export interface SurfaceProps<TUniforms = Record<string, never>> {
   readonly pixelSnap?: boolean
   readonly finish?: SurfaceFinish
   readonly material?: MaterialManifest<TUniforms>
-  readonly uniforms?: TUniforms
+  readonly uniforms?: NoInfer<TUniforms>
   readonly materialFactory?: GpuMaterialFactory
-  readonly onFrame?: (ctx: SurfaceFrameContext) => void
+  readonly onFrame?: (ctx: SurfaceFrameContext<NoInfer<TUniforms>>) => void
   readonly onPresentationChange?: (presentation: SurfacePresentation) => void
   readonly children?: ReactNode
 }
@@ -192,8 +195,8 @@ export function writeCaptureBodyColor(
 
 export function matchDomPose(rect: DOMRect, viewport: ViewportState, size: readonly [number, number]): SurfacePose {
   return {
-    x: rect.left + rect.width / 2 - viewport.width / 2,
-    y: viewport.height / 2 - (rect.top + rect.height / 2),
+    x: rect.left - viewport.left + rect.width / 2 - viewport.width / 2,
+    y: viewport.height / 2 - (rect.top - viewport.top + rect.height / 2),
     z: 0,
     rx: 0,
     ry: 0,
@@ -370,5 +373,5 @@ export function resolveSurfaceViewFormat(
   factory: GpuMaterialFactory | undefined,
 ): 'rgba8unorm' | 'rgba8unorm-srgb' {
   if (finish) return 'rgba8unorm'
-  return factory?.sampleViewFormat ?? 'rgba8unorm-srgb'
+  return factory?.sampleViewFormat ?? 'rgba8unorm'
 }

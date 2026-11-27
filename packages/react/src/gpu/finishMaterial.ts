@@ -282,16 +282,6 @@ function hexToLinearRgb(hex: string | null): readonly [number, number, number] {
   return [eotf(((num >> 16) & 255) / 255), eotf(((num >> 8) & 255) / 255), eotf((num & 255) / 255)]
 }
 
-let ltcRequested = false
-function ensureLtcWarmed(): void {
-  if (ltcRequested) return
-  ltcRequested = true
-  // Softbox key keeps the 64x64 half-float lookup table deferred until a softbox mounts (#79).
-  void import('../primitives/surface/ltc/ltc64Half').catch(() => {
-    ltcRequested = false
-  })
-}
-
 function resolveLightingRig(lighting: SurfaceLighting, vw: number, vh: number) {
   let keyX = vw / 2
   let keyY = vh * KEY_REST_Y
@@ -314,7 +304,6 @@ function resolveLightingRig(lighting: SurfaceLighting, vw: number, vh: number) {
       if (pos.size) {
         keyW = pos.size[0]
         keyH = pos.size[1]
-        ensureLtcWarmed()
       }
     }
     if (lighting.rim === false) rimBrightness = 0
@@ -404,44 +393,18 @@ export function createGpuFinishMaterial(renderer: GpuRenderer, initialFinish: Su
     usage: GPU_BUFFER_USAGE.UNIFORM | GPU_BUFFER_USAGE.COPY_DST,
   })
   const staging = new Float32Array(FINISH_UNIFORM_BYTES / 4)
+  const prevStaging = new Float32Array(FINISH_UNIFORM_BYTES / 4)
+  let uniformsUploaded = false
   const customBg = device.createBindGroup({
     layout: renderer.customBindGroupLayout,
     entries: [{ binding: 0, resource: { buffer: uniformBuf } }],
   })
 
-  const module = device.createShaderModule({ label: 'munari-finish-shader', code: FINISH_WGSL })
-  const pipelineLayout = device.createPipelineLayout({
-    label: 'munari-finish-layout',
-    bindGroupLayouts: [renderer.surfaceBindGroupLayout, renderer.customBindGroupLayout, renderer.backdropBindGroupLayout],
-  })
-
+  const cullMode: GPUCullMode = resolved.side === 'double' ? 'none' : 'back'
   const vertexBuffers: GPUVertexBufferLayout[] = [
     { arrayStride: 12, attributes: [{ shaderLocation: 0, offset: 0, format: 'float32x3' }] },
     { arrayStride: 8, attributes: [{ shaderLocation: 1, offset: 0, format: 'float32x2' }] },
   ]
-
-  const buildPipe = (colorWrite: boolean) =>
-    device.createRenderPipelineAsync({
-      label: colorWrite ? 'munari-finish-color' : 'munari-finish-warm',
-      layout: pipelineLayout,
-      vertex: { module, entryPoint: 'vsMain', buffers: vertexBuffers },
-      fragment: {
-        module,
-        entryPoint: 'fsMain',
-        targets: [
-          {
-            format,
-            writeMask: colorWrite ? GPU_COLOR_WRITE_ALL : 0,
-            blend: {
-              color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-            },
-          },
-        ],
-      },
-      primitive: { topology: 'triangle-list', cullMode: resolved.side === 'double' ? 'none' : 'back' },
-      depthStencil: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less-equal' },
-    })
 
   let colorPipe: GPURenderPipeline | null = null
   let warmPipe: GPURenderPipeline | null = null
@@ -458,17 +421,58 @@ export function createGpuFinishMaterial(renderer: GpuRenderer, initialFinish: Su
     writeColorUniforms(resolved, staging)
     writeMaterialUniforms(resolved, staging)
     writeRigUniforms(resolved, rig, camZ, staging)
+    let dirty = !uniformsUploaded
+    for (let i = 0; i < staging.length; i++) {
+      if (staging[i] !== prevStaging[i]) {
+        dirty = true
+        prevStaging[i] = staging[i]!
+      }
+    }
+    if (!dirty) return
+    uniformsUploaded = true
     device.queue.writeBuffer(uniformBuf, 0, staging)
   }
 
   packUniforms(initialFinish, 'studio', 1200, 860, 1000)
 
-  const ready = Promise.all([buildPipe(true), buildPipe(false)]).then(([c, w]) => {
-    if (disposed) return
-    colorPipe = c
-    warmPipe = w
-    built = true
-  })
+  const ready = renderer
+    .getOrCreatePipelines(`munari-finish|${cullMode}|${format}`, async () => {
+      const module = device.createShaderModule({ label: 'munari-finish-shader', code: FINISH_WGSL })
+      const pipelineLayout = device.createPipelineLayout({
+        label: 'munari-finish-layout',
+        bindGroupLayouts: [renderer.surfaceBindGroupLayout, renderer.customBindGroupLayout, renderer.backdropBindGroupLayout],
+      })
+      const buildPipe = (colorWrite: boolean) =>
+        device.createRenderPipelineAsync({
+          label: colorWrite ? 'munari-finish-color' : 'munari-finish-warm',
+          layout: pipelineLayout,
+          vertex: { module, entryPoint: 'vsMain', buffers: vertexBuffers },
+          fragment: {
+            module,
+            entryPoint: 'fsMain',
+            targets: [
+              {
+                format,
+                writeMask: colorWrite ? GPU_COLOR_WRITE_ALL : 0,
+                blend: {
+                  color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+                  alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+                },
+              },
+            ],
+          },
+          primitive: { topology: 'triangle-list', cullMode },
+          depthStencil: { format: 'depth24plus', depthWriteEnabled: false, depthCompare: 'less-equal' },
+        })
+      const [color, warm] = await Promise.all([buildPipe(true), buildPipe(false)])
+      return { color, warm }
+    })
+    .then((pipes) => {
+      if (disposed) return
+      colorPipe = pipes.color
+      warmPipe = pipes.warm
+      built = true
+    })
 
   return {
     ready,

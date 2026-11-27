@@ -94,6 +94,8 @@ export function SurfaceCanvas({
       const height = Math.max(1, rect.height)
       const dpr = window.devicePixelRatio || 1
       const camZ = cameraDistance(height, fovRef.current)
+      host.viewport.left = rect.left
+      host.viewport.top = rect.top
       host.viewport.width = width
       host.viewport.height = height
       host.viewport.dpr = dpr
@@ -144,6 +146,8 @@ export function SurfaceCanvas({
       schedule()
     })
     ro.observe(canvasEl)
+    const onScroll = () => syncViewport()
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true })
 
     const handleLoss = (reason: string) => {
       if (disposed) return
@@ -194,6 +198,7 @@ export function SurfaceCanvas({
       disposed = true
       cancelAnimationFrame(rafId)
       ro.disconnect()
+      window.removeEventListener('scroll', onScroll, true)
       stopGate()
       host.renderer = null
       host.canvas = null

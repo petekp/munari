@@ -68,7 +68,7 @@ export const unlitSurfaceManifest: MaterialManifest = {
   wgsl: DEFAULT_UNLIT_SURFACE_WGSL,
   vertexEntry: 'vsMain',
   fragmentEntry: 'fsMain',
-  sampleViewFormat: 'rgba8unorm-srgb',
+  sampleViewFormat: 'rgba8unorm',
   attributes: [
     { name: 'position', location: 0, format: 'float32x3', stride: 12 },
     { name: 'uv', location: 1, format: 'float32x2', stride: 8 },
@@ -111,51 +111,8 @@ export function createManifestMaterial<TValues>(
     .filter((attr) => attr.location >= 2)
     .map((attr) => attr.location)
 
-  const module = device.createShaderModule({ label: `${manifest.name}-shader`, code: manifest.wgsl })
-  const bindGroupLayouts: GPUBindGroupLayout[] = [renderer.surfaceBindGroupLayout]
-  if (customBuffer || manifest.needsBackdrop) {
-    bindGroupLayouts.push(customBuffer ? renderer.customBindGroupLayout : renderer.emptyBindGroupLayout)
-  }
-  if (manifest.needsBackdrop) {
-    bindGroupLayouts.push(renderer.backdropBindGroupLayout)
-  }
-  const pipelineLayout = device.createPipelineLayout({
-    label: `${manifest.name}-layout`,
-    bindGroupLayouts,
-  })
-
-  const makePipeline = (colorWrite: boolean) => {
-    const vertexDesc: GPUVertexState = manifest.vertexEntry
-      ? { module, entryPoint: manifest.vertexEntry, buffers: vertexBuffers }
-      : { module, buffers: vertexBuffers }
-
-    const targets: GPUColorTargetState[] = [
-      {
-        format,
-        writeMask: colorWrite ? GPU_COLOR_WRITE_ALL : 0,
-        blend: {
-          color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-          alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
-        },
-      },
-    ]
-    const fragmentDesc: GPUFragmentState = manifest.fragmentEntry
-      ? { module, entryPoint: manifest.fragmentEntry, targets }
-      : { module, targets }
-
-    return device.createRenderPipelineAsync({
-      label: `${manifest.name}-${colorWrite ? 'color' : 'warm'}`,
-      layout: pipelineLayout,
-      vertex: vertexDesc,
-      fragment: fragmentDesc,
-      primitive: { topology: 'triangle-list', cullMode: manifest.cullMode },
-      depthStencil: {
-        format: 'depth24plus',
-        depthWriteEnabled: colorWrite && manifest.depthWrite,
-        depthCompare: manifest.depthTest ? 'less-equal' : 'always',
-      },
-    })
-  }
+  const attrKey = manifest.attributes.map((a) => `${a.location}:${a.format}:${a.stride}`).join(',')
+  const cacheKey = `${manifest.name}|${manifest.vertexEntry ?? ''}|${manifest.fragmentEntry ?? ''}|${manifest.cullMode}|${String(manifest.depthWrite)}|${String(manifest.depthTest)}|${Boolean(customBuffer)}|${Boolean(manifest.needsBackdrop)}|${attrKey}|${format}|${manifest.wgsl}`
 
   let colorPipe: GPURenderPipeline | null = null
   let warmPipe: GPURenderPipeline | null = null
@@ -173,12 +130,63 @@ export function createManifestMaterial<TValues>(
       })
     : null
 
-  const ready = Promise.all([makePipeline(true), makePipeline(false)]).then(([c, w]) => {
-    if (disposed) return
-    colorPipe = c
-    warmPipe = w
-    built = true
-  })
+  const ready = renderer
+    .getOrCreatePipelines(cacheKey, async () => {
+      const module = device.createShaderModule({ label: `${manifest.name}-shader`, code: manifest.wgsl })
+      const bindGroupLayouts: GPUBindGroupLayout[] = [renderer.surfaceBindGroupLayout]
+      if (customBuffer || manifest.needsBackdrop) {
+        bindGroupLayouts.push(customBuffer ? renderer.customBindGroupLayout : renderer.emptyBindGroupLayout)
+      }
+      if (manifest.needsBackdrop) {
+        bindGroupLayouts.push(renderer.backdropBindGroupLayout)
+      }
+      const pipelineLayout = device.createPipelineLayout({
+        label: `${manifest.name}-layout`,
+        bindGroupLayouts,
+      })
+
+      const makePipeline = (colorWrite: boolean) => {
+        const vertexDesc: GPUVertexState = manifest.vertexEntry
+          ? { module, entryPoint: manifest.vertexEntry, buffers: vertexBuffers }
+          : { module, buffers: vertexBuffers }
+
+        const targets: GPUColorTargetState[] = [
+          {
+            format,
+            writeMask: colorWrite ? GPU_COLOR_WRITE_ALL : 0,
+            blend: {
+              color: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+              alpha: { srcFactor: 'one', dstFactor: 'one-minus-src-alpha', operation: 'add' },
+            },
+          },
+        ]
+        const fragmentDesc: GPUFragmentState = manifest.fragmentEntry
+          ? { module, entryPoint: manifest.fragmentEntry, targets }
+          : { module, targets }
+
+        return device.createRenderPipelineAsync({
+          label: `${manifest.name}-${colorWrite ? 'color' : 'warm'}`,
+          layout: pipelineLayout,
+          vertex: vertexDesc,
+          fragment: fragmentDesc,
+          primitive: { topology: 'triangle-list', cullMode: manifest.cullMode },
+          depthStencil: {
+            format: 'depth24plus',
+            depthWriteEnabled: colorWrite && manifest.depthWrite,
+            depthCompare: manifest.depthTest ? 'less-equal' : 'always',
+          },
+        })
+      }
+
+      const [color, warm] = await Promise.all([makePipeline(true), makePipeline(false)])
+      return { color, warm }
+    })
+    .then((pipes) => {
+      if (disposed) return
+      colorPipe = pipes.color
+      warmPipe = pipes.warm
+      built = true
+    })
 
   const extraBindGroups = (() => {
     if (!customBindGroup && !manifest.needsBackdrop) return undefined

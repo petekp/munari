@@ -19,6 +19,7 @@ import {
   pointerSampleOf,
   releasedSample,
   surfaceCursorAt,
+  surfaceRadiusSd,
   trackDrag,
   trackFocusModality,
   trackPointerPlace,
@@ -29,6 +30,8 @@ import type { GpuDrawItem, GpuGeometry, GpuRenderer } from './webgpu'
 import type { SurfaceLighting } from '../primitives/surface/surfaceLight'
 
 export interface ViewportState {
+  left: number
+  top: number
   width: number
   height: number
   dpr: number
@@ -44,7 +47,7 @@ export interface RegisteredSurface {
   readonly hears: () => boolean
   readonly element: () => HTMLElement | null
   readonly size: () => readonly [number, number]
-  readonly radii: () => readonly [number, number, number, number]
+  readonly radii: () => [number, number, number, number]
   readonly geometry: () => GpuGeometry | null
   readonly worldMat: () => Mat4
   readonly invWorldMat: () => Mat4
@@ -93,6 +96,8 @@ function createHost(id: string): GpuHost {
   let onInvalidate: (() => void) | null = null
 
   const viewport: ViewportState = {
+    left: 0,
+    top: 0,
     width: 1,
     height: 1,
     dpr: 1,
@@ -182,10 +187,31 @@ export function simulateGpuDeviceLoss(canvasId = ''): boolean {
 
 export const GpuHostContext = createContext<GpuHost | null>(null)
 
-function raycastSurfaces(host: GpuHost, clientX: number, clientY: number): {
+interface SurfaceHitResult {
   readonly surface: RegisteredSurface
   readonly hit: RayHit
-} | null {
+}
+
+export function hitPassesSurfaceMask(surface: RegisteredSurface, hit: RayHit): boolean {
+  const radii = surface.radii()
+  if (radii.some((v) => v > 0)) {
+    const [w, h] = surface.size()
+    if (surfaceRadiusSd(hit.u, hit.v, w, h, radii) > 0) return false
+  }
+  if (surface.pointerEvents() === 'content') {
+    const el = surface.element()
+    if (el) {
+      const r = el.getBoundingClientRect()
+      const dx = r.left + hit.u * r.width
+      const dy = r.top + (1 - hit.v) * r.height
+      const target = deepestElementAt(el, dx, dy)
+      if (!target || getComputedStyle(target).pointerEvents === 'none') return false
+    }
+  }
+  return true
+}
+
+function raycastSurfaces(host: GpuHost, clientX: number, clientY: number): SurfaceHitResult | null {
   const canvas = host.canvas
   const internal = hostInternals.get(host)
   if (!canvas || !internal) return null
@@ -203,7 +229,7 @@ function raycastSurfaces(host: GpuHost, clientX: number, clientY: number): {
     invViewProj: host.viewport.invViewProj,
   })
 
-  let best: { readonly surface: RegisteredSurface; readonly hit: RayHit } | null = null
+  let best: SurfaceHitResult | null = null
   for (const surface of internal.surfaces.values()) {
     if (!surface.hears() || surface.pointerEvents() === 'none') continue
     const geo = surface.geometry()
@@ -218,17 +244,7 @@ function raycastSurfaces(host: GpuHost, clientX: number, clientY: number): {
       geo.indices,
       geo.bounds,
     )
-    if (!hit) continue
-    if (surface.pointerEvents() === 'content') {
-      const el = surface.element()
-      if (el) {
-        const r = el.getBoundingClientRect()
-        const dx = r.left + hit.u * r.width
-        const dy = r.top + (1 - hit.v) * r.height
-        const target = deepestElementAt(el, dx, dy)
-        if (!target || getComputedStyle(target).pointerEvents === 'none') continue
-      }
-    }
+    if (!hit || !hitPassesSurfaceMask(surface, hit)) continue
     if (!best || hit.distance < best.hit.distance) {
       best = { surface, hit }
     }
@@ -304,16 +320,17 @@ export function installPointerGate(host: GpuHost, canvas: HTMLCanvasElement, poi
       e.stopImmediatePropagation()
       return
     }
-    if (hovered && hovered !== hitResult?.surface) {
+    const topmostHit = hitResult && canvasIsTopmostAt(canvas, e.clientX, e.clientY) ? hitResult : null
+    if (hovered && hovered !== topmostHit?.surface) {
       const prevEl = hovered.element()
       if (prevEl) clearPointerState(prevEl)
       hovered = null
     }
-    if (hitResult) {
+    if (topmostHit) {
       setSolid(true)
-      hovered = hitResult.surface
-      deliver(hitResult.surface, hitResult.hit.u, hitResult.hit.v, 'move', e)
-      updateCanvasCursor(canvas, hitResult)
+      hovered = topmostHit.surface
+      deliver(topmostHit.surface, topmostHit.hit.u, topmostHit.hit.v, 'move', e)
+      updateCanvasCursor(canvas, topmostHit)
     } else {
       setSolid(false)
     }
@@ -373,7 +390,7 @@ export function installPointerGate(host: GpuHost, canvas: HTMLCanvasElement, poi
     if (!e.isTrusted) return
     const hitResult = raycastSurfaces(host, e.clientX, e.clientY)
     const el = hitResult?.surface.element()
-    if (!hitResult || !el) return
+    if (!hitResult || !el || !canvasIsTopmostAt(canvas, e.clientX, e.clientY)) return
     const r = el.getBoundingClientRect()
     const x = r.left + hitResult.hit.u * r.width
     const y = r.top + (1 - hitResult.hit.v) * r.height

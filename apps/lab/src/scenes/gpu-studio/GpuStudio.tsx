@@ -6,6 +6,7 @@ import {
   Surface,
   SurfaceCanvas,
   createSurfaceLight,
+  detectHtmlInCanvas,
   getGpuHostStats,
   paintStats,
   simulateGpuDeviceLoss,
@@ -71,9 +72,11 @@ const GLASS_FINISH: SurfaceFinish = {
 
 export interface GpuStudioHandle {
   readonly stats: () => GpuHostStats & { readonly paints: number }
+  readonly capability: () => ReturnType<typeof detectHtmlInCanvas>
   readonly simulateLoss: () => boolean
   readonly presentation: () => SurfacePresentation
   readonly setFisheyeFocus: (rowIndex: number | null) => void
+  readonly flightCornerPoint: () => { readonly x: number; readonly y: number } | null
   readonly flightActionPoint: () => { readonly x: number; readonly y: number } | null
   readonly fisheyePoint: (rowIndex: number, target?: 'row' | 'done') => { readonly x: number; readonly y: number } | null
 }
@@ -413,10 +416,16 @@ export function GpuStudioApp() {
         ...getGpuHostStats(CANVAS_ID),
         paints: paintStats().reduce((total, entry) => total + entry.paints, 0),
       }),
+      capability: () => detectHtmlInCanvas(),
       simulateLoss: () => simulateGpuDeviceLoss(CANVAS_ID),
       presentation: () => presRef.current,
       setFisheyeFocus: (row) => {
         fisheyeFocusRef.current = row
+      },
+      flightCornerPoint: () => {
+        const snap = flightRef.current
+        if (!snap) return null
+        return projectSurfaceLocalPoint(snap.pose, -FLIGHT_SIZE[0] / 2 + 2, FLIGHT_SIZE[1] / 2 - 2, 0, snap.viewport)
       },
       flightActionPoint: () => {
         const snap = flightRef.current

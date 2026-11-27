@@ -374,6 +374,11 @@ export interface GpuDrawItem {
   readonly onPassComplete?: (receipt: GpuPassReceipt) => void
 }
 
+export interface CachedPipelines {
+  readonly color: GPURenderPipeline
+  readonly warm: GPURenderPipeline
+}
+
 export interface GpuRenderer {
   readonly device: GPUDevice
   readonly format: GPUTextureFormat
@@ -387,6 +392,7 @@ export interface GpuRenderer {
   readonly emptyBindGroup: GPUBindGroup
   readonly frameUniformBuffer: GPUBuffer
   readonly validationErrors: readonly string[]
+  getOrCreatePipelines(key: string, build: () => Promise<CachedPipelines>): Promise<CachedPipelines>
   resize(width: number, height: number): void
   generateMipmaps(texture: GPUTexture, mipCount: number): void
   render(items: readonly GpuDrawItem[]): number

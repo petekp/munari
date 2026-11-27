@@ -14,6 +14,7 @@ import {
   GPU_BUFFER_USAGE,
   GPU_SHADER_STAGE,
   GPU_TEXTURE_USAGE,
+  type CachedPipelines,
   type GpuDrawItem,
   type GpuRenderer,
 } from './gpuGeometry'
@@ -25,6 +26,7 @@ export {
   createGpuSurfaceTexture,
   createPlaneGeometry,
   deformGpuGeometry,
+  type CachedPipelines,
   type DeformedPoint,
   type GpuDrawItem,
   type GpuGeometry,
@@ -158,21 +160,40 @@ function createFrameRing(device: GPUDevice) {
   }
 }
 
+const MAX_VALIDATION_ERRORS = 64
+
+function pushDevScope(device: GPUDevice): void {
+  if (process.env.NODE_ENV !== 'production') device.pushErrorScope('validation')
+}
+
+function popDevScope(device: GPUDevice, pushError: (msg: string) => void): void {
+  if (process.env.NODE_ENV === 'production') return
+  void device.popErrorScope().then((err) => {
+    if (!err) return
+    pushError(err.message)
+    console.error('[munari/gpu WebGPU validation]', err.message)
+  })
+}
+
 export async function createGpuRenderer(
   canvas: HTMLCanvasElement,
   onDeviceLost?: (reason: string) => void,
 ): Promise<GpuRenderer> {
   if (!navigator.gpu) throw new Error('WebGPU is not available in this browser')
-  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' })
+  const adapter = await navigator.gpu.requestAdapter()
   if (!adapter) throw new Error('No WebGPU adapter available')
   const maxTextureDimension2D = adapter.limits.maxTextureDimension2D
   const device = await adapter.requestDevice({
     requiredLimits: { maxTextureDimension2D },
   })
   const validationErrors: string[] = []
+  const pushValidationError = (msg: string) => {
+    if (validationErrors.length >= MAX_VALIDATION_ERRORS) validationErrors.shift()
+    validationErrors.push(msg)
+  }
   device.addEventListener('uncapturederror', (event) => {
     const msg = event.error?.message ?? String(event.error)
-    validationErrors.push(msg)
+    pushValidationError(msg)
     if (process.env.NODE_ENV !== 'production') console.error('[munari/gpu WebGPU error]', msg)
   })
 
@@ -299,6 +320,8 @@ export async function createGpuRenderer(
     return depthTex.createView()
   }
 
+  const pipelineCache = new Map<string, Promise<CachedPipelines>>()
+
   return {
     device,
     format,
@@ -314,15 +337,26 @@ export async function createGpuRenderer(
       return frameRing.buffer
     },
     validationErrors,
+    getOrCreatePipelines(key, build) {
+      let cached = pipelineCache.get(key)
+      if (!cached) {
+        cached = build().catch((err) => {
+          pipelineCache.delete(key)
+          throw err
+        })
+        pipelineCache.set(key, cached)
+      }
+      return cached
+    },
     resize(width, height) {
-      const w = Math.max(1, Math.round(width))
-      const h = Math.max(1, Math.round(height))
+      const w = Math.min(maxTextureDimension2D, Math.max(1, Math.round(width)))
+      const h = Math.min(maxTextureDimension2D, Math.max(1, Math.round(height)))
       if (canvas.width !== w) canvas.width = w
       if (canvas.height !== h) canvas.height = h
       ensureDepth(w, h)
     },
     generateMipmaps(texture, mipCount) {
-      device.pushErrorScope('validation')
+      pushDevScope(device)
       const encoder = device.createCommandEncoder()
       for (let level = 1; level < mipCount; level++) {
         // Filtering in plain rgba8unorm preserves encoded premultiplied values (decisions.md #48).
@@ -344,14 +378,10 @@ export async function createGpuRenderer(
         pass.end()
       }
       device.queue.submit([encoder.finish()])
-      void device.popErrorScope().then((err) => {
-        if (!err) return
-        validationErrors.push(err.message)
-        console.error('[munari/gpu WebGPU validation]', err.message)
-      })
+      popDevScope(device, pushValidationError)
     },
     render(items) {
-      device.pushErrorScope('validation')
+      pushDevScope(device)
       frameRing.ensureCapacity(items.length)
       const baseIndices: number[] = []
       const backdropIndices: number[] = []
@@ -365,6 +395,8 @@ export async function createGpuRenderer(
         if (item.material.needsBackdrop) backdropIndices.push(i)
         else baseIndices.push(i)
       }
+      baseIndices.sort((a, b) => items[a]!.modelWorld[14]! - items[b]!.modelWorld[14]! || a - b)
+      backdropIndices.sort((a, b) => items[a]!.modelWorld[14]! - items[b]!.modelWorld[14]! || a - b)
 
       const colorTex = context.getCurrentTexture()
       const colorView = colorTex.createView()
@@ -424,11 +456,7 @@ export async function createGpuRenderer(
       }
 
       device.queue.submit([encoder.finish()])
-      void device.popErrorScope().then((err) => {
-        if (!err) return
-        validationErrors.push(err.message)
-        console.error('[munari/gpu WebGPU validation]', err.message)
-      })
+      popDevScope(device, pushValidationError)
 
       for (const r of receipts) {
         r.item.onPassComplete?.({ colorWritten: r.item.colorWrite, triangles: r.triangles })
@@ -440,6 +468,7 @@ export async function createGpuRenderer(
     },
     dispose() {
       intentionallyDisposed = true
+      pipelineCache.clear()
       frameRing.dispose()
       depthTex?.destroy()
       depthTex = null
