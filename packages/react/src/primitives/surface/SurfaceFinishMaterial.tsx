@@ -81,13 +81,14 @@ export function useSurfaceFinishMaterial(inputs: SurfaceFinishMaterialInputs = {
     )
     if (rig) built.lightsNode = rig.lightsNode(keyKind)
     return built
-  }, [captureNode, slot, uniforms, layers, normal, bodyColor, rig, keyKind])
+  }, [captureNode, slot.size, slot.radii, uniforms, layers, normal, bodyColor, rig, keyKind])
   useLayoutEffect(() => () => material?.dispose(), [material])
 
   // Held until the rig has what this finish reflects: a material compiled
   // before the environment lands compiles again when it does.
   const holds = material !== null && !ready
-  useLayoutEffect(() => (holds ? slot.hold() : undefined), [holds, slot])
+  const { hold } = slot
+  useLayoutEffect(() => (holds ? hold() : undefined), [holds, hold])
 
   // Written at commit too, so the compile sees the finish's side, its
   // environment and its values, not only the first draw.

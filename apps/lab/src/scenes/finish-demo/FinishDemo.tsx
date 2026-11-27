@@ -59,7 +59,6 @@ function finishLabel(id: FinishId): string {
 export function FinishDemoApp({ onReady }: { readonly onReady?: () => void }) {
   const [rig, setRig] = useState<LightRig>('softbox')
   const [cards, setCards] = useState<readonly BenchCard[]>(() => START_FINISHES.map(([context, preset]) => createCard(context, preset)))
-  const key = useKeyPosition(keyLight)
   const [selected, setSelected] = useState<ContextId>(HIGHLIGHT_CARD)
   const [text, setText] = useState<TextLighting>('unlit')
   const [ground, setGround] = useState<PageGround>('light')
@@ -91,9 +90,6 @@ export function FinishDemoApp({ onReady }: { readonly onReady?: () => void }) {
     <FinishStage ground={ground} className="fd-bench" pageHtml={pageHtml} onReady={onReady}>
       {(inScene) => {
         const page: PageSetup = { rig, text, inScene }
-        const apply: CodeLine[] = [...IMPORT_LINES, '', ...setupLines(cards, rig, key)]
-        for (const item of cards) apply.push('', ...cardLines(item, page, contextOf(item.context).content))
-        const lines = tab === 'apply' ? apply : adjustLines(card, key)
         return (
           <>
             <DemoBar inScene={inScene} />
@@ -156,22 +152,41 @@ export function FinishDemoApp({ onReady }: { readonly onReady?: () => void }) {
                 )
               })}
             </main>
-            <aside className="fd-rail fd-rail--code">
-              <div className="fd-code-head">
-                <Choice label="Code" value={tab} options={CODE_TABS} onSelect={setTab} />
-                <CopyCode lines={lines} />
-              </div>
-              <p className="fd-note">
-                {tab === 'apply'
-                  ? 'Give the canvas the key light, then give each piece of UI a Surface.Root with its own finish. Its content paints var(--munari-body).'
-                  : `The writes that bring the ${contextOf(card.context).label.toLowerCase()} from its tuned finish to what is on screen. Drag the light or move a slider and this updates.`}
-              </p>
-              <CodeListing lines={lines} />
-              <p className="fd-note">{CODE_NOTE}</p>
-            </aside>
+            <BenchCode cards={cards} card={card} page={page} tab={tab} onTab={setTab} />
           </>
         )
       }}
     </FinishStage>
+  )
+}
+
+interface BenchCodeProps {
+  readonly cards: readonly BenchCard[]
+  readonly card: BenchCard
+  readonly page: PageSetup
+  readonly tab: CodeTab
+  readonly onTab: (tab: CodeTab) => void
+}
+
+/** The listing follows the key light itself, so a light drag re-renders only the listing. */
+function BenchCode({ cards, card, page, tab, onTab }: BenchCodeProps) {
+  const key = useKeyPosition(keyLight)
+  const apply: CodeLine[] = [...IMPORT_LINES, '', ...setupLines(cards, page.rig, key)]
+  for (const item of cards) apply.push('', ...cardLines(item, page, contextOf(item.context).content))
+  const lines = tab === 'apply' ? apply : adjustLines(card, key)
+  return (
+    <aside className="fd-rail fd-rail--code">
+      <div className="fd-code-head">
+        <Choice label="Code" value={tab} options={CODE_TABS} onSelect={onTab} />
+        <CopyCode lines={lines} />
+      </div>
+      <p className="fd-note">
+        {tab === 'apply'
+          ? 'Give the canvas the key light, then give each piece of UI a Surface.Root with its own finish. Its content paints var(--munari-body).'
+          : `The writes that bring the ${contextOf(card.context).label.toLowerCase()} from its tuned finish to what is on screen. Drag the light or move a slider and this updates.`}
+      </p>
+      <CodeListing lines={lines} />
+      <p className="fd-note">{CODE_NOTE}</p>
+    </aside>
   )
 }

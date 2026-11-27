@@ -132,13 +132,22 @@ function disposeScene(scene: THREE.Scene): void {
 
 // three's RectAreaLight needs its LTC tables, 2 × 64² float texels, before a
 // softbox key compiles. Loaded once per page, on the first softbox key.
+// A load that fails leaves the key a point light rather than holding a
+// finish that waits for it.
 let ltcLoad: Promise<void> | null = null
 let ltcLoaded = false
+let ltcFailed = false
 function loadLtc(): Promise<void> {
-  ltcLoad ??= import('three/examples/jsm/lights/RectAreaLightTexturesLib.js').then(({ RectAreaLightTexturesLib }) => {
-    RectAreaLightNode.setLTC(RectAreaLightTexturesLib.init())
-    ltcLoaded = true
-  })
+  ltcLoad ??= import('three/examples/jsm/lights/RectAreaLightTexturesLib.js').then(
+    ({ RectAreaLightTexturesLib }) => {
+      RectAreaLightNode.setLTC(RectAreaLightTexturesLib.init())
+      ltcLoaded = true
+    },
+    (error) => {
+      ltcFailed = true
+      console.error('[munari] the softbox key could not load its LTC tables, so it lights as a point key.', error)
+    },
+  )
   return ltcLoad
 }
 
@@ -193,9 +202,10 @@ export interface FinishRig {
   /** The baked environment, or null until it is. */
   environment(kind: EnvironmentKind): THREE.Texture | null
   environmentIntensity(): number
-  /** Start the bakes and loads this finish needs. */
-  prepare(environment: EnvironmentKind, key: KeyKind): void
-  ready(environment: EnvironmentKind, key: KeyKind): boolean
+  /** Start the bake this finish needs, and the softbox tables when the key is one. */
+  prepare(environment: EnvironmentKind): void
+  /** Whether a finish reflecting `environment` can compile under the current key. */
+  ready(environment: EnvironmentKind): boolean
   /** Called when a bake or load lands or the key's kind changes. */
   subscribe(listener: () => void): () => void
   /** Place the lights over `frame`'s mesh and write the key's own uniforms for its sheen and scatter. */
@@ -219,31 +229,50 @@ function createFinishRig(renderer: WebGPURenderer, invalidate: () => void) {
     point: lightsNodeOf([point, rim]),
     softbox: lightsNodeOf([softbox, rim]),
   } satisfies Record<KeyKind, LightsNode>
-  const environments = new Map<EnvironmentKind, THREE.Texture>()
+  // Null after a bake that failed: the finish draws without an environment.
+  const environments = new Map<EnvironmentKind, THREE.Texture | null>()
   const bakes = new Map<EnvironmentKind, THREE.RenderTarget | null>()
   const listeners = new Set<() => void>()
-  let disposed = false
+  // Bumped by dispose, so a bake that lands after it is dropped, and a
+  // rig whose effects run again (Strict Mode, <Activity>) bakes afresh.
+  let generation = 0
   const changed = () => {
     for (const listener of [...listeners]) listener()
     invalidate()
   }
-  const keyKind = (): KeyKind => (keyOf(lighting.key).size ? 'softbox' : 'point')
+  const wantsSoftbox = () => Boolean(keyOf(lighting.key).size) && !ltcFailed
+  // The kind the finishes compile with: a softbox only once its tables are in.
+  const keyKind = (): KeyKind => (wantsSoftbox() && ltcLoaded ? 'softbox' : 'point')
   let lastKind = keyKind()
+  const loadSoftbox = () => {
+    if (!wantsSoftbox() || ltcLoaded) return
+    const born = generation
+    void loadLtc().then(() => born === generation && changed())
+  }
 
   const bake = (kind: EnvironmentKind) => {
     if (bakes.has(kind)) return
     bakes.set(kind, null)
-    void renderer.init().then(() => {
-      if (disposed) return
-      const generator = new PMREMGenerator(renderer)
-      const scene = studioScene(kind)
-      const target = generator.fromScene(scene, STUDIO_BLUR)
-      disposeScene(scene)
-      generator.dispose()
-      bakes.set(kind, target)
-      environments.set(kind, target.texture)
-      changed()
-    })
+    const born = generation
+    renderer
+      .init()
+      .then(() => {
+        if (born !== generation) return
+        const generator = new PMREMGenerator(renderer)
+        const scene = studioScene(kind)
+        const target = generator.fromScene(scene, STUDIO_BLUR)
+        disposeScene(scene)
+        generator.dispose()
+        bakes.set(kind, target)
+        environments.set(kind, target.texture)
+        changed()
+      })
+      .catch((error) => {
+        if (born !== generation) return
+        console.error('[munari] a finish environment could not be baked, so finishes draw without it.', error)
+        environments.set(kind, null)
+        changed()
+      })
   }
 
   const rig: FinishRig = {
@@ -251,11 +280,11 @@ function createFinishRig(renderer: WebGPURenderer, invalidate: () => void) {
     lightsNode: (kind) => nodes[kind],
     environment: (kind) => environments.get(kind) ?? null,
     environmentIntensity: () => STUDIO_ENVIRONMENT * lighting.environmentIntensity,
-    prepare(environment, key) {
+    prepare(environment) {
       bake(environment)
-      if (key === 'softbox' && !ltcLoaded) void loadLtc().then(() => !disposed && changed())
+      loadSoftbox()
     },
-    ready: (environment, key) => environments.has(environment) && (key === 'point' || ltcLoaded),
+    ready: (environment) => environments.has(environment) && (!wantsSoftbox() || ltcLoaded),
     subscribe(listener) {
       listeners.add(listener)
       return () => void listeners.delete(listener)
@@ -283,7 +312,7 @@ function createFinishRig(renderer: WebGPURenderer, invalidate: () => void) {
 
       point.position.copy(_key)
       point.intensity = power * height * height
-      const kind = key.size ? 'softbox' : 'point'
+      const kind = keyKind()
       if (key.size) {
         const width = Math.max(key.size[0], 1) * worldPerCss
         const tall = Math.max(key.size[1], 1) * worldPerCss
@@ -317,9 +346,12 @@ function createFinishRig(renderer: WebGPURenderer, invalidate: () => void) {
     },
   }
 
-  const keyChanged = () => {
+  // Every move redraws a demand canvas; a change of kind also tells the
+  // finishes to rebuild.
+  const keyMoved = () => {
+    loadSoftbox()
     const kind = keyKind()
-    if (kind === lastKind) return
+    if (kind === lastKind) return invalidate()
     lastKind = kind
     changed()
   }
@@ -335,17 +367,17 @@ function createFinishRig(renderer: WebGPURenderer, invalidate: () => void) {
     },
     connect() {
       const handle = isSurfaceLight(lighting.key) ? lighting.key : null
-      detach = handle ? attachSurfaceLight(handle, keyChanged) : null
-      keyChanged()
-      invalidate()
+      detach = handle ? attachSurfaceLight(handle, keyMoved) : null
+      keyMoved()
       return () => {
         detach?.()
         detach = null
       }
     },
     dispose() {
-      disposed = true
+      generation += 1
       detach?.()
+      detach = null
       for (const target of bakes.values()) target?.dispose()
       bakes.clear()
       environments.clear()
@@ -386,7 +418,7 @@ export interface FinishRigState {
 export function useFinishRigState(rig: FinishRig | null, environment: EnvironmentKind): FinishRigState {
   const subscribe = useMemo(() => rig?.subscribe ?? (() => () => {}), [rig])
   const keyKind = useSyncExternalStore<KeyKind>(subscribe, () => rig?.keyKind() ?? 'point', () => 'point')
-  const ready = useSyncExternalStore(subscribe, () => rig?.ready(environment, keyKind) ?? true, () => false)
-  useEffect(() => rig?.prepare(environment, keyKind), [rig, environment, keyKind])
+  const ready = useSyncExternalStore(subscribe, () => rig?.ready(environment) ?? true, () => false)
+  useEffect(() => rig?.prepare(environment), [rig, environment])
   return { ready, keyKind }
 }

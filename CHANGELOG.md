@@ -17,9 +17,9 @@ prop that should let the pointer through, such as a shadow plane, a no-op
   layer rebuilds that Surface's material; changing a value does not.
 - `lighting` on `SurfaceCanvas` sets the key light, rim light and
   environment that light every finish on the canvas. The default,
-  `"studio"`, has a point key. `"none"` turns the lights off. These lights
-  light finishes only, so your scene's own lights and materials are
-  unaffected.
+  `"studio"`, has a point key. These lights light finishes only, so your
+  scene's own lights and materials are unaffected. Under `"none"` the canvas
+  adds no lights, and finishes are lit by your scene's own lights.
 - `createSurfaceLight()` returns a handle that moves the key light without a
   React render, from code with `set()` or by following the pointer.
 - A finish with a `color` sets `--munari-body` on the page copy and

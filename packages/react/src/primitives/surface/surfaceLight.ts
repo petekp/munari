@@ -4,7 +4,7 @@
 // The law: a handle holds plain numbers in client CSS px, the coordinates
 // of a pointer event, so one handle lights several canvases from the same
 // point and each canvas converts it with its own camera when it draws
-// (finishRig.ts). Creating a handle touches no window: it is safe at module
+// (finishRig.tsx). Creating a handle touches no window: it is safe at module
 // scope and on the server. A canvas that uses it attaches, and only then
 // does a following handle add its one `pointermove` listener.
 //
