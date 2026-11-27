@@ -51,6 +51,38 @@ for working in this repo.
 `tests/boundary.test.ts` enforces every seam above. Each area's README
 carries its local rules; `docs/README.md` indexes what is canon.
 
+## Performance and weight
+
+Munari brings new visuals to the web, and they have to cost what a
+built-in browser feature costs. A page must pay only for the effects it
+uses, and an end user must never see a frame stall, a blank card or a
+layout shift while something loads. Every change is judged on this as well as on behavior.
+
+- A change that adds code to a published entry runs `npm run build`, then
+  `npm run gate:payload`, and states the gzip delta. A budget in
+  `instruments/payload/budgets.json` grows only with the owner's yes and
+  the measured reason.
+- A change to rendering states its frame cost and its first-frame cost,
+  measured with a probe in `instruments/` (`instruments/README.md` says
+  what each one measures). Where no probe measures the cost, add one
+  rather than estimate it. Say what the measurement leaves out.
+- Code that only some pages need, such as a finish layer, a light type or
+  a capture engine, sits behind a dynamic `import()`, not a static import
+  from a path every page runs. Large data ships as binary, not as
+  JavaScript literals.
+- Keep exports tree-shakeable: named exports, no work at module scope, and
+  `sideEffects` limited to CSS. A registry module exports each preset or
+  value under its own name, so an app that imports one drops the rest.
+- Never block a frame. Pipelines, bakes and uploads build asynchronously,
+  before or beside the frame that needs them, while the page presentation
+  covers the wait.
+- Add no dependency by default. A new runtime or peer dependency names the
+  requirement no existing code meets, its measured gzip cost, and the
+  alternatives considered.
+- Look for savings in the code you touch. When you find dead weight, a
+  blocking build or an avoidable re-render, fix it within the task's scope,
+  or report it as a finding with its measured cost.
+
 ## Conformance
 
 The retention rules here apply to unit tests, compile-only examples, and browser
