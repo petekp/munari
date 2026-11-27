@@ -7,10 +7,37 @@ pointer, so a click on a prop no longer reaches the HTML behind it. Give a
 prop that should let the pointer through, such as a shadow plane, a no-op
 `raycast`.
 
+### Added
+
+- `finish` on `Surface`, `Surface.Root`, `SceneSurface` and
+  `SceneSurface.Root` gives the Surface's mesh a lit physical material: a
+  body color, roughness, metalness, and optional coat, sheen, anisotropy,
+  thin film, scatter, surface relief and crackle layers. A finish is plain
+  data, so page code builds it before any canvas mounts. Adding or removing a
+  layer rebuilds that Surface's material; changing a value does not.
+- `lighting` on `SurfaceCanvas` sets the key light, rim light and
+  environment that light every finish on the canvas. The default,
+  `"studio"`, has a point key. `"none"` turns the lights off. These lights
+  light finishes only, so your scene's own lights and materials are
+  unaffected.
+- `createSurfaceLight()` returns a handle that moves the key light without a
+  React render, from code with `set()` or by following the pointer.
+- A finish with a `color` sets `--munari-body` on the page copy and
+  `transparent` in the capture. Content that styles its background with
+  `var(--munari-body)` shows the color on the page and the lit body in the
+  scene.
+- `registry/finishes` holds 17 finish presets and a suggested text color
+  for each, to copy into a project.
+
 ### Breaking
 
+- `Surface.LitMaterial`, `SceneSurface.LitMaterial` and
+  `SurfaceLitMaterialProps` are removed. Give the Surface a `finish` instead.
+  `finish={{ color: null }}` lights the whole capture as `LitMaterial` did.
+  To light it with your scene's own lights, as `LitMaterial` was, pass
+  `lighting="none"` to the `SurfaceCanvas`.
 - In your own R3F `Canvas`, outside a `SurfaceCanvas`, `Surface.Mesh`,
-  `Surface.LitMaterial`, `Surface.Prewarm` and `Surface.Anchor` now suspend
+  `Surface.Prewarm` and `Surface.Anchor` now suspend
   the first time they render, while Munari loads its scene code. Wrap that
   `Canvas` in a `Suspense` boundary. A failed load reaches the nearest error
   boundary. Inside a `SurfaceCanvas`, nothing changes.

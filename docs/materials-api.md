@@ -1,14 +1,14 @@
 # Materials and lighting API
 
-Status: proposal. Nothing in it is built. Code blocks marked "Sketch" show
-an API that does not exist yet. Everything else describes `main` at
-5bc70f3, the material finishes lab scene on `origin/materials-more` at
-678f0d9, three r186 and R3F 9.8.1. Every number comes from a measurement
-named beside it.
+Status: accepted on 2026-11-26 and built on `finish-api`.
+[Decision #79](decisions/renderer.md#79) states the current constraints, and
+the published types are the API. This page is the proposal as accepted. It
+describes `main` at 5bc70f3, the material finishes lab scene on
+`origin/materials-more` at 678f0d9, three r186 and R3F 9.8.1. Every number
+comes from a measurement named beside it.
 
 This proposal answers how `@petepetrash/munari` should let a developer
-give a Surface a physical material, light it, and move the light. It
-replaces nothing until Pete picks a design and a decision entry records it.
+give a Surface a physical material, light it, and move the light.
 
 ## Recommendation
 

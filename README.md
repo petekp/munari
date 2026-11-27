@@ -101,8 +101,43 @@ export function Example() {
 
 `SurfaceCanvas` owns the R3F renderer, camera, and scene. It fills its parent, so
 give the parent a size; an auto-height parent leaves a 150 px canvas. `Surface`
-supplies a flat mesh matching the HTML's page position. Switching alone preserves its appearance;
-flight, deformation, lighting, and shader effects come from your scene code.
+supplies a flat mesh matching the HTML's page position. Switching alone preserves its appearance.
+A `finish` gives the mesh a lit physical material. Flight, deformation and
+shader effects come from your scene code.
+
+### Give a Surface a finish
+
+`finish` on `Surface` or `Surface.Root` is plain data, so it can be built on
+the server. The canvas lights every finish with one key light, a rim light and
+an environment. A finish with a `color` paints the body in the scene, and
+Munari sets that color as `--munari-body` on the page copy. Give the content
+`background: var(--munari-body)` so it shows the color on the page and stays
+transparent in the capture. You set the text color in your own CSS.
+
+```tsx
+import { Surface, SurfaceCanvas, createSurfaceLight, type SurfaceFinish } from '@petepetrash/munari'
+
+// Safe at module scope. `follow: 'pointer'` moves the key with the mouse.
+const keyLight = createSurfaceLight({ follow: 'pointer' })
+
+const lacquer: SurfaceFinish = {
+  color: '#8c1022',
+  roughness: 0.3,
+  coat: { amount: 1, roughness: 0.02 },
+}
+
+<SurfaceCanvas id={canvasId} lighting={{ key: keyLight }} style={{ position: 'absolute', inset: 0 }} />
+<Surface canvasId={canvasId} inScene={inScene} finish={lacquer}>
+  <div style={{ background: 'var(--munari-body)', color: '#f5f2ee' }}>…</div>
+</Surface>
+```
+
+`keyLight.set({ x, y })` moves the key in client CSS px without a React
+render. Add `size: [width, height]` to make the key a softbox.
+Under `lighting="none"` the canvas adds no lights, and finishes are lit by
+your scene's own lights. The repository's `registry/finishes` folder holds 17 tuned
+presets, such as lacquer, anodized aluminum, velvet and paper, with a
+suggested text color for each. Copy it into your project.
 
 ### If "Show in scene" stays disabled
 

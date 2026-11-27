@@ -110,8 +110,9 @@ and `useSurfaceTexture()` work only inside the component passed as `material`.
 shows the capture builds its texture node from `useSurfaceTextureOf(handle)`,
 which is `null` until the first upload.
 
-For a lit slab, pass `material={<Surface.LitMaterial roughness={0.4} />}` and
-add lights under `SurfaceCanvas`. A JSX tag such as `<meshBasicNodeMaterial />`
+For a lit slab, give the Surface a `finish` instead of a `material`, such as
+`finish={{ color: null, roughness: 0.4 }}`. The canvas lights it. Under
+`lighting="none"` your own lights under `SurfaceCanvas` do. A JSX tag such as `<meshBasicNodeMaterial />`
 throws "is not part of the THREE namespace" until you register it with R3F's
 `extend()`, so build the material as above instead.
 
@@ -153,8 +154,8 @@ so its stand-in material sets that too. `onReady` fires once every build has
 finished. Keep `Surface.Prewarm` mounted while a presenter may need its
 pipelines, because three deletes a pipeline that nothing uses.
 
-Outside a `SurfaceCanvas`, in an R3F `Canvas` of your own, `Surface.Mesh`,
-`Surface.LitMaterial` and `Surface.Prewarm` first render after Munari's scene
+Outside a `SurfaceCanvas`, in an R3F `Canvas` of your own, `Surface.Mesh`
+and `Surface.Prewarm` first render after Munari's scene
 module loads. R3F's `Canvas` passes that wait to the page, so put a `Suspense`
 boundary above the `Canvas`. Without one, the page stops committing updates
 until the module arrives. A load that fails reaches the nearest error
