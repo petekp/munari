@@ -11,14 +11,14 @@
 
 import { build } from 'vite'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib'
 
 const repo = fileURLToPath(new URL('../..', import.meta.url))
 const loader = join(repo, 'packages/react/src/primitives/surface/softboxTables.ts')
-const root = mkdtempSync(join(tmpdir(), 'softbox-size-'))
+// Inside the repo, so the entry resolves three from its node_modules.
+const root = mkdtempSync(join(repo, 'instruments/softbox-size/.entry-'))
 const entry = join(root, 'entry.js')
 writeFileSync(entry, `import * as THREE from 'three'
 import { loadSoftboxTables } from ${JSON.stringify(loader)}
