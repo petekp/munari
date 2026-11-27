@@ -131,17 +131,17 @@ function disposeScene(scene: THREE.Scene): void {
   })
 }
 
-// three's RectAreaLight needs its LTC tables, 2 × 64² float texels, before a
-// softbox key compiles. Loaded once per page, on the first softbox key.
-// A load that fails leaves the key a point light rather than holding a
+// three's RectAreaLight needs its LTC tables, 2 × 64² half-float texels
+// (softboxTables.ts), before a softbox key compiles. Loaded once per page, on
+// the first softbox key. A load that fails leaves the key a point light rather than holding a
 // finish that waits for it.
 let ltcLoad: Promise<void> | null = null
 let ltcLoaded = false
 let ltcFailed = false
 function loadLtc(): Promise<void> {
-  ltcLoad ??= import('three/examples/jsm/lights/RectAreaLightTexturesLib.js').then(
-    ({ RectAreaLightTexturesLib }) => {
-      RectAreaLightNode.setLTC(RectAreaLightTexturesLib.init())
+  ltcLoad ??= import('./softboxTables').then(
+    ({ softboxTables }) => {
+      RectAreaLightNode.setLTC(softboxTables())
       ltcLoaded = true
     },
     (error) => {
