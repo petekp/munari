@@ -83,6 +83,7 @@
     "probe:detail-motion": "node instruments/lab-interactions/detail-motion.mjs",
     "probe:detail-tuning": "node instruments/lab-interactions/detail-tuning.mjs",
     "probe:api-routes": "node instruments/api-all-demos/route-smoke.mjs",
+    "probe:finish-body": "node instruments/finish-body/run.mjs",
     "probe:api-gestures": "node instruments/api-all-demos/gestures.mjs",
     "probe:api-composition-check": "node instruments/api-composition/lifecycle.mjs",
     "probe:api-contracts": "node instruments/api-contracts/lifecycle.mjs",
