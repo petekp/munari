@@ -32,11 +32,11 @@
 // for a softbox key, three's LTC tables, loaded on first use.
 //
 // Ownership: this module owns the light objects, the environment bakes and
-// their placement. SurfaceFinishMaterial asks for what its finish needs and
-// places the lights before it draws.
+// their placement. It loads with the finish code, and finishLoader.tsx gives
+// each canvas its rig. SurfaceFinishMaterial asks for what its finish needs
+// and places the lights before it draws.
 
-import { createContext, use, useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react'
-import { useThree } from '@react-three/fiber'
+import { useEffect, useMemo, useSyncExternalStore } from 'react'
 import * as THREE from 'three'
 import { PMREMGenerator, RectAreaLightNode, WebGPURenderer, type LightsNode } from 'three/webgpu'
 import { lights as lightsNodeOf } from 'three/tsl'
@@ -159,7 +159,7 @@ interface StudioLighting {
   readonly environmentIntensity: number
 }
 
-function studioLightingOf(lighting: Exclude<SurfaceLighting, 'none'>): StudioLighting {
+export function studioLightingOf(lighting: Exclude<SurfaceLighting, 'none'>): StudioLighting {
   if (lighting === 'studio') return { key: {}, rim: { brightness: 1, elevation: STUDIO_RIM_ELEVATION }, environmentIntensity: 1 }
   const rim = lighting.rim === false ? null : { brightness: lighting.rim?.brightness ?? 1, elevation: lighting.rim?.elevation ?? STUDIO_RIM_ELEVATION }
   return { key: lighting.key ?? {}, rim, environmentIntensity: lighting.environmentIntensity ?? 1 }
@@ -212,14 +212,7 @@ export interface FinishRig {
   place(frame: SurfaceRenderFrame, key: KeySheenUniforms): void
 }
 
-/** Null outside a SurfaceCanvas, and under `lighting="none"`. */
-const FinishRigContext = createContext<FinishRig | null>(null)
-
-export function useFinishRig(): FinishRig | null {
-  return use(FinishRigContext)
-}
-
-function createFinishRig(renderer: WebGPURenderer, invalidate: () => void) {
+export function createFinishRig(renderer: WebGPURenderer, invalidate: () => void) {
   let lighting: StudioLighting = studioLightingOf('studio')
   let detach: (() => void) | null = null
   const point = new THREE.PointLight(KEY_COLOR, 0, 0, 2)
@@ -384,29 +377,6 @@ function createFinishRig(renderer: WebGPURenderer, invalidate: () => void) {
       listeners.clear()
     },
   }
-}
-
-/** Provides the canvas's rig to the finishes under it. */
-export function FinishRigProvider({ lighting, children }: { readonly lighting: SurfaceLighting; readonly children: ReactNode }) {
-  const gl = useThree((state) => state.gl)
-  const invalidate = useThree((state) => state.invalidate)
-  const studioLit = lighting !== 'none'
-  // One rig per renderer: changing `lighting` writes values into it, so an
-  // inline `lighting={{…}}` keeps the baked environments across renders.
-  const created = useMemo(
-    () => (studioLit && gl instanceof WebGPURenderer ? createFinishRig(gl, invalidate) : null),
-    [gl, invalidate, studioLit],
-  )
-  useEffect(() => () => created?.dispose(), [created])
-  if (created && lighting !== 'none') created.configure(studioLightingOf(lighting))
-  const key = lighting === 'none' || lighting === 'studio' ? undefined : lighting.key
-  const handle = key && isSurfaceLight(key) ? key : null
-  useEffect(() => created?.connect(), [created, handle])
-  // A new `lighting` value draws a frame under it.
-  useEffect(() => {
-    if (created) invalidate()
-  })
-  return <FinishRigContext value={created?.rig ?? null}>{children}</FinishRigContext>
 }
 
 /** Re-render when the rig's readiness or key kind changes. */

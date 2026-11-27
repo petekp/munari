@@ -11,7 +11,8 @@
 // for the Modeling of Varying Iridescence".
 //
 // Ownership: this module computes the film's reflectance and thickness.
-// finishNodes turns the reflectance into the metal's F0.
+// finishNodes turns the reflectance into the metal's F0. Its own chunk,
+// loaded when a finish first uses a film (finishLayerCode.ts).
 
 import { type Node } from 'three/webgpu'
 import {
@@ -29,7 +30,7 @@ import {
   vec3,
 } from 'three/tsl'
 
-import { valueNoise } from './finishRelief'
+import { valueNoise } from './finishNoise'
 
 const XYZ_TO_REC709 = mat3(3.2404542, -1.5371385, -0.4985314, -0.969266, 1.8760108, 0.041556, 0.0556434, -0.2040259, 1.0572252)
 

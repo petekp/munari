@@ -41,9 +41,9 @@
 // and anisotropy when their node is set, so a present layer sets the node
 // to the property node three would read anyway.
 //
-// Ownership: this module builds the node graph and writes a finish's values.
-// SurfaceFinishMaterial owns the capture view and the writes before each
-// draw; finishRig places the lights.
+// Ownership: this module builds the node graph from the base and the layer
+// code that has loaded (finishLayerCode.ts). SurfaceFinishMaterial owns the
+// capture view and the writes before each draw; finishRig places the lights.
 
 import { type Node, type TextureNode } from 'three/webgpu'
 import {
@@ -55,7 +55,6 @@ import {
   Discard,
   dot,
   float,
-  floor,
   Fn,
   length,
   materialAnisotropy,
@@ -77,7 +76,6 @@ import {
   Schlick_to_F0,
   select,
   sign,
-  smoothstep,
   sqrt,
   sRGBTransferEOTF,
   sRGBTransferOETF,
@@ -88,11 +86,10 @@ import {
 } from 'three/tsl'
 
 import { encodedOutput, premultipliedOutput } from '../../lib/surfaceOutput'
-import { filmReflectance, filmThickness } from './finishFilm'
-import { keyScatter, keySheen } from './finishKeyLight'
+import { chunkCode, type FinishLayerCode } from './finishLayerCode'
 import { FinishPhysicalMaterial } from './finishLightingModel'
-import { fiberRelief, latticeHash, reliefIsInCoat, reliefSlope } from './finishRelief'
 import type { FinishLayers, FinishUniforms } from './finishUniforms'
+import type { SurfaceDetailKind } from './surfaceFinish'
 
 // Below this coverage a fragment writes nothing visible.
 const DISCARD_ALPHA = 0.004
@@ -112,9 +109,6 @@ const RIM_SLOPE_FLOOR = 0.08
 // on every other rim).
 const FILTER_SIGMA2 = 0.25
 const FILTER_KAPPA = 0.18
-// Crackle lines are this many CSS px wide where the cell borders meet.
-// By eye, unmeasured.
-const CRACKLE_LINE_PX = 0.9
 // How far the fibers and formation tint the body, per unit of relief
 // slope: kraft's 0.04 slope moves its body color by about ±10%. By eye,
 // unmeasured.
@@ -162,33 +156,6 @@ function edgeProfile(
   return { slope: outward.mul(select(hasEdge, slope, float(0))), towardRim: select(hasEdge, towardRim, float(0)) }
 }
 
-// ── body pattern ───────────────────────────────────────────────────────
-
-/**
- * Coverage of a crackle network at content point `p`, 0 to 1: the borders
- * of a Voronoi tiling with cells `scale` px across. The border is where the
- * nearest and second-nearest cell points are equally far.
- */
-function crackleLines(p: Node<'vec2'>, scale: Node<'float'>): Node<'float'> {
-  const q = p.div(scale)
-  const cell = floor(q)
-  let nearest: Node<'float'> = float(8)
-  let second: Node<'float'> = float(8)
-  for (let y = -1; y <= 1; y++) {
-    for (let x = -1; x <= 1; x++) {
-      const neighbor = cell.add(vec2(x, y))
-      const point = neighbor.add(vec2(latticeHash(neighbor), latticeHash(neighbor.add(19.19))))
-      const distance = length(point.sub(q))
-      second = min(max(nearest, distance), second)
-      nearest = min(nearest, distance)
-    }
-  }
-  const gap = second.sub(nearest)
-  const line = float(CRACKLE_LINE_PX).div(scale)
-  // The gap grows at about two per cell unit across a border.
-  return float(1).sub(smoothstep(line, line.mul(2.5), gap))
-}
-
 /** Perceptual roughness widened by the normal's change across the pixel. */
 function filteredRoughness(roughness: Node<'float'>, normal: Node<'vec3'>): Node<'float'> {
   const dx = dFdx(normal)
@@ -197,6 +164,11 @@ function filteredRoughness(roughness: Node<'float'>, normal: Node<'vec3'>): Node
   const alpha = roughness.mul(roughness)
   const alpha2 = clamp(alpha.mul(alpha).add(min(variance.mul(2), float(FILTER_KAPPA))), float(0), float(1))
   return sqrt(sqrt(alpha2))
+}
+
+/** Whether a finish's relief sits in its clear coat rather than its base. */
+function reliefIsInCoat(detail: SurfaceDetailKind | null): boolean {
+  return detail === 'orange-peel' || detail === 'glaze'
 }
 
 // ── material ───────────────────────────────────────────────────────────
@@ -237,7 +209,8 @@ function meshFrame(): MeshAxes {
   return { right, up: normalize(cross(out, right)), out }
 }
 
-export function createFinishMaterial(inputs: FinishMaterialInputs, layers: FinishLayers): FinishPhysicalMaterial {
+/** A material wearing `layers`, whose chunks `code` holds. */
+export function createFinishMaterial(inputs: FinishMaterialInputs, layers: FinishLayers, code: FinishLayerCode): FinishPhysicalMaterial {
   const { capture, cornerMask, size, radii, uniforms } = inputs
   const { detail } = layers
   const mapNormal = inputs.normal ?? ((normal: Node<'vec3'>) => normal)
@@ -260,7 +233,7 @@ export function createFinishMaterial(inputs: FinishMaterialInputs, layers: Finis
   }
   let withRelief = cardNormal(edge)
   if (detail !== null) {
-    const relief = reliefSlope(detail, content, uniforms.detailScale, uniforms.detailDepth)
+    const relief = chunkCode(code[detail], detail).reliefSlope(content, uniforms.detailScale, uniforms.detailDepth)
     // The relief is defined on the flat face. Fading it as the edge turns
     // keeps it from shifting the rim's fast-changing normal pixel to pixel.
     withRelief = cardNormal(edge.add(relief.div(float(1).add(dot(edge, edge)))))
@@ -287,27 +260,31 @@ export function createFinishMaterial(inputs: FinishMaterialInputs, layers: Finis
   let bodyColor: Node<'vec3'> = ownsBody
     ? mix(uniforms.body, uniforms.rimColor, towardRimColor)
     : mix(captureStraight, uniforms.rimColor, towardRimColor)
-  if (layers.crackle) bodyColor = bodyColor.mul(float(1).sub(crackleLines(content, uniforms.crackleScale).mul(uniforms.crackle)))
+  if (layers.crackle) {
+    const lines = chunkCode(code.crackle, 'crackle').crackleLines(content, uniforms.crackleScale)
+    bodyColor = bodyColor.mul(float(1).sub(lines.mul(uniforms.crackle)))
+  }
   if (detail === 'fiber') {
-    const density = fiberRelief(content, uniforms.detailScale).x
+    const density = chunkCode(code.fiber, detail).fiberRelief(content, uniforms.detailScale).x
     bodyColor = bodyColor.mul(float(1).add(density.mul(uniforms.detailDepth).mul(FIBER_TINT_PER_SLOPE)))
   }
   if (inputs.bodyColor) bodyColor = inputs.bodyColor(bodyColor)
   if (layers.film) {
     // A metal's body color is its reflectance, so the film over it is too.
     const cosTheta = clamp(dot(baseNormal, positionViewDirection), float(0), float(1))
-    const thickness = filmThickness(content, uniforms.filmThickness, uniforms.filmVariation, uniforms.filmScale)
+    const film = chunkCode(code.film, 'film')
+    const thickness = film.filmThickness(content, uniforms.filmThickness, uniforms.filmVariation, uniforms.filmScale)
     // SAFETY: Schlick_to_F0 is vec3 in and out; three's types return a bare Node.
-    const filmF0 = Schlick_to_F0(filmReflectance(cosTheta, thickness, uniforms.filmIor, bodyColor), float(1), cosTheta) as Node<'vec3'>
+    const filmF0 = Schlick_to_F0(film.filmReflectance(cosTheta, thickness, uniforms.filmIor, bodyColor), float(1), cosTheta) as Node<'vec3'>
     bodyColor = mix(bodyColor, clamp(filmF0, vec3(0), vec3(1)), uniforms.film)
   }
 
   // three's softbox key gives no sheen and no scatter, so the key's share of
   // both is emitted here, scaled by the same gain as three's lights.
   let keyLight: Node<'vec3'> = vec3(0)
-  if (layers.sheen) keyLight = keySheen(baseNormal, uniforms.key)
+  if (layers.sheen) keyLight = chunkCode(code.sheen, 'sheen').keySheen(baseNormal, uniforms.key)
   if (layers.scatter) {
-    const scatter = keyScatter(baseNormal, cardNormal(vec2(0, 0)), towardRim, bodyColor, uniforms.scatter, uniforms.key)
+    const scatter = chunkCode(code.scatter, 'scatter').keyScatter(baseNormal, cardNormal(vec2(0, 0)), towardRim, bodyColor, uniforms.scatter, uniforms.key)
     keyLight = keyLight.add(layers.body === 'lit-text' ? scatter.mul(uncovered) : scatter)
   }
   const keyEmission = keyLight.mul(gain)
