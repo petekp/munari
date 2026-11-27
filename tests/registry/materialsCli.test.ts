@@ -166,4 +166,86 @@ export default defineManifestMaterial({
     const staleCheck = runCli(dir, ['check', srcPath])
     expect(staleCheck.status).toBe(1)
   })
+
+  it('emits fixed tuple types for vec uniforms and rejects implicit TypeGPU conversions + bad options', () => {
+    const dir = makeTempWorkspace()
+    symlinkSync(join(ROOT, 'node_modules'), join(dir, 'node_modules'), 'dir')
+    const vecPath = join(dir, 'tupleTest.material.ts')
+    writeFileSync(
+      vecPath,
+      `import tgpu from 'typegpu'
+import * as d from 'typegpu/data'
+import { createMaterialUniformLayout, defineManifestMaterial, sampleSurface, surfaceLayout } from '@petepetrash/munari-cli/author'
+const Uniforms = d.struct({ offset: d.vec2f, tint: d.vec3f })
+const layout = createMaterialUniformLayout(Uniforms)
+const vertex = tgpu.vertexFn({
+  in: { position: d.location(0, d.vec3f), uv: d.location(1, d.vec2f) },
+  out: { pos: d.builtin.position, uv: d.vec2f },
+})((i) => {
+  'use gpu'
+  return { pos: surfaceLayout.$.frame.mvp.mul(d.vec4f(i.position, 1.0)), uv: i.uv }
+})
+const fragment = tgpu.fragmentFn({ in: { uv: d.vec2f }, out: d.vec4f })((i) => {
+  'use gpu'
+  const u = layout.$.u
+  const c = sampleSurface(i.uv.add(u.offset))
+  return d.vec4f(c.rgb.mul(u.tint), c.a)
+})
+export default defineManifestMaterial({
+  name: 'tuple-test',
+  uniforms: { schema: Uniforms, layout, initial: { offset: d.vec2f(0, 0), tint: d.vec3f(1, 1, 1) } },
+  vertex,
+  fragment,
+})
+`,
+      'utf8',
+    )
+    const tupleCompile = runCli(dir, ['compile', vecPath])
+    expect(tupleCompile.stderr).toBe('')
+    expect(tupleCompile.status).toBe(0)
+    const genText = readFileSync(join(dir, 'tupleTest.material.gen.ts'), 'utf8')
+    expect(genText).toContain('readonly offset: readonly [number, number]')
+    expect(genText).toContain('readonly tint: readonly [number, number, number]')
+
+    const implicitPath = join(dir, 'implicitConv.material.ts')
+    writeFileSync(
+      implicitPath,
+      `import tgpu from 'typegpu'
+import * as d from 'typegpu/data'
+import { defineManifestMaterial, sampleSurface, surfaceLayout } from '@petepetrash/munari-cli/author'
+const vertex = tgpu.vertexFn({
+  in: { position: d.location(0, d.vec3f), uv: d.location(1, d.vec2f) },
+  out: { pos: d.builtin.position, uv: d.vec2f },
+})((i) => {
+  'use gpu'
+  return { pos: surfaceLayout.$.frame.mvp.mul(d.vec4f(i.position, 1.0)), uv: i.uv }
+})
+const fragment = tgpu.fragmentFn({ in: { uv: d.vec2f }, out: d.vec4f })((i) => {
+  'use gpu'
+  let acc = 0
+  acc += 0.25
+  const c = sampleSurface(i.uv)
+  return d.vec4f(c.rgb.mul(d.f32(acc)), c.a)
+})
+export default defineManifestMaterial({ name: 'implicit-conv', vertex, fragment })
+`,
+      'utf8',
+    )
+    const badCompile = runCli(dir, ['compile', implicitPath])
+    expect(badCompile.status).toBe(1)
+    expect(badCompile.stderr).toContain('implicit TypeGPU conversion warning')
+
+    const compilerPath = join(ROOT, 'packages', 'cli', 'src', 'compiler.mjs')
+    const badOpt = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import { pathToFileURL } from 'node:url'; const { generateMaterialSource } = await import(pathToFileURL(${JSON.stringify(compilerPath)}).href); try { await generateMaterialSource(${JSON.stringify(vecPath)}, { manifestImport: 123 }); process.exit(2) } catch (err) { console.error(String(err)); process.exit(0) }`,
+      ],
+      { cwd: dir, encoding: 'utf8' },
+    )
+    expect(badOpt.status).toBe(0)
+    expect(badOpt.stderr).toContain('options.manifestImport')
+  })
 })

@@ -2,9 +2,9 @@
 // shared host pipeline cache reuse, per-instance uniform isolation, offset pose mapping, and rounded-corner masking.
 import { describe, expect, it, vi } from 'vitest'
 import { createManifestDriver, createManifestMaterial, unlitSurfaceManifest, type MaterialManifest } from './manifest'
-import { hitPassesSurfaceMask, type RegisteredSurface, type ViewportState } from './host'
+import { getOrCreateGpuHost, hitPassesSurfaceMask, hostInternals, requestGpuFrame, type RegisteredSurface, type ViewportState } from './host'
 import { mat4Identity, type RayHit } from './math'
-import { matchDomPose } from './surfaceDom'
+import { IDENTITY_POSE, computeBasePose, matchDomPose } from './surfaceDom'
 import type { CachedPipelines, GpuRenderer } from './webgpu'
 
 function asGpu<T>(partial: Partial<T>): T {
@@ -148,5 +148,29 @@ describe('MaterialManifest runtime', () => {
     const interiorHit: RayHit = { distance: 100, u: 0.5, v: 0.5, point: [0, 0, 0] }
     expect(hitPassesSurfaceMask(surface, cornerHit)).toBe(false)
     expect(hitPassesSurfaceMask(surface, interiorHit)).toBe(true)
+  })
+
+  it('provides non-null basePose and wakes demand hosts via requestGpuFrame', () => {
+    const viewport: ViewportState = {
+      left: 40,
+      top: 120,
+      width: 800,
+      height: 600,
+      dpr: 2,
+      fov: 42,
+      cameraZ: 780,
+      viewProj: mat4Identity(),
+      invViewProj: mat4Identity(),
+    }
+    expect(computeBasePose('match-dom', null, viewport, [200, 100])).toEqual(IDENTITY_POSE)
+    expect(computeBasePose('manual', asGpu<DOMRect>({ left: 100, top: 100, width: 200, height: 100 }), viewport, [200, 100])).toEqual(IDENTITY_POSE)
+    expect(computeBasePose('match-dom', asGpu<DOMRect>({ left: 340, top: 370, width: 200, height: 100 }), viewport, [200, 100])).toEqual(IDENTITY_POSE)
+
+    const hostId = 'test-request-gpu-frame'
+    const host = getOrCreateGpuHost(hostId)
+    const invalidateSpy = vi.fn()
+    hostInternals.get(host)?.setScheduler(invalidateSpy, vi.fn())
+    requestGpuFrame(hostId)
+    expect(invalidateSpy).toHaveBeenCalledTimes(1)
   })
 })

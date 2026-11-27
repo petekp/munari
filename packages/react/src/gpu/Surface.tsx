@@ -14,6 +14,7 @@ import { use, useCallback, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom'
 import {
   EMPTY_CHROME,
+  captureAvailable,
   createDomTextureSource,
   crossingAtRest,
   crossingDraws,
@@ -21,15 +22,12 @@ import {
   crossingPresentation,
   crossingProgress,
   crossingRequest,
-  presentationRoute,
   readinessAtBirth,
-  readinessProve,
   readinessReborn,
   readinessRegister,
   readinessSettled,
   readinessUnregister,
   surfaceAcquire,
-  surfaceEpochCurrent,
   surfaceRelease,
   surfaceUnclaimed,
   type CrossingState,
@@ -50,14 +48,17 @@ import {
 } from './webgpu'
 import { GpuHostContext, getOrCreateGpuHost, type RegisteredSurface } from './host'
 import {
+  advanceSurfacePass,
   applyPixelSnap,
   buildSurfaceSlotStyle,
   buildWorldAndMvp,
+  computeBasePose,
+  disposeSurfaceGpuSlots,
   dockSourceHost,
   isFinishMaterial,
   isManifestMaterial,
   makeCaptureRoot,
-  matchDomPose,
+  observeElementSize,
   reparentLiveDom,
   resolveInitialScale,
   resolveSurfaceViewFormat,
@@ -168,6 +169,7 @@ export function Surface<TUniforms = Record<string, never>>({
   const readinessRef = useRef<SurfaceReadiness>(readinessAtBirth())
   const askReadRef = useRef(0)
   const workClaimRef = useRef<(() => void) | null>(null)
+  const frameClaimRef = useRef<(() => void) | null>(null)
   const presentedRef = useRef<SurfacePresentation>('page')
   const worldMatRef = useRef<Mat4>(mat4Identity())
   const invWorldMatRef = useRef<Mat4>(mat4Identity())
@@ -178,6 +180,18 @@ export function Surface<TUniforms = Record<string, never>>({
   })
   const bodyColor = finish?.color ?? null
   const presenterKey = surfaceId
+
+  const setFrameClaim = useCallback(
+    (active: boolean) => {
+      if (active && !frameClaimRef.current) {
+        frameClaimRef.current = host.claimWork()
+      } else if (!active && frameClaimRef.current) {
+        frameClaimRef.current()
+        frameClaimRef.current = null
+      }
+    },
+    [host],
+  )
 
   const reconcileWorkClaim = useCallback(() => {
     const crossing = crossingRef.current
@@ -222,16 +236,9 @@ export function Surface<TUniforms = Record<string, never>>({
 
   useLayoutEffect(() => {
     if (size || !pageEl) return
-    const measure = () => {
-      const r = pageEl.getBoundingClientRect()
-      if (r.width > 0 && r.height > 0) {
-        setMeasured((cur) => (cur[0] === r.width && cur[1] === r.height ? cur : [r.width, r.height]))
-      }
-    }
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(pageEl)
-    return () => ro.disconnect()
+    return observeElementSize(pageEl, (w, h) => {
+      setMeasured((cur) => (cur[0] === w && cur[1] === h ? cur : [w, h]))
+    })
   }, [pageEl, size])
 
   useLayoutEffect(() => {
@@ -263,6 +270,10 @@ export function Surface<TUniforms = Record<string, never>>({
   }, [host, finish, finishMod, effectiveFactory, uniforms, buildMaterialFor])
 
   useLayoutEffect(() => {
+    if (!captureAvailable()) {
+      sourceRef.current = null
+      return
+    }
     let source: DomTextureSource | null = null
     const setupGpu = () => {
       const renderer = host.renderer
@@ -313,6 +324,24 @@ export function Surface<TUniforms = Record<string, never>>({
     const acquiredEpoch = identityRef.current.epoch
     readinessRef.current = readinessRegister(readinessRef.current, presenterKey)
 
+    const clearGpu = () => {
+      const slots = {
+        mat: matRef.current,
+        activeMat: activeMatRef.current,
+        geo: geoRef.current,
+        geoMeta: geoMetaRef.current,
+        tex: texRef.current,
+        lastPaint: uploadStateRef.current.lastPaint,
+      }
+      disposeSurfaceGpuSlots(slots)
+      matRef.current = null
+      activeMatRef.current = null
+      geoRef.current = null
+      geoMetaRef.current = null
+      texRef.current = null
+      uploadStateRef.current.lastPaint = -1
+    }
+
     const reg: RegisteredSurface = {
       id: surfaceId,
       pointerEvents: () => pointerEventsRef.current,
@@ -329,15 +358,8 @@ export function Surface<TUniforms = Record<string, never>>({
       onRendererLost() {
         workClaimRef.current?.()
         workClaimRef.current = null
-        matRef.current?.dispose()
-        matRef.current = null
-        activeMatRef.current = null
-        geoRef.current?.dispose()
-        geoRef.current = null
-        geoMetaRef.current = null
-        texRef.current?.dispose()
-        texRef.current = null
-        uploadStateRef.current.lastPaint = -1
+        setFrameClaim(false)
+        clearGpu()
         readinessRef.current = readinessReborn(readinessRef.current)
         crossingRef.current = crossingAtRest()
         syncDomHoldRef.current()
@@ -347,10 +369,16 @@ export function Surface<TUniforms = Record<string, never>>({
         const tex = texRef.current
         const geo = geoRef.current
         const mat = matRef.current
-        if (!src || !tex || !geo || !mat || !host.renderer) return null
+        if (!src || !tex || !geo || !mat || !host.renderer) {
+          setFrameClaim(false)
+          return null
+        }
 
         syncUploadIfNeeded(src, tex, resolutionRef.current, liveRootRef.current, uploadStateRef.current)
-        if (!crossingDraws(crossingRef.current.phase).gl) return null
+        if (!crossingDraws(crossingRef.current.phase).gl) {
+          setFrameClaim(false)
+          return null
+        }
 
         if (finishRef.current && isFinishMaterial(mat)) {
           mat.updateFinish(finishRef.current, host.lighting, viewport.width, viewport.height, viewport.cameraZ)
@@ -358,13 +386,12 @@ export function Surface<TUniforms = Record<string, never>>({
 
         const pageNode = pageElRef.current
         const pageRect = pageNode ? pageNode.getBoundingClientRect() : null
-        if (placementRef.current === 'match-dom' && pageRect && pageRect.width > 0 && pageRect.height > 0) {
-          poseRef.current = matchDomPose(pageRect, viewport, sizeRef.current)
-        }
+        const basePose = computeBasePose(placementRef.current, pageRect, viewport, sizeRef.current)
+        if (placementRef.current === 'match-dom') poseRef.current = basePose
 
         const progress = crossingRef.current.ramp
         const easedProgress = crossingProgress(progress)
-        onFrameRef.current?.({
+        const keepGoing = onFrameRef.current?.({
           dtMs,
           elapsedMs,
           progress,
@@ -377,6 +404,7 @@ export function Surface<TUniforms = Record<string, never>>({
           material: mat,
           viewport,
           pageRect,
+          basePose,
           setPose: (p) => { poseRef.current = p },
           snapPose: (x, y, mag) => snapSurfacePose(x, y, sizeRef.current, viewport, src, mag),
           deform: (place) => deformGpuGeometry(geo, sizeRef.current, place),
@@ -386,6 +414,7 @@ export function Surface<TUniforms = Record<string, never>>({
           },
           setCustomUniforms: (data) => mat.writeCustomUniforms(data),
         })
+        setFrameClaim(keepGoing === true)
 
         const poseToDraw = applyPixelSnap(poseRef.current, pixelSnapRef.current, sizeRef.current, viewport, src)
         const mvp = buildWorldAndMvp(poseToDraw, viewport.viewProj, worldMatRef.current, invWorldMatRef.current)
@@ -403,27 +432,21 @@ export function Surface<TUniforms = Record<string, never>>({
           radii: uploadStateRef.current.chrome.radii,
           colorWrite,
           onPassComplete(receipt) {
-            if (!tex.uploaded()) return
-            const route = presentationRoute(
-              {
-                defaultFramebuffer: true,
-                colorWrite: receipt.colorWritten,
-                depthWrite: false,
-                stencilWrite: false,
-                drawable: receipt.triangles > 0,
-              },
-              true,
-            )
-            if (route === 'empty') return
-            if (!surfaceEpochCurrent(identityRef.current, acquiredEpoch)) return
-            readinessRef.current = readinessProve(readinessRef.current, presenterKey, readinessRef.current.lifetime)
-            const contentCurrent =
-              crossingRef.current.heldMs >= 200 || tex.uploadedRead() >= askReadRef.current
-            crossingRef.current = crossingFrame(
-              crossingRef.current,
-              { presented: route === 'now' ? 1 : 0, required: 1, contentCurrent },
+            const nextState = advanceSurfacePass({
+              receipt,
+              tex,
+              identity: identityRef.current,
+              acquiredEpoch,
+              presenterKey,
+              askRead: askReadRef.current,
               dtMs,
-            )
+              crossing: crossingRef.current,
+              readiness: readinessRef.current,
+              crossingFrameFn: crossingFrame,
+            })
+            if (!nextState) return
+            readinessRef.current = nextState.readiness
+            crossingRef.current = nextState.crossing
             syncDomHoldRef.current()
             reconcileWorkClaim()
           },
@@ -438,16 +461,10 @@ export function Surface<TUniforms = Record<string, never>>({
       unsubPaint()
       workClaimRef.current?.()
       workClaimRef.current = null
+      setFrameClaim(false)
       readinessRef.current = readinessUnregister(readinessRef.current, presenterKey)
       identityRef.current = surfaceRelease(identityRef.current, token)
-      matRef.current?.dispose()
-      matRef.current = null
-      activeMatRef.current = null
-      geoRef.current?.dispose()
-      geoRef.current = null
-      geoMetaRef.current = null
-      texRef.current?.dispose()
-      texRef.current = null
+      clearGpu()
       source?.dispose()
       sourceRef.current = null
     }
@@ -497,7 +514,8 @@ export function Surface<TUniforms = Record<string, never>>({
 
   useLayoutEffect(() => {
     const src = sourceRef.current
-    if (src) askReadRef.current = src.nextRead()
+    if (!src) return
+    askReadRef.current = src.nextRead()
     const next = crossingRequest(crossingRef.current, inScene)
     if (next !== crossingRef.current) {
       crossingRef.current = next

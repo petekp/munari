@@ -185,6 +185,11 @@ export function simulateGpuDeviceLoss(canvasId = ''): boolean {
   return true
 }
 
+/** Schedules a render frame for an idle `demand` host (e.g. when external state wakes `onFrame`). */
+export function requestGpuFrame(canvasId = ''): void {
+  hosts.get(canvasId)?.invalidate()
+}
+
 export const GpuHostContext = createContext<GpuHost | null>(null)
 
 interface SurfaceHitResult {

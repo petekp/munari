@@ -21,12 +21,18 @@ import {
   maxTier,
   measureSurfaceChrome,
   pixelGridSnap,
+  presentationRoute,
+  readinessProve,
   releaseMotion,
   seedTier,
+  surfaceEpochCurrent,
   type CrossingPhase,
+  type CrossingState,
   type DomTextureSource,
   type PixelGridSnap,
   type SurfaceChrome,
+  type SurfaceIdentity,
+  type SurfaceReadiness,
 } from '@munari/core'
 import type { SurfaceFinish } from '../primitives/surface/surfaceFinish'
 import type { GpuFinishHandle } from './finishMaterial'
@@ -42,6 +48,7 @@ import type {
   GpuGeometry,
   GpuMaterial,
   GpuMaterialFactory,
+  GpuPassReceipt,
   GpuSurfaceTexture,
 } from './webgpu'
 import type { ViewportState } from './host'
@@ -118,6 +125,7 @@ export interface SurfaceFrameContext<TUniforms = never> {
   readonly material: GpuMaterial
   readonly viewport: GpuViewport
   readonly pageRect: DOMRect | null
+  readonly basePose: SurfacePose
   setPose(pose: SurfacePose): void
   snapPose(x: number, y: number, mag?: number): PixelGridSnap
   deform(place: (x: number, y: number, index: number) => DeformedPoint): void
@@ -143,7 +151,7 @@ export interface SurfaceProps<TUniforms = Record<string, never>> {
   readonly material?: MaterialManifest<TUniforms>
   readonly uniforms?: NoInfer<TUniforms>
   readonly materialFactory?: GpuMaterialFactory
-  readonly onFrame?: (ctx: SurfaceFrameContext<NoInfer<TUniforms>>) => void
+  readonly onFrame?: (ctx: SurfaceFrameContext<NoInfer<TUniforms>>) => boolean | void
   readonly onPresentationChange?: (presentation: SurfacePresentation) => void
   readonly children?: ReactNode
 }
@@ -193,6 +201,18 @@ export function writeCaptureBodyColor(
   source?.repaint()
 }
 
+export const IDENTITY_POSE: SurfacePose = {
+  x: 0,
+  y: 0,
+  z: 0,
+  rx: 0,
+  ry: 0,
+  rz: 0,
+  sx: 1,
+  sy: 1,
+  sz: 1,
+}
+
 export function matchDomPose(rect: DOMRect, viewport: ViewportState, size: readonly [number, number]): SurfacePose {
   return {
     x: rect.left - viewport.left + rect.width / 2 - viewport.width / 2,
@@ -205,6 +225,18 @@ export function matchDomPose(rect: DOMRect, viewport: ViewportState, size: reado
     sy: rect.height / Math.max(1, size[1]),
     sz: 1,
   }
+}
+
+export function computeBasePose(
+  placement: 'match-dom' | 'manual',
+  pageRect: DOMRect | null,
+  viewport: ViewportState,
+  size: readonly [number, number],
+): SurfacePose {
+  if (placement === 'match-dom' && pageRect && pageRect.width > 0 && pageRect.height > 0) {
+    return matchDomPose(pageRect, viewport, size)
+  }
+  return { ...IDENTITY_POSE }
 }
 
 export function clonePlaceholder(liveRoot: HTMLElement, pageEl: HTMLElement): HTMLElement | null {
@@ -237,6 +269,41 @@ export function dockSourceHost(source: DomTextureSource | null, dock: HTMLElemen
   if (source && dock && source.host.parentElement !== dock) {
     dock.append(source.host)
   }
+}
+
+export interface SurfaceGpuSlots {
+  mat: GpuMaterial | null
+  activeMat: unknown
+  geo: GpuGeometry | null
+  geoMeta: unknown
+  tex: GpuSurfaceTexture | null
+  lastPaint: number
+}
+
+export function disposeSurfaceGpuSlots(slots: SurfaceGpuSlots): void {
+  slots.mat?.dispose()
+  slots.mat = null
+  slots.activeMat = null
+  slots.geo?.dispose()
+  slots.geo = null
+  slots.geoMeta = null
+  slots.tex?.dispose()
+  slots.tex = null
+  slots.lastPaint = -1
+}
+
+export function observeElementSize(
+  el: HTMLElement,
+  onResize: (w: number, h: number) => void,
+): () => void {
+  const measure = () => {
+    const r = el.getBoundingClientRect()
+    if (r.width > 0 && r.height > 0) onResize(r.width, r.height)
+  }
+  measure()
+  const ro = new ResizeObserver(measure)
+  ro.observe(el)
+  return () => ro.disconnect()
 }
 
 export function snapSurfacePose(
@@ -374,4 +441,43 @@ export function resolveSurfaceViewFormat(
 ): 'rgba8unorm' | 'rgba8unorm-srgb' {
   if (finish) return 'rgba8unorm'
   return factory?.sampleViewFormat ?? 'rgba8unorm'
+}
+
+export function advanceSurfacePass(params: {
+  readonly receipt: GpuPassReceipt
+  readonly tex: GpuSurfaceTexture
+  readonly identity: SurfaceIdentity
+  readonly acquiredEpoch: number
+  readonly presenterKey: string
+  readonly askRead: number
+  readonly dtMs: number
+  readonly crossing: CrossingState
+  readonly readiness: SurfaceReadiness
+  readonly crossingFrameFn: (
+    state: CrossingState,
+    signal: { readonly presented: number; readonly required: number; readonly contentCurrent: boolean },
+    dtMs: number,
+  ) => CrossingState
+}): { readonly crossing: CrossingState; readonly readiness: SurfaceReadiness } | null {
+  if (!params.tex.uploaded()) return null
+  const route = presentationRoute(
+    {
+      defaultFramebuffer: true,
+      colorWrite: params.receipt.colorWritten,
+      depthWrite: false,
+      stencilWrite: false,
+      drawable: params.receipt.triangles > 0,
+    },
+    true,
+  )
+  if (route === 'empty') return null
+  if (!surfaceEpochCurrent(params.identity, params.acquiredEpoch)) return null
+  const nextReadiness = readinessProve(params.readiness, params.presenterKey, params.readiness.lifetime)
+  const contentCurrent = params.crossing.heldMs >= 200 || params.tex.uploadedRead() >= params.askRead
+  const nextCrossing = params.crossingFrameFn(
+    params.crossing,
+    { presented: route === 'now' ? 1 : 0, required: 1, contentCurrent },
+    params.dtMs,
+  )
+  return { crossing: nextCrossing, readiness: nextReadiness }
 }

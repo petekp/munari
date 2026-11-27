@@ -23,7 +23,6 @@ import { foilManifest } from './materials/foil.material.gen'
 import { glassRefractManifest } from './materials/glassRefract.material.gen'
 import {
   FISHEYE_PARAMS,
-  domMatchPose,
   fisheyeDisplace,
   fisheyeDisplaceX,
   fisheyeScale,
@@ -106,7 +105,7 @@ function FlightPanel({ onPresChange, flightRef }: FlightPanelProps) {
 
   const flightUniforms = useMemo(
     () => ({
-      aeroDir: [0.6, -0.8],
+      aeroDir: [0.6, -0.8] as const,
       aeroAmt: lifted ? 18 : 0,
       aeroReach: 170,
       gloss: lifted ? 0.5 : 0,
@@ -117,10 +116,9 @@ function FlightPanel({ onPresChange, flightRef }: FlightPanelProps) {
   const handleFrame = useCallback(
     (ctx: SurfaceFrameContext) => {
       if (!ctx.pageRect) return
-      const base = domMatchPose(ctx.pageRect, ctx.viewport)
       const pose: SurfacePose = lifted
-        ? { ...base, x: base.x + 14, y: base.y + 10, z: 32, rx: -0.04, ry: 0.06 }
-        : base
+        ? { ...ctx.basePose, x: ctx.basePose.x + 14, y: ctx.basePose.y + 10, z: 32, rx: -0.04, ry: 0.06 }
+        : ctx.basePose
       ctx.setPose(pose)
       flightRef.current = { pose, viewport: ctx.viewport }
     },
@@ -215,12 +213,11 @@ function FisheyePanel({ onPresChange, focusRowRef, fisheyeRef }: FisheyePanelPro
 
   const handleFrame = useCallback(
     (ctx: SurfaceFrameContext) => {
-      const base = ctx.pageRect ? domMatchPose(ctx.pageRect, ctx.viewport) : { x: 0, y: 0, z: 0 }
-      ctx.setPose(base)
+      ctx.setPose(ctx.basePose)
       const activeRow = focusRowRef.current
       const focusDomY = activeRow !== null ? FISHEYE_HEADER_H + (activeRow + 0.5) * FISHEYE_ROW_H : FISHEYE_SIZE[1] / 2
       const amp = activeRow !== null ? FISHEYE_PARAMS.amplitude : 1
-      fisheyeRef.current = { pose: base, viewport: ctx.viewport, focusDomY, amp }
+      fisheyeRef.current = { pose: ctx.basePose, viewport: ctx.viewport, focusDomY, amp }
 
       const vCount = ctx.geometry.vertexCount
       if (!slopeRef.current || slopeRef.current.length !== vCount) {
@@ -305,20 +302,20 @@ function FisheyePanel({ onPresChange, focusRowRef, fisheyeRef }: FisheyePanelPro
 }
 
 function MaterialsPanel({ onPresChange }: { readonly onPresChange: (p: SurfacePresentation) => void }) {
-  const foilUniforms = useMemo(() => ({ tilt: [0.38, -0.24], intensity: 0.55, phase: 0.35 }), [])
+  const foilUniforms = useMemo(() => ({ tilt: [0.38, -0.24] as const, intensity: 0.55, phase: 0.35 }), [])
   const glassUniforms = useMemo(
-    () => ({ tint: [0.72, 0.9, 1.0], amount: 0.78, shift: [0.012, 0.004], highlight: 0.16 }),
+    () => ({ tint: [0.72, 0.9, 1.0] as const, amount: 0.78, shift: [0.012, 0.004] as const, highlight: 0.16 }),
     [],
   )
 
   const handleBackdropFrame = useCallback((ctx: SurfaceFrameContext) => {
     if (!ctx.pageRect) return
-    ctx.setPose({ ...domMatchPose(ctx.pageRect, ctx.viewport), z: -12 })
+    ctx.setPose({ ...ctx.basePose, z: -12 })
   }, [])
 
   const handleGlassFrame = useCallback((ctx: SurfaceFrameContext) => {
     if (!ctx.pageRect) return
-    ctx.setPose({ ...domMatchPose(ctx.pageRect, ctx.viewport), z: 24 })
+    ctx.setPose({ ...ctx.basePose, z: 24 })
   }, [])
 
   return (
@@ -341,7 +338,7 @@ function MaterialsPanel({ onPresChange }: { readonly onPresChange: (p: SurfacePr
         <Surface canvasId={CANVAS_ID} inScene size={[210, 150]} finish={GLASS_FINISH}>
           <div className="gpu-finish-card" data-testid="finish-glass" style={{ color: '#0f172a' }}>
             <strong>Glass Frosted</strong>
-            <span>LTC softbox coat</span>
+            <span>Frosted glass finish</span>
           </div>
         </Surface>
 

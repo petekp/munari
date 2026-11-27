@@ -10,6 +10,11 @@ import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
 import { WEBGPU_CHROME_ARGS } from '../webgpuChrome.mjs'
+import {
+  checkNoNativeCaptureNoSnapdom,
+  checkNoNativeCaptureWithSnapdom,
+  checkNoWebGpuFallback,
+} from './fallbackChecks.mjs'
 
 const here = import.meta.dirname
 const repoRoot = path.resolve(here, '..', '..')
@@ -331,40 +336,6 @@ async function checkDeviceLostRecovery(browser, baseUrl) {
   }
 }
 
-async function checkNoWebGpuFallback(baseUrl) {
-  const browser = await launchChrome(['--disable-features=WebGPUService', '--disable-gpu'])
-  try {
-    const page = await browser.newPage()
-    await page.setViewport({ width: 1200, height: 900, deviceScaleFactor: DPR })
-    await page.setRequestInterception(true)
-    page.on('request', (req) => {
-      if (req.url().endsWith('/favicon.ico')) void req.respond({ status: 204, body: '' })
-      else void req.continue()
-    })
-    const errors = []
-    page.on('pageerror', (err) => errors.push(`pageerror: ${String(err)}`))
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') errors.push(`console.error: ${msg.text()}`)
-    })
-    await page.goto(`${baseUrl}/?scene=gpu-studio&bare=1&tab=flight`, { waitUntil: 'load' })
-    await page.waitForFunction(() => Boolean(window.__gpuStudio), { timeout: 10_000 })
-    await sleep(300)
-    const pres = await page.evaluate(() => window.__gpuStudio?.presentation())
-    assert.equal(pres, 'page', `No-WebGPU mode should stay on page DOM, got ${pres}`)
-    await page.click('[data-testid="flight-note"]')
-    await page.keyboard.type(' + fallback')
-    await page.click('[data-testid="flight-action"]')
-    const note = await page.$eval('[data-testid="flight-note"]', (el) => el.value)
-    const count = await page.$eval('[data-testid="flight-count"]', (el) => el.textContent)
-    assert.equal(note, 'Check Gate B14 + fallback')
-    assert.equal(count, 'clicks: 1')
-    assert.deepEqual(errors, [], `No-WebGPU fallback errors: ${errors.join('; ')}`)
-    return { pres, note, count }
-  } finally {
-    await browser.close()
-  }
-}
-
 const server = await createServer({
   configFile: path.join(labRoot, 'vite.config.ts'),
   root: labRoot,
@@ -384,8 +355,21 @@ try {
   const deviceLost = await checkDeviceLostRecovery(browser, baseUrl)
   await browser.close()
   browser = null
-  const noWebGpuFallback = await checkNoWebGpuFallback(baseUrl)
-  results = { gate: 'gpu-runtime', dpr: DPR, flight, fisheye, materials, deviceLost, noWebGpuFallback }
+  const fallbackCtx = { chromePath, baseUrl, dpr: DPR, sleep }
+  const noWebGpuFallback = await checkNoWebGpuFallback(fallbackCtx)
+  const noNativeSnapdomFallback = await checkNoNativeCaptureWithSnapdom(fallbackCtx)
+  const noNativeNoCaptureFallback = await checkNoNativeCaptureNoSnapdom(fallbackCtx)
+  results = {
+    gate: 'gpu-runtime',
+    dpr: DPR,
+    flight,
+    fisheye,
+    materials,
+    deviceLost,
+    noWebGpuFallback,
+    noNativeSnapdomFallback,
+    noNativeNoCaptureFallback,
+  }
   console.log(JSON.stringify(results, null, 2))
 } finally {
   if (browser) await browser.close()

@@ -74,7 +74,11 @@ function scalarWriteCode(primType, viewExpr, offExpr, valExpr) {
 
 function tsTypeForSchema(schema) {
   if (schema.type === 'f32' || schema.type === 'i32' || schema.type === 'u32') return 'number'
-  if (schema.type.startsWith('vec') || schema.type.startsWith('mat')) return 'readonly number[]'
+  const vecMatch = /^vec([234])/.exec(schema.type)
+  if (vecMatch) {
+    return `readonly [${Array.from({ length: Number(vecMatch[1]) }, () => 'number').join(', ')}]`
+  }
+  if (schema.type.startsWith('mat')) return 'readonly number[]'
   if (schema.type === 'array') return `readonly (${tsTypeForSchema(schema.elementType)})[]`
   if (schema.type === 'struct') {
     const fields = Object.entries(schema.propTypes).map(([k, v]) => `readonly ${k}: ${tsTypeForSchema(v)}`)
@@ -249,7 +253,12 @@ function pascalName(name) {
   return c.charAt(0).toUpperCase() + c.slice(1)
 }
 
-export async function generateMaterialSource(absPath, manifestImport = '@petepetrash/munari/gpu') {
+export async function generateMaterialSource(absPath, options = {}) {
+  const rawImport = options?.manifestImport
+  if (rawImport !== undefined && (rawImport === null || rawImport.constructor !== String || rawImport.trim() === '')) {
+    throw new Error(`${absPath}: options.manifestImport must be a non-empty string`)
+  }
+  const manifestImport = rawImport ?? '@petepetrash/munari/gpu'
   installWebGpuNodeGlobals()
   const mod = await import(`${pathToFileURL(absPath).href}?t=${Date.now()}`)
   const def = mod.default
@@ -265,7 +274,26 @@ export async function generateMaterialSource(absPath, manifestImport = '@petepet
     fragment: def.fragment,
     targets: { format: 'bgra8unorm' },
   })
-  pipeline.initSync()
+  const implicitWarnings = []
+  const origWarn = console.warn
+  console.warn = (...args) => {
+    const text = args.map((a) => String(a)).join(' ')
+    if (/implicit[- ]conversion/i.test(text)) {
+      implicitWarnings.push(text)
+      return
+    }
+    origWarn(...args)
+  }
+  try {
+    pipeline.initSync()
+  } finally {
+    console.warn = origWarn
+  }
+  if (implicitWarnings.length > 0) {
+    throw new Error(
+      `${def.name}: implicit TypeGPU conversion warning(s) (use explicit d.f32(...) casts):\n${implicitWarnings.join('\n')}`,
+    )
+  }
 
   const wgsl = shaders[0]
   assert.ok(wgsl && wgsl.includes('@group(0)'), `${def.name}: resolved WGSL did not bind @group(0) surfaceLayout`)
@@ -321,14 +349,14 @@ export const ${camelName(def.name)}Manifest: MaterialManifest<${valuesTypeName}>
   }
 }
 
-export async function compileMaterialFile(absPath, manifestImport = '@petepetrash/munari/gpu') {
-  const result = await generateMaterialSource(absPath, manifestImport)
+export async function compileMaterialFile(absPath, options = {}) {
+  const result = await generateMaterialSource(absPath, options)
   writeFileSync(result.outPath, result.code, 'utf8')
   return result
 }
 
-export async function checkMaterialFile(absPath, manifestImport = '@petepetrash/munari/gpu') {
-  const expected = await generateMaterialSource(absPath, manifestImport)
+export async function checkMaterialFile(absPath, options = {}) {
+  const expected = await generateMaterialSource(absPath, options)
   let current = ''
   try {
     current = readFileSync(expected.outPath, 'utf8')

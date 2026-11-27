@@ -26,7 +26,7 @@ output. Preserve both distinctions when resolving a conflict.
 | Understand how the abstractions fit | [System model](system-model.md), [glossary](../CONTEXT.md) | Current model and constraints |
 | Improve the public React authoring interface | [React API improvement plan](react-api-improvement-plan.md) | Partially shipped (SurfaceCanvas, SurfaceStatus, handles/callbacks in v0.4.x); remaining items proposed |
 | WebGPU renderer, TSL materials, and fallback | [Decision #69](decisions/renderer.md#69) (with #70–#74) | Shipped in v0.4.0 (`WebGPURenderer` + TSL node materials, WebGL 2 fallback) |
-| GPU runtime (`/gpu`), registry behaviors & agent roadmap | [GPU roadmap](gpu-roadmap.md) | M0 in progress; M1–M5 unbuilt plans |
+| GPU runtime (`/gpu`), registry behaviors & agent roadmap | [GPU roadmap](gpu-roadmap.md) | M0 complete; M0.5 in progress; M1–M5 unbuilt plans |
 | Build the next agent-facing capability | [Agent system plan](agent-system-plan.md) | Work in progress; unbuilt stages are explicit |
 | Review earlier performance findings | [Performance audit](performance-audit.md) | Assessment of 2026-09-26; each remedy is unbuilt unless its finding says otherwise |
 | Diagnose capture and GPU costs | [Performance diagnosis](performance-diagnosis.md) | 2026-10-14 diagnosis; capture optimizations are linked below |

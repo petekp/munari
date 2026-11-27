@@ -6,9 +6,9 @@ function packElem(arr: readonly number[] | undefined, idx: number): number {
   return arr?.[idx] ?? 0
 }
 
-export type FoilUniforms = { readonly tilt: readonly number[]; readonly intensity: number; readonly phase: number }
+export type FoilUniforms = { readonly tilt: readonly [number, number]; readonly intensity: number; readonly phase: number }
 
-export const foilManifest: MaterialManifest<{ readonly tilt: readonly number[]; readonly intensity: number; readonly phase: number }> = {
+export const foilManifest: MaterialManifest<{ readonly tilt: readonly [number, number]; readonly intensity: number; readonly phase: number }> = {
   name: "foil",
   wgsl: "struct SurfaceFrameUniforms {\n  mvp: mat4x4f,\n  modelWorld: mat4x4f,\n  size: vec2f,\n  radii: vec4f,\n}\n\n@group(0) @binding(0) var<uniform> frame_1: SurfaceFrameUniforms;\n\nstruct vertex_Output {\n  @builtin(position) pos: vec4f,\n  @location(0) uv: vec2f,\n}\n\n@vertex fn vertex(@location(0) position: vec3f, @location(1) uv: vec2f) -> vertex_Output {\n  let frame = (&frame_1);\n  return vertex_Output(((*frame).mvp * vec4f(position, 1f)), uv);\n}\n\nstruct FoilUniforms {\n  tilt: vec2f,\n  intensity: f32,\n  phase: f32,\n}\n\n@group(1) @binding(0) var<uniform> u_1: FoilUniforms;\n\n@group(0) @binding(2) var tex: texture_2d<f32>;\n\n@group(0) @binding(1) var samp: sampler;\n\nfn sampleSurface(uv: vec2f) -> vec4f {\n  return textureSample(tex, samp, vec2f(uv.x, (1f - uv.y)));\n}\n\nfn srgbOetf(c: vec3f) -> vec3f {\n  let lo = (c * 12.92f);\n  let hi = ((pow(max(c, vec3f()), vec3f(0.4166666567325592)) * 1.055f) - 0.055f);\n  return select(hi, lo, (c <= vec3f(0.0031308000907301903)));\n}\n\nfn surfaceRadiusMask(uv: vec2f, size: vec2f, radii: vec4f) -> f32 {\n  let point = ((uv - 0.5f) * size);\n  let left = select(radii.w, radii.x, (point.y > 0f));\n  let right = select(radii.z, radii.y, (point.y > 0f));\n  let radius = select(right, left, (point.x < 0f));\n  let dBox = ((abs(point) - (size * 0.5f)) + vec2f(radius));\n  let dist = ((min(max(dBox.x, dBox.y), 0f) + length(max(dBox, vec2f()))) - radius);\n  let edge = max(fwidth(dist), 1e-4f);\n  return (1f - smoothstep(-(edge), edge, dist));\n}\n\nstruct fragment_Input {\n  @location(0) uv: vec2f,\n}\n\n@fragment fn fragment(_arg_0: fragment_Input) -> @location(0) vec4f {\n  let frame = (&frame_1);\n  let u = (&u_1);\n  let c = sampleSurface(_arg_0.uv);\n  let centered = (_arg_0.uv - 0.5f);\n  let sweep = (((dot(centered, (*u).tilt) * 4.2f) + (_arg_0.uv.x * 2.1f)) + (*u).phase);\n  let spectrum = srgbOetf(max(vec3f(), ((cos((vec3f(0, 2.0940001010894775, 4.188000202178955) + (sweep * 6.28318f))) * 0.5f) + 0.5f)));\n  let diag = exp(-(pow(((((centered.x * 0.7f) - (centered.y * 0.9f)) - ((*u).tilt.x * 0.45f)) * 4.2f), 2f)));\n  let shimmer = (spectrum * (((0.18f + (diag * 0.55f)) * (*u).intensity) * c.a));\n  let mask = surfaceRadiusMask(_arg_0.uv, (*frame).size, (*frame).radii);\n  let outCol = vec4f(((c.rgb + shimmer) * mask), (c.a * mask));\n  if ((outCol.a < 4e-3f)) {\n    discard;;\n  }\n  return outCol;\n}",
   vertexEntry: "vertex",
@@ -18,7 +18,7 @@ export const foilManifest: MaterialManifest<{ readonly tilt: readonly number[]; 
   customUniforms: {
     byteSize: 16,
     initial: {"tilt":[0.35,-0.25],"intensity":0.45,"phase":0.2},
-    pack(values: { readonly tilt: readonly number[]; readonly intensity: number; readonly phase: number }, view: DataView, base: number): void {
+    pack(values: { readonly tilt: readonly [number, number]; readonly intensity: number; readonly phase: number }, view: DataView, base: number): void {
     view.setFloat32(base + 0, packElem(values.tilt, 0), true)
     view.setFloat32(base + 4, packElem(values.tilt, 1), true)
     view.setFloat32(base + 8, values.intensity, true)

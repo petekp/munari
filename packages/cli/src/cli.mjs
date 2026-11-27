@@ -211,7 +211,7 @@ async function runCompile(args) {
   const manifestImport = flags.manifestImport || cfg.manifestImport
   const compiled = []
   for (const absPath of files) {
-    const res = await compileMaterialFile(absPath, manifestImport)
+    const res = await compileMaterialFile(absPath, { manifestImport })
     compiled.push({
       name: res.name,
       outPath: path.relative(cwd, res.outPath),
@@ -233,7 +233,7 @@ async function runCheck(args) {
   const manifestImport = flags.manifestImport || cfg.manifestImport
   const checked = []
   for (const absPath of files) {
-    const res = await checkMaterialFile(absPath, manifestImport)
+    const res = await checkMaterialFile(absPath, { manifestImport })
     checked.push({ name: res.name, outPath: path.relative(cwd, res.outPath), ok: res.ok, reason: res.reason })
   }
   console.log(JSON.stringify({ checked }, null, 2))
