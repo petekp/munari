@@ -86,6 +86,19 @@ function readLightingValues(
   return { keyX, keyY, keyZ, keyBrightness, keyW, keyH, rimBrightness, rimElev, envIntensity }
 }
 
+/** Resolves the viewport-centered light key `(x, y, z)` in CSS px for grounded shadow projection. */
+export function resolveKeyPos(
+  viewport: { readonly left: number; readonly top: number; readonly width: number; readonly height: number },
+  lighting: SurfaceLighting,
+): readonly [number, number, number] {
+  const rig = readLightingValues(lighting, viewport.width, viewport.height, viewport.left, viewport.top)
+  return [
+    rig.keyX - viewport.left - viewport.width / 2,
+    viewport.height / 2 - (rig.keyY - viewport.top),
+    rig.keyZ,
+  ]
+}
+
 /** Converts React `SurfaceLighting` + viewport into world-space frame uniforms once per frame. */
 export function resolveFrameContext(
   viewport: {
@@ -144,7 +157,9 @@ fn srgbEotf(c: vec3f) -> vec3f {
 }
 
 fn sampleSurface(tex: texture_2d<f32>, samp: sampler, uv: vec2f) -> vec4f {
-  return textureSample(tex, samp, vec2f(uv.x, 1.0 - uv.y));
+  let c = textureSample(tex, samp, vec2f(uv.x, 1.0 - uv.y));
+  let inside = uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0;
+  return select(vec4f(0.0), c, inside);
 }
 
 fn surfaceRadiusMask(uv: vec2f, size: vec2f, radii: vec4f) -> f32 {
@@ -221,20 +236,33 @@ export interface GpuGeometry {
   dispose(): void
 }
 
-function buildPlaneArrays(width: number, height: number, segX: number, segY: number) {
+function buildPlaneArrays(
+  width: number,
+  height: number,
+  segX: number,
+  segY: number,
+  bleedX = 0,
+  bleedY = 0,
+) {
   const cols = segX + 1
   const rows = segY + 1
   const vertexCount = cols * rows
   const positions = new Float32Array(vertexCount * 3)
   const uvs = new Float32Array(vertexCount * 2)
   const indices = new Uint32Array(segX * segY * 6)
+  const totalW = width + 2 * bleedX
+  const totalH = height + 2 * bleedY
+  const safeW = Math.max(1, width)
+  const safeH = Math.max(1, height)
 
   for (let iy = 0; iy < rows; iy++) {
-    const v = 1 - iy / segY
-    const y = (0.5 - iy / segY) * height
+    const tY = iy / segY
+    const v = 1 - (tY * totalH - bleedY) / safeH
+    const y = (0.5 - tY) * totalH
     for (let ix = 0; ix < cols; ix++) {
-      const u = ix / segX
-      const x = (ix / segX - 0.5) * width
+      const tX = ix / segX
+      const u = (tX * totalW - bleedX) / safeW
+      const x = (tX - 0.5) * totalW
       const vi = iy * cols + ix
       positions[vi * 3] = x
       positions[vi * 3 + 1] = y
@@ -268,8 +296,10 @@ export function createPlaneGeometry(
   height: number,
   segX = 1,
   segY = 1,
+  bleedX = 0,
+  bleedY = 0,
 ): GpuGeometry {
-  const { positions, uvs, indices, vertexCount } = buildPlaneArrays(width, height, segX, segY)
+  const { positions, uvs, indices, vertexCount } = buildPlaneArrays(width, height, segX, segY, bleedX, bleedY)
   const posBuffer = device.createBuffer({
     size: Math.max(4, positions.byteLength),
     usage: GPU_BUFFER_USAGE.VERTEX | GPU_BUFFER_USAGE.COPY_DST,
@@ -473,6 +503,7 @@ export interface GpuDrawItem {
   readonly mvp: Mat4
   readonly size: readonly [number, number]
   readonly radii: readonly [number, number, number, number]
+  readonly uvRect?: readonly [number, number, number, number]
   readonly colorWrite: boolean
   readonly onPassComplete?: (receipt: GpuPassReceipt) => void
 }
@@ -511,6 +542,7 @@ export interface GpuRenderer {
   readonly validationErrors: readonly string[]
   getOrCreatePipelines(key: string, build: () => Promise<CachedPipelines>): Promise<CachedPipelines>
   prepareBackdropBlur(): Promise<void>
+  lastGpuPassMs?(): number | null
   onDispose(fn: () => void): void
   resize(width: number, height: number): void
   generateMipmaps(texture: GPUTexture, mipCount: number): void

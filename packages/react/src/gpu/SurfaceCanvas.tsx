@@ -122,7 +122,9 @@ export function SurfaceCanvas({
       if (internal) {
         for (const surface of internal.surfaces.values()) {
           const item = surface.tick(dtMs, now - startTime, host.viewport)
-          if (item) items.push(item)
+          if (!item) continue
+          if ('length' in item) items.push(...item)
+          else items.push(item)
         }
       }
       renderer.render(items, resolveFrameContext(host.viewport, host.lighting, now - startTime, dtMs, frameTail))

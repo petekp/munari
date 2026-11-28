@@ -2,13 +2,15 @@
 // shared host pipeline cache reuse, per-instance uniform isolation, offset pose mapping, and rounded-corner masking.
 import { describe, expect, it, vi } from 'vitest'
 import { resolveFinish } from '../primitives/surface/surfaceFinish'
+import { clampBackdropCrop } from './backdropBlur'
 import { createGpuFinishMaterial, packFinishUniforms, selectFinishManifestKind } from './finishLookup'
 import { createManifestDriver, createManifestMaterial, unlitSurfaceManifest, type MaterialManifest } from './manifest'
 import { getOrCreateGpuHost, hitPassesSurfaceMask, hostInternals, requestGpuFrame, type RegisteredSurface, type ViewportState } from './host'
 import { loadLtcTable } from './ltc'
 import { mat4Identity, type RayHit } from './math'
-import { IDENTITY_POSE, computeBasePose, matchDomPose } from './surfaceDom'
-import { FRAME_UNIFORM_BYTES, resolveFrameContext, type CachedPipelines, type GpuRenderer } from './webgpu'
+import { IDENTITY_POSE, computeBasePose, computeBleedUvRect, matchDomPose, resolveBleed } from './surfaceDom'
+import { computeShadowProjection } from './surfaceShadow'
+import { FRAME_UNIFORM_BYTES, createPlaneGeometry, resolveFrameContext, type CachedPipelines, type GpuRenderer } from './webgpu'
 
 function asGpu<T>(partial: Partial<T>): T {
   // SAFETY: test double implements only the WebGPU members exercised by createManifestMaterial.
@@ -84,6 +86,7 @@ function makeFakeRenderer() {
       return entry
     },
     prepareBackdropBlur: vi.fn(() => Promise.resolve()),
+    lastGpuPassMs: () => null,
     onDispose(fn) {
       disposeHooks.push(fn)
     },
@@ -347,6 +350,91 @@ describe('MaterialManifest runtime', () => {
     expect(renderer.prepareBackdropBlur).toHaveBeenCalledTimes(2)
     handle.dispose()
     expect(handle.isReady()).toBe(false)
+    renderer.dispose()
+  })
+
+  it('expands plane geometry & uvRect for bleed, rejects bleed pointer hits, projects shadow, and clamps backdrop crop', () => {
+    const { renderer } = makeFakeRenderer()
+    const bleed = resolveBleed(20)
+    expect(bleed).toEqual([20, 20])
+    const uvRect = computeBleedUvRect([200, 100], bleed)
+    expect(uvRect).toEqual([0.1, 0.2, 1.2, 1.4])
+
+    const geo = createPlaneGeometry(renderer.device, 200, 100, 1, 1, bleed[0], bleed[1])
+    // Top-left corner extends 20px outward and sits at UV (-0.1, +1.2).
+    expect(geo.positions[0]).toBe(-120)
+    expect(geo.positions[1]).toBe(70)
+    expect(geo.uvs[0]).toBeCloseTo(-0.1, 5)
+    expect(geo.uvs[1]).toBeCloseTo(1.2, 5)
+    geo.dispose()
+
+    const regSurface: RegisteredSurface = {
+      id: 'bleed-surface',
+      pointerEvents: () => 'geometry',
+      hears: () => true,
+      element: () => null,
+      size: () => [200, 100],
+      radii: () => [0, 0, 0, 0],
+      geometry: () => null,
+      worldMat: mat4Identity,
+      invWorldMat: mat4Identity,
+      onRendererLost() {},
+      tick: () => null,
+    }
+    const bleedHit: RayHit = { distance: 10, point: [-110, 0, 0], u: -0.05, v: 0.5 }
+    const cardHit: RayHit = { distance: 10, point: [0, 0, 0], u: 0.5, v: 0.5 }
+    expect(hitPassesSurfaceMask(regSurface, bleedHit)).toBe(false)
+    expect(hitPassesSurfaceMask(regSurface, cardHit)).toBe(true)
+
+    const proj = computeShadowProjection(
+      [200, 100],
+      { x: 100, y: 50, z: 32, rx: 0, ry: 0, rz: 0, sx: 1, sy: 1, sz: 1 },
+      [0, 0, 480],
+      { blur: 14, spread: 0, elevationScale: 0.4 },
+    )
+    const scale = 1 + (32 - -0.5) / (480 - 32)
+    expect(proj.sigma).toBeCloseTo(14 + 32 * 0.4, 4)
+    expect(proj.cardHalf[0]).toBeCloseTo(100 * scale, 4)
+    expect(proj.quadHalf[0]).toBeGreaterThan(proj.cardHalf[0] + proj.sigma * 2)
+
+    const projLeft = computeShadowProjection(
+      [200, 100],
+      { x: 0, y: 0, z: 32, rx: 0, ry: 0, rz: 0, sx: 1, sy: 1, sz: 1 },
+      [-200, 0, 480],
+      { blur: 14, spread: 0, elevationScale: 0.4 },
+    )
+    const projRight = computeShadowProjection(
+      [200, 100],
+      { x: 0, y: 0, z: 32, rx: 0, ry: 0, rz: 0, sx: 1, sy: 1, sz: 1 },
+      [200, 0, 480],
+      { blur: 14, spread: 0, elevationScale: 0.4 },
+    )
+    const cxLeft = (projLeft.verts[0] + projLeft.verts[2]) * 0.5
+    const cxRight = (projRight.verts[0] + projRight.verts[2]) * 0.5
+    expect(projLeft.visible).toBe(true)
+    expect(cxLeft).toBeGreaterThan(0)
+    expect(cxRight).toBeLessThan(0)
+
+    const belowGround = computeShadowProjection(
+      [200, 100],
+      { x: 0, y: 0, z: -12, rx: 0, ry: 0, rz: 0, sx: 1, sy: 1, sz: 1 },
+      [0, 0, 480],
+      { blur: 14, spread: 0, elevationScale: 0.4 },
+    )
+    expect(belowGround.visible).toBe(false)
+
+    expect(clampBackdropCrop({ x: -12.2, y: 15.6, w: 3000, h: 0.2 }, 1920, 1080)).toEqual({
+      x: 0,
+      y: 15,
+      w: 1920,
+      h: 1,
+    })
+    expect(clampBackdropCrop({ x: 10.6, y: 20.6, w: 40, h: 30 }, 1920, 1080)).toEqual({
+      x: 10,
+      y: 20,
+      w: 41,
+      h: 31,
+    })
     renderer.dispose()
   })
 })

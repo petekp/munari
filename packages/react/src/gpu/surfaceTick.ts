@@ -4,19 +4,121 @@
 // Ownership: `@petepetrash/munari/gpu` (`Surface.tsx` delegates `tick()` here).
 
 import { crossingProgress, type CrossingState, type DomTextureSource, type SurfaceChrome } from '@munari/core'
+import type { SurfaceFinish } from '../primitives/surface/surfaceFinish'
+import { createManifestMaterial, unlitSurfaceManifest } from './manifest'
 import {
   applyPixelSnap,
   buildWorldAndMvp,
   computeBasePose,
+  isFinishMaterial,
   isManifestMaterial,
   snapSurfacePose,
+  type FinishModule,
+  type ShadowModule,
   type SurfaceFrameContext,
   type SurfacePose,
   type SurfacePresentation,
 } from './surfaceDom'
 import type { Mat4 } from './math'
 import type { ViewportState } from './host'
-import { deformGpuGeometry, type GpuDrawItem, type GpuGeometry, type GpuMaterial, type GpuPassReceipt, type GpuSurfaceTexture } from './webgpu'
+import type { SurfaceLighting } from '../primitives/surface/surfaceLight'
+import type { GpuSurfaceShadowHandle, SurfaceShadowOptions } from './surfaceShadow'
+import {
+  deformGpuGeometry,
+  resolveKeyPos,
+  type GpuDrawItem,
+  type GpuGeometry,
+  type GpuMaterial,
+  type GpuMaterialFactory,
+  type GpuPassReceipt,
+  type GpuRenderer,
+  type GpuSurfaceTexture,
+} from './webgpu'
+
+export interface ActiveMaterialSlot {
+  readonly isFinish: boolean
+  readonly factory: GpuMaterialFactory | undefined
+}
+
+export interface SyncedMaterialSlot {
+  readonly mat: GpuMaterial | null
+  readonly active: ActiveMaterialSlot | null
+}
+
+/** Builds a finish, custom factory, or default unlit WebGPU material for one Surface. */
+export function buildSurfaceMaterial(
+  renderer: GpuRenderer,
+  finish: SurfaceFinish | undefined,
+  finishMod: FinishModule | null,
+  factory: GpuMaterialFactory | undefined,
+  invalidate: () => void,
+): GpuMaterial | null {
+  if (finish) {
+    return finishMod ? finishMod.createGpuFinishMaterial(renderer, finish, invalidate) : null
+  }
+  if (factory) return factory.create(renderer)
+  return createManifestMaterial(renderer, unlitSurfaceManifest)
+}
+
+/** Reconciles a Surface's material slot on prop/finish/uniform changes without leaking pipelines. */
+export function syncSurfaceMaterialSlot<TUniforms>(params: {
+  readonly renderer: GpuRenderer
+  readonly curMat: GpuMaterial | null
+  readonly active: ActiveMaterialSlot | null
+  readonly finish: SurfaceFinish | undefined
+  readonly finishMod: FinishModule | null
+  readonly effectiveFactory: GpuMaterialFactory | undefined
+  readonly uniforms: TUniforms | undefined
+  readonly invalidate: () => void
+}): SyncedMaterialSlot {
+  const { renderer, curMat, active, finish, finishMod, effectiveFactory, uniforms, invalidate } = params
+  const isFin = Boolean(finish)
+  const kindChanged =
+    !curMat || !active || active.isFinish !== isFin || (!isFin && active.factory !== effectiveFactory)
+  if (!kindChanged && curMat) {
+    if (finish && isFinishMaterial(curMat)) {
+      curMat.updateFinish(finish)
+    } else if (!isFin && uniforms !== undefined && isManifestMaterial<TUniforms>(curMat)) {
+      curMat.setUniforms(uniforms)
+    }
+    invalidate()
+    return { mat: curMat, active }
+  }
+  curMat?.dispose()
+  const nextMat = buildSurfaceMaterial(renderer, finish, finishMod, effectiveFactory, invalidate)
+  const nextActive: ActiveMaterialSlot | null = nextMat
+    ? { isFinish: isFin, factory: effectiveFactory }
+    : null
+  if (nextMat) {
+    if (uniforms !== undefined && isManifestMaterial<TUniforms>(nextMat)) nextMat.setUniforms(uniforms)
+    void nextMat.ready.then(invalidate, () => {})
+  }
+  invalidate()
+  return { mat: nextMat, active: nextActive }
+}
+
+/** Synchronizes a Surface's lazy grounded shadow handle against current options. */
+export function syncSurfaceShadowHandle(
+  current: GpuSurfaceShadowHandle | null,
+  renderer: GpuRenderer,
+  shadow: boolean | SurfaceShadowOptions | undefined,
+  shadowMod: ShadowModule | null,
+  invalidate: () => void,
+): GpuSurfaceShadowHandle | null {
+  if (!shadow || !shadowMod) {
+    current?.dispose()
+    invalidate()
+    return null
+  }
+  if (current) {
+    current.updateOptions(shadow)
+    invalidate()
+    return current
+  }
+  const nextShadow = shadowMod.createGpuSurfaceShadow(renderer, shadow)
+  void nextShadow.ready.then(invalidate, () => {})
+  return nextShadow
+}
 
 export interface SurfaceTickInput<TUniforms> {
   readonly dtMs: number
@@ -30,6 +132,9 @@ export interface SurfaceTickInput<TUniforms> {
   readonly pageEl: HTMLElement | null
   readonly size: readonly [number, number]
   readonly pixelSnap: boolean
+  readonly bleedUvRect: readonly [number, number, number, number]
+  readonly shadow: GpuSurfaceShadowHandle | null
+  readonly lighting: SurfaceLighting
   readonly viewFmt: 'rgba8unorm' | 'rgba8unorm-srgb'
   readonly chrome: SurfaceChrome
   readonly crossing: CrossingState
@@ -44,8 +149,10 @@ export interface SurfaceTickInput<TUniforms> {
   readonly onPassComplete: (receipt: GpuPassReceipt) => void
 }
 
-/** Runs one WebGPU Surface tick and returns the draw item to encode. */
-export function runSurfaceTick<TUniforms>(input: SurfaceTickInput<TUniforms>): GpuDrawItem {
+/** Runs one WebGPU Surface tick and returns one or two draw items (optional grounded shadow + card). */
+export function runSurfaceTick<TUniforms>(
+  input: SurfaceTickInput<TUniforms>,
+): GpuDrawItem | readonly GpuDrawItem[] {
   const {
     dtMs,
     elapsedMs,
@@ -58,6 +165,9 @@ export function runSurfaceTick<TUniforms>(input: SurfaceTickInput<TUniforms>): G
     pageEl,
     size,
     pixelSnap,
+    bleedUvRect,
+    shadow,
+    lighting,
     viewFmt,
     chrome,
     crossing,
@@ -76,6 +186,7 @@ export function runSurfaceTick<TUniforms>(input: SurfaceTickInput<TUniforms>): G
   const basePose = computeBasePose(placement, pageRect, viewport, size)
   let nextPose = placement === 'match-dom' ? basePose : pose
   if (placement === 'match-dom') setPose(nextPose)
+  let wrotePoseThisFrame = false
 
   const progress = crossing.ramp
   const easedProgress = crossingProgress(progress)
@@ -93,8 +204,12 @@ export function runSurfaceTick<TUniforms>(input: SurfaceTickInput<TUniforms>): G
     viewport,
     pageRect,
     basePose,
+    get pose() {
+      return wrotePoseThisFrame ? nextPose : basePose
+    },
     setPose: (p) => {
       nextPose = p
+      wrotePoseThisFrame = true
       setPose(p)
     },
     snapPose: (x, y, mag) => snapSurfacePose(x, y, size, viewport, src, mag),
@@ -110,17 +225,35 @@ export function runSurfaceTick<TUniforms>(input: SurfaceTickInput<TUniforms>): G
   const poseToDraw = applyPixelSnap(nextPose, pixelSnap, size, viewport, src)
   const mvp = buildWorldAndMvp(poseToDraw, viewport.viewProj, worldMat, invWorldMat)
   const colorWrite = ready && (crossing.phase !== 'lifting' || mat.isReady())
+  const view = tex.view(viewFmt)
 
-  return {
+  const cardItem: GpuDrawItem = {
     geometry: geo,
     material: mat,
-    view: tex.view(viewFmt),
+    view,
     sampler: tex.sampler,
     modelWorld: worldMat,
     mvp,
     size,
     radii: chrome.radii,
+    uvRect: bleedUvRect,
     colorWrite,
     onPassComplete,
   }
+
+  if (shadow) {
+    const keyPos = resolveKeyPos(viewport, lighting)
+    const shadowItem = shadow.updateDrawItem({
+      size,
+      radii: chrome.radii,
+      pose: poseToDraw,
+      keyPos,
+      viewProj: viewport.viewProj,
+      view,
+      sampler: tex.sampler,
+      colorWrite,
+    })
+    if (shadowItem) return [shadowItem, cardItem]
+  }
+  return cardItem
 }

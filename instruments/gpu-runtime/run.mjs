@@ -5,7 +5,7 @@
 // single-retry `device.lost` recovery; and serial no-WebGPU HTML fallback.
 
 import assert from 'node:assert/strict'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import puppeteer from 'puppeteer-core'
 import { createServer } from 'vite'
@@ -115,9 +115,27 @@ async function checkFlight(browser, baseUrl) {
 
     await page.click('[data-testid="flight-toggle"]')
     await page.waitForFunction(() => window.__gpuStudio?.presentation() === 'scene', { timeout: 10_000 })
-    await sleep(250)
+    await page.waitForFunction(() => (window.__gpuStudio?.stats().workClaims ?? 1) === 0, { timeout: 10_000 })
+    await sleep(150)
     const airborneNote = await page.$eval('[data-testid="flight-note"]', (el) => el.value)
     assert.equal(airborneNote, 'Check Gate B14 -> Seat 14A', 'Retained input text lost across lift')
+
+    // 0b. Content-less grounded shadow outside lifted card rect (non-background dark pixels).
+    const shadowPt = await page.evaluate(() => window.__gpuStudio?.flightShadowSamplePoint())
+    assert.ok(shadowPt, 'Missing flightShadowSamplePoint')
+    const bgPx = await sampleBoxCenterRgb(page, 40, 120)
+    const shadowPx = await sampleBoxCenterRgb(page, shadowPt.x, shadowPt.y)
+    const bgLuma = 0.2126 * bgPx.r + 0.7152 * bgPx.g + 0.0722 * bgPx.b
+    const shadowLuma = 0.2126 * shadowPx.r + 0.7152 * shadowPx.g + 0.0722 * shadowPx.b
+    assert.ok(
+      bgLuma - shadowLuma > 8,
+      `Expected non-background grounded shadow outside lifted card (bg=${JSON.stringify(bgPx)}, shadow=${JSON.stringify(shadowPx)})`,
+    )
+    if (process.env.M3_DEMO_DIR) {
+      mkdirSync(process.env.M3_DEMO_DIR, { recursive: true })
+      const flightShot = await page.screenshot({ encoding: 'base64' })
+      writeFileSync(path.join(process.env.M3_DEMO_DIR, 'gpu-studio-flight.png'), Buffer.from(flightShot, 'base64'))
+    }
 
     // 1. Rounded-corner hit rejection (2px, 2px sits outside 16px border radius).
     const cornerPt = await page.evaluate(() => {
@@ -207,7 +225,12 @@ async function checkFlight(browser, baseUrl) {
     const s1 = await page.evaluate(() => window.__gpuStudio.stats())
     assert.equal(s1.renderCount, s0.renderCount, `Flight rendered while idle: ${s0.renderCount} -> ${s1.renderCount}`)
     assert.deepEqual(errors, [], `Flight errors: ${errors.join('; ')}`)
-    return { airborneNote, countText: offsetCountText, idleRenders: s1.renderCount - s0.renderCount }
+    return {
+      airborneNote,
+      countText: offsetCountText,
+      shadowLumaDrop: Number((bgLuma - shadowLuma).toFixed(1)),
+      idleRenders: s1.renderCount - s0.renderCount,
+    }
   } finally {
     await page.close()
   }
@@ -218,7 +241,14 @@ async function checkFisheye(browser, baseUrl) {
   try {
     await page.waitForFunction(() => window.__gpuStudio?.presentation() === 'scene', { timeout: 20_000 })
     await page.evaluate(() => window.__gpuStudio?.setFisheyeFocus(12))
-    await sleep(250)
+    await page.waitForFunction(() => (window.__gpuStudio?.stats().workClaims ?? 1) === 0, { timeout: 10_000 })
+    await sleep(150)
+
+    if (process.env.M3_DEMO_DIR) {
+      mkdirSync(process.env.M3_DEMO_DIR, { recursive: true })
+      const fishShot = await page.screenshot({ encoding: 'base64' })
+      writeFileSync(path.join(process.env.M3_DEMO_DIR, 'gpu-studio-fisheye.png'), Buffer.from(fishShot, 'base64'))
+    }
 
     const rowPt = await page.evaluate(() => window.__gpuStudio?.fisheyePoint(9, 'row'))
     assert.ok(rowPt, 'Missing fisheye row point')
@@ -276,10 +306,12 @@ async function checkMaterialsAndBackdrop(browser, baseUrl) {
     const sampleCoords = await page.evaluate(() => {
       const back = document.querySelector('.gpu-backdrop-back')?.getBoundingClientRect()
       const front = document.querySelector('.gpu-backdrop-front')?.getBoundingClientRect()
+      const bleedSlot = document.querySelectorAll('.gpu-materials-grid > [data-gpu-page-slot]')?.[5]?.getBoundingClientRect()
       if (!back || !front) return null
       return {
         pureOrange: { x: back.left + 25, y: back.top + 60 },
         overlapGlass: { x: front.left + 40, y: back.top + 60 },
+        bleedHalo: bleedSlot ? { x: bleedSlot.right + 8, y: bleedSlot.top + bleedSlot.height / 2 } : null,
       }
     })
     assert.ok(sampleCoords, 'Missing backdrop geometry rects')
@@ -293,8 +325,21 @@ async function checkMaterialsAndBackdrop(browser, baseUrl) {
       refractedPx.r > 140 && refractedPx.b < refractedPx.r,
       `Expected @group(2) tinted orange refraction pixel differing from #e9ecf1, got ${JSON.stringify(refractedPx)}`,
     )
+    let bleedPx = null
+    if (sampleCoords.bleedHalo) {
+      bleedPx = await sampleBoxCenterRgb(page, sampleCoords.bleedHalo.x, sampleCoords.bleedHalo.y)
+      assert.ok(
+        bleedPx.b > bleedPx.r + 10,
+        `Expected in-plane blue optical halo outside bleed card edge, got ${JSON.stringify(bleedPx)}`,
+      )
+    }
+    if (process.env.M3_DEMO_DIR) {
+      mkdirSync(process.env.M3_DEMO_DIR, { recursive: true })
+      const matShot = await page.screenshot({ encoding: 'base64' })
+      writeFileSync(path.join(process.env.M3_DEMO_DIR, 'gpu-studio-materials.png'), Buffer.from(matShot, 'base64'))
+    }
     assert.deepEqual(errors, [], `Materials errors: ${errors.join('; ')}`)
-    return { bodyColors, orangePx, refractedPx }
+    return { bodyColors, orangePx, refractedPx, bleedPx }
   } finally {
     await page.close()
   }

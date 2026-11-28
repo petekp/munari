@@ -81,7 +81,9 @@ export const srgbEotf = tgpu.fn([d.vec3f], d.vec3f)((c) => {
 /** Sample the DOM capture texture at surface UV `(0..1, 0..1)` with WebGPU Y-flip. */
 export const sampleSurface = tgpu.fn([d.vec2f], d.vec4f)((uv) => {
   'use gpu'
-  return std.textureSample(surfaceLayout.$.tex, surfaceLayout.$.samp, d.vec2f(uv.x, 1.0 - uv.y))
+  const c = std.textureSample(surfaceLayout.$.tex, surfaceLayout.$.samp, d.vec2f(uv.x, 1.0 - uv.y))
+  const inside = uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0
+  return std.select(d.vec4f(0.0), c, inside)
 })
 
 /** Sample the DOM texture and decode premultiplied sRGB into straight linear RGB + alpha. */

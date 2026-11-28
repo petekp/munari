@@ -52,7 +52,7 @@ export interface RegisteredSurface {
   readonly worldMat: () => Mat4
   readonly invWorldMat: () => Mat4
   readonly onRendererLost: () => void
-  readonly tick: (dtMs: number, elapsedMs: number, viewport: ViewportState) => GpuDrawItem | null
+  readonly tick: (dtMs: number, elapsedMs: number, viewport: ViewportState) => GpuDrawItem | readonly GpuDrawItem[] | null
 }
 
 export interface GpuHost {
@@ -198,6 +198,7 @@ interface SurfaceHitResult {
 }
 
 export function hitPassesSurfaceMask(surface: RegisteredSurface, hit: RayHit): boolean {
+  if (hit.u < 0 || hit.u > 1 || hit.v < 0 || hit.v > 1) return false
   const radii = surface.radii()
   if (radii.some((v) => v > 0)) {
     const [w, h] = surface.size()

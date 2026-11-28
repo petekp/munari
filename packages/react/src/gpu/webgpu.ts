@@ -8,7 +8,8 @@
 // Ownership: `./gpuGeometry` owns geometry & surface texture primitives; this
 // module owns device creation & command submission and re-exports geometry types.
 
-import { type BackdropBlurEngine } from './backdropBlur'
+import type { BackdropBlurEngine } from './backdropBlur'
+import { createGpuTimestampTimer } from './gpuTiming'
 import { type Mat4 } from './math'
 import {
   FRAME_UNIFORM_BYTES,
@@ -29,6 +30,7 @@ export {
   createPlaneGeometry,
   deformGpuGeometry,
   resolveFrameContext,
+  resolveKeyPos,
   type CachedPipelines,
   type DeformedPoint,
   type GpuDrawItem,
@@ -148,6 +150,7 @@ function createFrameRing(device: GPUDevice) {
       size: readonly [number, number],
       radii: readonly [number, number, number, number],
       frameCtx: GpuFrameContext,
+      uvRect?: readonly [number, number, number, number],
     ) {
       scratch.set(mvp, 0)
       scratch.set(modelWorld, 16)
@@ -157,6 +160,7 @@ function createFrameRing(device: GPUDevice) {
       scratch[35] = frameCtx.viewportH
       scratch.set(radii, 36)
       scratch.set(frameCtx.tail, 40)
+      if (uvRect) scratch.set(uvRect, 56)
       device.queue.writeBuffer(buffer, slot * stride, scratch)
     },
     dispose() {
@@ -164,6 +168,8 @@ function createFrameRing(device: GPUDevice) {
     },
   }
 }
+
+const DEFAULT_UV_RECT = [0, 0, 1, 1] as const
 
 const MAX_VALIDATION_ERRORS = 64
 
@@ -188,9 +194,12 @@ export async function createGpuRenderer(
   const adapter = await navigator.gpu.requestAdapter()
   if (!adapter) throw new Error('No WebGPU adapter available')
   const maxTextureDimension2D = adapter.limits.maxTextureDimension2D
+  const hasTimestampQuery = adapter.features.has('timestamp-query')
   const device = await adapter.requestDevice({
+    requiredFeatures: hasTimestampQuery ? ['timestamp-query'] : [],
     requiredLimits: { maxTextureDimension2D },
   })
+  const gpuTimer = createGpuTimestampTimer(device, hasTimestampQuery)
   const validationErrors: string[] = []
   const pushValidationError = (msg: string) => {
     if (validationErrors.length >= MAX_VALIDATION_ERRORS) validationErrors.shift()
@@ -358,6 +367,7 @@ export async function createGpuRenderer(
       return cached
     },
     prepareBackdropBlur,
+    lastGpuPassMs: () => gpuTimer.lastMs(),
     onDispose(fn) {
       if (intentionallyDisposed) fn()
       else disposeHooks.push(fn)
@@ -402,7 +412,7 @@ export async function createGpuRenderer(
       for (let i = 0; i < items.length; i++) {
         const item = items[i]!
         if (item.material.usesDynamicFrameOffset) {
-          frameRing.write(i, item.mvp, item.modelWorld, item.size, item.radii, frameCtx)
+          frameRing.write(i, item.mvp, item.modelWorld, item.size, item.radii, frameCtx, item.uvRect ?? DEFAULT_UV_RECT)
         } else {
           item.material.updateFrameUniforms(item.mvp, item.modelWorld, item.size, item.radii)
         }
@@ -416,6 +426,7 @@ export async function createGpuRenderer(
       const colorView = colorTex.createView()
       const depthView = ensureDepth(colorTex.width, colorTex.height)
       const encoder = device.createCommandEncoder()
+      const runPass2 = backdropIndices.length > 0 && Boolean(blurEngine)
       const pass = encoder.beginRenderPass({
         colorAttachments: [
           {
@@ -431,6 +442,7 @@ export async function createGpuRenderer(
           depthLoadOp: 'clear',
           depthStoreOp: 'store',
         },
+        timestampWrites: gpuTimer.pass1Writes(!runPass2),
       })
 
       let draws = 0
@@ -446,9 +458,17 @@ export async function createGpuRenderer(
       pass.end()
 
       // Pass 2 draws all backdrop-reading surfaces against the single post-pass-1
-      // snapshot, so transmissive surfaces behind other transmissive surfaces are excluded.
-      if (backdropIndices.length > 0 && blurEngine) {
-        const backdropBg = blurEngine.encode(encoder, colorTex, colorTex.width, colorTex.height)
+      // snapshot cropped to the glass union rect, excluding glass behind glass.
+      if (runPass2 && blurEngine) {
+        const backdropBg = blurEngine.encode(
+          encoder,
+          colorTex,
+          colorTex.width,
+          colorTex.height,
+          items,
+          backdropIndices,
+          frameCtx.tail[1] || 1,
+        )
         const pass2 = encoder.beginRenderPass({
           colorAttachments: [{ view: colorView, loadOp: 'load', storeOp: 'store' }],
           depthStencilAttachment: {
@@ -456,6 +476,7 @@ export async function createGpuRenderer(
             depthLoadOp: 'load',
             depthStoreOp: 'store',
           },
+          timestampWrites: gpuTimer.pass2Writes(),
         })
         for (const idx of backdropIndices) {
           const item = items[idx]!
@@ -468,7 +489,9 @@ export async function createGpuRenderer(
         pass2.end()
       }
 
+      gpuTimer.resolve(encoder)
       device.queue.submit([encoder.finish()])
+      gpuTimer.readAfterSubmit()
       popDevScope(device, pushValidationError)
 
       for (const r of receipts) {
@@ -483,6 +506,7 @@ export async function createGpuRenderer(
       intentionallyDisposed = true
       pipelineCache.clear()
       while (disposeHooks.length > 0) disposeHooks.pop()?.()
+      gpuTimer.dispose()
       frameRing.dispose()
       depthTex?.destroy()
       depthTex = null

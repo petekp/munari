@@ -244,7 +244,8 @@
   justify-content: space-between;
 }
 
-.gpu-foil-card {
+.gpu-foil-card,
+.gpu-bleed-card {
   width: 210px;
   height: 150px;
   padding: 16px;

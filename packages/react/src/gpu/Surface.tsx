@@ -34,38 +34,46 @@ import {
   type SurfaceIdentity,
   type SurfaceReadiness,
 } from '@munari/core'
-import { createManifestDriver, createManifestMaterial, unlitSurfaceManifest } from './manifest'
+import { createManifestDriver } from './manifest'
 import { mat4Identity, type Mat4 } from './math'
 import {
   createGpuSurfaceTexture,
   createPlaneGeometry,
   type GpuGeometry,
   type GpuMaterial,
-  type GpuRenderer,
   type GpuSurfaceTexture,
 } from './webgpu'
 import { GpuHostContext, getOrCreateGpuHost, type RegisteredSurface } from './host'
 import {
   advanceSurfacePass,
   buildSurfaceSlotStyle,
+  computeBleedUvRect,
   disposeSurfaceGpuSlots,
   dockSourceHost,
-  isFinishMaterial,
   isManifestMaterial,
   makeCaptureRoot,
   observeElementSize,
   reparentLiveDom,
+  resolveBleed,
   resolveInitialScale,
   resolveSurfaceViewFormat,
   syncUploadIfNeeded,
   updatePageVisibility,
   useFinishModule,
+  useShadowModule,
   writeCaptureBodyColor,
   type SurfacePose,
   type SurfacePresentation,
   type SurfaceProps,
 } from './surfaceDom'
-import { runSurfaceTick } from './surfaceTick'
+import type { GpuSurfaceShadowHandle } from './surfaceShadow'
+import {
+  buildSurfaceMaterial,
+  runSurfaceTick,
+  syncSurfaceMaterialSlot,
+  syncSurfaceShadowHandle,
+  type ActiveMaterialSlot,
+} from './surfaceTick'
 
 export type {
   GpuViewport,
@@ -102,6 +110,8 @@ export function Surface<TUniforms = Record<string, never>>({
   placement = 'match-dom',
   segments = [1, 1],
   pixelSnap = false,
+  bleed,
+  shadow,
   finish,
   material: materialProp,
   uniforms,
@@ -119,6 +129,8 @@ export function Surface<TUniforms = Record<string, never>>({
   const [captureRoot] = useState(makeCaptureRoot)
 
   const finishMod = useFinishModule(Boolean(finish))
+  const shadowMod = useShadowModule(Boolean(shadow))
+  const [bleedX, bleedY] = resolveBleed(bleed)
   const [size0, size1] = size ?? [320, 180]
   const [measured, setMeasured] = useState<readonly [number, number]>(() => [size0, size1])
   const [hasMeasured, setHasMeasured] = useState(false)
@@ -149,6 +161,13 @@ export function Surface<TUniforms = Record<string, never>>({
   placementRef.current = placement
   const pixelSnapRef = useRef(pixelSnap)
   pixelSnapRef.current = pixelSnap
+  const bleedRef = useRef<readonly [number, number]>([bleedX, bleedY])
+  bleedRef.current = [bleedX, bleedY]
+  const shadowPropRef = useRef(shadow)
+  shadowPropRef.current = shadow
+  const shadowModRef = useRef(shadowMod)
+  shadowModRef.current = shadowMod
+  const shadowRef = useRef<GpuSurfaceShadowHandle | null>(null)
   const viewFmtRef = useRef(viewFmt)
   viewFmtRef.current = viewFmt
   const resolutionRef = useRef(resolution)
@@ -164,8 +183,8 @@ export function Surface<TUniforms = Record<string, never>>({
   const segmentsRef = useRef(segments)
   segmentsRef.current = segments
   const prevLiveRef = useRef(live)
-  const geoMetaRef = useRef<{ w: number; h: number; sx: number; sy: number } | null>(null)
-  const activeMatRef = useRef<{ readonly isFinish: boolean; readonly factory: typeof effectiveFactory } | null>(null)
+  const geoMetaRef = useRef<{ w: number; h: number; sx: number; sy: number; bx: number; by: number } | null>(null)
+  const activeMatRef = useRef<ActiveMaterialSlot | null>(null)
 
   const sourceRef = useRef<DomTextureSource | null>(null)
   const texRef = useRef<GpuSurfaceTexture | null>(null)
@@ -235,16 +254,6 @@ export function Surface<TUniforms = Record<string, never>>({
   const syncDomHoldRef = useRef(syncDomHold)
   syncDomHoldRef.current = syncDomHold
 
-  const buildMaterialFor = useCallback((renderer: GpuRenderer): GpuMaterial | null => {
-    if (finishRef.current) {
-      return finishModRef.current
-        ? finishModRef.current.createGpuFinishMaterial(renderer, finishRef.current, () => host.invalidate())
-        : null
-    }
-    if (factoryRef.current) return factoryRef.current.create(renderer)
-    return createManifestMaterial(renderer, unlitSurfaceManifest)
-  }, [host])
-
   useLayoutEffect(() => {
     const target = liveRoot ?? pageEl
     if (size || !target) return
@@ -257,30 +266,31 @@ export function Surface<TUniforms = Record<string, never>>({
   useLayoutEffect(() => {
     const renderer = host.renderer
     if (!renderer) return
-    const curMat = matRef.current
-    const isFin = Boolean(finish)
-    const active = activeMatRef.current
-    const kindChanged =
-      !curMat || !active || active.isFinish !== isFin || (!isFin && active.factory !== effectiveFactory)
-    if (!kindChanged && curMat) {
-      if (finish && isFinishMaterial(curMat)) {
-        curMat.updateFinish(finish)
-      } else if (!isFin && uniforms !== undefined && isManifestMaterial<TUniforms>(curMat)) {
-        curMat.setUniforms(uniforms)
-      }
-      host.invalidate()
-      return
-    }
-    curMat?.dispose()
-    const nextMat = buildMaterialFor(renderer)
-    matRef.current = nextMat
-    activeMatRef.current = nextMat ? { isFinish: isFin, factory: effectiveFactory } : null
-    if (nextMat) {
-      if (uniforms !== undefined && isManifestMaterial<TUniforms>(nextMat)) nextMat.setUniforms(uniforms)
-      void nextMat.ready.then(() => host.invalidate(), () => {})
-    }
-    host.invalidate()
-  }, [host, finish, finishMod, effectiveFactory, uniforms, buildMaterialFor])
+    const next = syncSurfaceMaterialSlot({
+      renderer,
+      curMat: matRef.current,
+      active: activeMatRef.current,
+      finish,
+      finishMod,
+      effectiveFactory,
+      uniforms,
+      invalidate: () => host.invalidate(),
+    })
+    matRef.current = next.mat
+    activeMatRef.current = next.active
+  }, [host, finish, finishMod, effectiveFactory, uniforms])
+
+  useLayoutEffect(() => {
+    const renderer = host.renderer
+    if (!renderer) return
+    shadowRef.current = syncSurfaceShadowHandle(
+      shadowRef.current,
+      renderer,
+      shadow,
+      shadowMod,
+      () => host.invalidate(),
+    )
+  }, [host, shadow, shadowMod])
 
   useLayoutEffect(() => {
     if (!captureAvailable()) {
@@ -293,25 +303,38 @@ export function Surface<TUniforms = Record<string, never>>({
       if (!renderer || texRef.current) return
       const [w, h] = sizeRef.current
       const [sx, sy] = segmentsRef.current
+      const [bx, by] = bleedRef.current
       texRef.current = createGpuSurfaceTexture(renderer)
-      geoRef.current = createPlaneGeometry(renderer.device, w, h, sx, sy)
-      geoMetaRef.current = { w, h, sx, sy }
-      matRef.current = buildMaterialFor(renderer)
-      activeMatRef.current = matRef.current
-        ? { isFinish: Boolean(finishRef.current), factory: factoryRef.current }
-        : null
+      geoRef.current = createPlaneGeometry(renderer.device, w, h, sx, sy, bx, by)
+      geoMetaRef.current = { w, h, sx, sy, bx, by }
+      if (!shadowRef.current && shadowPropRef.current && shadowModRef.current) {
+        shadowRef.current = shadowModRef.current.createGpuSurfaceShadow(renderer, shadowPropRef.current)
+        void shadowRef.current.ready.then(() => host.invalidate(), () => {})
+      }
+      if (!matRef.current) {
+        matRef.current = buildSurfaceMaterial(
+          renderer,
+          finishRef.current,
+          finishModRef.current,
+          factoryRef.current,
+          () => host.invalidate(),
+        )
+        activeMatRef.current = matRef.current
+          ? { isFinish: Boolean(finishRef.current), factory: factoryRef.current }
+          : null
+        if (matRef.current) {
+          if (uniformsRef.current !== undefined && isManifestMaterial<TUniforms>(matRef.current)) {
+            matRef.current.setUniforms(uniformsRef.current)
+          }
+          void matRef.current.ready.then(() => host.invalidate(), () => {})
+        }
+      }
       uploadStateRef.current.lastPaint = -1
       const nextCrossing = crossingRequest(crossingRef.current, inSceneRef.current)
       if (nextCrossing !== crossingRef.current) {
         crossingRef.current = nextCrossing
         syncDomHoldRef.current()
         reconcileWorkClaim()
-      }
-      if (matRef.current) {
-        if (uniformsRef.current !== undefined && isManifestMaterial<TUniforms>(matRef.current)) {
-          matRef.current.setUniforms(uniformsRef.current)
-        }
-        void matRef.current.ready.then(() => host.invalidate(), () => {})
       }
       host.invalidate()
     }
@@ -347,6 +370,8 @@ export function Surface<TUniforms = Record<string, never>>({
         lastPaint: uploadStateRef.current.lastPaint,
       }
       disposeSurfaceGpuSlots(slots)
+      shadowRef.current?.dispose()
+      shadowRef.current = null
       matRef.current = null
       activeMatRef.current = null
       geoRef.current = null
@@ -405,6 +430,9 @@ export function Surface<TUniforms = Record<string, never>>({
           pageEl: pageElRef.current,
           size: sizeRef.current,
           pixelSnap: pixelSnapRef.current,
+          bleedUvRect: computeBleedUvRect(sizeRef.current, bleedRef.current),
+          shadow: shadowRef.current,
+          lighting: host.lighting,
           viewFmt: viewFmtRef.current,
           chrome: uploadStateRef.current.chrome,
           crossing: crossingRef.current,
@@ -465,12 +493,22 @@ export function Surface<TUniforms = Record<string, never>>({
     const curGeo = geoRef.current
     if (!renderer || !curGeo) return
     const prev = geoMetaRef.current
-    if (prev && prev.w === sizeW && prev.h === sizeH && prev.sx === segX && prev.sy === segY) return
+    if (
+      prev &&
+      prev.w === sizeW &&
+      prev.h === sizeH &&
+      prev.sx === segX &&
+      prev.sy === segY &&
+      prev.bx === bleedX &&
+      prev.by === bleedY
+    ) {
+      return
+    }
     curGeo.dispose()
-    geoRef.current = createPlaneGeometry(renderer.device, sizeW, sizeH, segX, segY)
-    geoMetaRef.current = { w: sizeW, h: sizeH, sx: segX, sy: segY }
+    geoRef.current = createPlaneGeometry(renderer.device, sizeW, sizeH, segX, segY, bleedX, bleedY)
+    geoMetaRef.current = { w: sizeW, h: sizeH, sx: segX, sy: segY, bx: bleedX, by: bleedY }
     host.invalidate()
-  }, [host, sizeW, sizeH, segX, segY])
+  }, [host, sizeW, sizeH, segX, segY, bleedX, bleedY])
 
   useLayoutEffect(() => {
     const src = sourceRef.current

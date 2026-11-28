@@ -5,6 +5,7 @@
 // `@react-three/fiber`, or TypeGPU runtime code.
 
 export { Surface, type GpuViewport, type SurfaceFrameContext, type SurfacePose, type SurfacePresentation, type SurfaceProps } from './gpu/Surface'
+export type { SurfaceShadowOptions } from './gpu/surfaceShadow'
 export { SurfaceCanvas, type SurfaceCanvasProps } from './gpu/SurfaceCanvas'
 export { createManifestDriver, unlitSurfaceManifest, type ManifestAttribute, type ManifestDriver, type ManifestMaterial, type ManifestStaticTexture, type ManifestStaticTextureData, type ManifestUniformSpec, type MaterialManifest } from './gpu/manifest'
 export { loadLtcTable } from './gpu/ltc'

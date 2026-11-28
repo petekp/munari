@@ -49,6 +49,7 @@ describe('munari CLI & Materials registry', () => {
       'fisheye-lens',
       'foil',
       'vignette',
+      'bleed-glow',
       'tilt-shadow',
       'glass-refract',
       'lacquer-ltc',

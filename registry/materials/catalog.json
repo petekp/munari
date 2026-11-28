@@ -30,6 +30,13 @@
       "summary": "Smooth radial edge vignette and subtle focal glow preserving premultiplied alpha."
     },
     {
+      "name": "bleed-glow",
+      "file": "bleedGlow",
+      "manifest": "bleedGlowManifest",
+      "needsBackdrop": false,
+      "summary": "In-plane rounded optical halo spanning the bleed apron via frame.uvRect while keeping the card crisp."
+    },
+    {
       "name": "tilt-shadow",
       "file": "tiltShadow",
       "manifest": "tiltShadowManifest",
@@ -78,6 +85,12 @@
       "sourceDir": "finishes",
       "files": ["finishes.ts"],
       "summary": "Seventeen tuned SurfaceFinish presets with contrasting text colors."
+    },
+    {
+      "name": "behaviors",
+      "sourceDir": "behaviors",
+      "files": ["spring.ts", "compose.ts"],
+      "summary": "Closed-form analytic springs and composable Surface onFrame behaviors."
     },
     {
       "name": "glass",

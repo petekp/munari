@@ -37,6 +37,7 @@ import {
 import type { SurfaceFinish } from '../primitives/surface/surfaceFinish'
 import type { GpuFinishHandle } from './finishLookup'
 import type { ManifestMaterial, MaterialManifest } from './manifest'
+import type { SurfaceShadowOptions } from './surfaceShadow'
 import {
   mat4FromPositionEulerScale,
   mat4Invert,
@@ -89,6 +90,63 @@ export function useFinishModule(needed: boolean): FinishModule | null {
   return needed ? mod : null
 }
 
+// ── lazy shadow module loader ─────────────────────────────────────────────
+
+export type ShadowModule = typeof import('./surfaceShadow')
+
+let shadowModule: ShadowModule | null = null
+let shadowLoadPromise: Promise<void> | null = null
+const shadowListeners = new Set<() => void>()
+
+function loadShadowModule(): void {
+  shadowLoadPromise ??= import('./surfaceShadow').then(
+    (mod) => {
+      shadowModule = mod
+      for (const listener of [...shadowListeners]) listener()
+    },
+    (error) => {
+      shadowLoadPromise = null
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('[munari/gpu] failed to load shadow module.', error)
+      }
+    },
+  )
+}
+
+function subscribeShadowModule(listener: () => void): () => void {
+  shadowListeners.add(listener)
+  return () => shadowListeners.delete(listener)
+}
+
+export function useShadowModule(needed: boolean): ShadowModule | null {
+  useEffect(() => {
+    if (needed && !shadowModule) loadShadowModule()
+  }, [needed])
+  const mod = useSyncExternalStore(subscribeShadowModule, () => shadowModule, () => null)
+  return needed ? mod : null
+}
+
+function isBleedPair(bleed: number | readonly [number, number]): bleed is readonly [number, number] {
+  return Array.isArray(bleed)
+}
+
+export function resolveBleed(bleed?: number | readonly [number, number]): readonly [number, number] {
+  if (bleed === undefined) return [0, 0]
+  if (isBleedPair(bleed)) return [Math.max(0, bleed[0]), Math.max(0, bleed[1])]
+  const clamped = Math.max(0, bleed)
+  return [clamped, clamped]
+}
+
+export function computeBleedUvRect(
+  size: readonly [number, number],
+  bleed: readonly [number, number],
+): readonly [number, number, number, number] {
+  if (bleed[0] === 0 && bleed[1] === 0) return [0, 0, 1, 1]
+  const safeW = Math.max(1, size[0])
+  const safeH = Math.max(1, size[1])
+  return [bleed[0] / safeW, bleed[1] / safeH, (safeW + 2 * bleed[0]) / safeW, (safeH + 2 * bleed[1]) / safeH]
+}
+
 // ── public types ──────────────────────────────────────────────────────────
 
 export interface SurfacePose {
@@ -126,6 +184,7 @@ export interface SurfaceFrameContext<TUniforms = never> {
   readonly viewport: GpuViewport
   readonly pageRect: DOMRect | null
   readonly basePose: SurfacePose
+  readonly pose: SurfacePose
   setPose(pose: SurfacePose): void
   snapPose(x: number, y: number, mag?: number): PixelGridSnap
   deform(place: (x: number, y: number, index: number) => DeformedPoint): void
@@ -147,6 +206,8 @@ export interface SurfaceProps<TUniforms = Record<string, never>> {
   readonly placement?: 'match-dom' | 'manual'
   readonly segments?: readonly [number, number]
   readonly pixelSnap?: boolean
+  readonly bleed?: number | readonly [number, number]
+  readonly shadow?: boolean | SurfaceShadowOptions
   readonly finish?: SurfaceFinish
   readonly material?: MaterialManifest<TUniforms>
   readonly uniforms?: NoInfer<TUniforms>

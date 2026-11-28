@@ -28,6 +28,9 @@ interface PerfSummary {
   readonly medianMs: number
   readonly p95Ms: number
   readonly maxMs: number
+  readonly gpuPassSamples: number
+  readonly gpuPassMs: number | null
+  readonly gpuPassP95Ms: number | null
   readonly idleRenders: number
 }
 
@@ -114,6 +117,7 @@ function GpuParityApp() {
 
     window.__parityPerfSweep = async () => {
       const durations: number[] = []
+      const gpuDurations: number[] = []
       const origRaf = window.requestAnimationFrame.bind(window)
       let currentFrameMs = 0
       window.requestAnimationFrame = (cb) =>
@@ -134,6 +138,8 @@ function GpuParityApp() {
           requestGpuFrame(canvasId)
           await new Promise<void>((resolve) => origRaf(() => resolve()))
           if (currentFrameMs >= 0 && i >= 4) durations.push(currentFrameMs)
+          const gpuSample = rendererRef.current?.lastGpuPassMs?.()
+          if (gpuSample !== null && gpuSample !== undefined && i >= 4) gpuDurations.push(gpuSample)
         }
       } finally {
         keyLight.set({ x: PARITY_KEY_PARAMS.x, y: PARITY_KEY_PARAMS.y })
@@ -145,6 +151,9 @@ function GpuParityApp() {
       await new Promise<void>((resolve) => origRaf(() => resolve()))
       const sorted = [...durations].sort((a, b) => a - b)
       const q = (p: number) => sorted[Math.min(sorted.length - 1, Math.round(p * (sorted.length - 1)))] ?? 0
+      const sortedGpu = [...gpuDurations].sort((a, b) => a - b)
+      const qGpu = (p: number) =>
+        sortedGpu.length > 0 ? (sortedGpu[Math.min(sortedGpu.length - 1, Math.round(p * (sortedGpu.length - 1)))] ?? null) : null
       const r0 = getGpuHostStats(canvasId).renderCount
       await new Promise((resolve) => setTimeout(resolve, 400))
       const r1 = getGpuHostStats(canvasId).renderCount
@@ -154,6 +163,9 @@ function GpuParityApp() {
         medianMs: q(0.5),
         p95Ms: q(0.95),
         maxMs: sorted[sorted.length - 1] ?? 0,
+        gpuPassSamples: sortedGpu.length,
+        gpuPassMs: qGpu(0.5) ?? rendererRef.current?.lastGpuPassMs?.() ?? null,
+        gpuPassP95Ms: qGpu(0.95),
         idleRenders: r1 - r0,
       }
     }

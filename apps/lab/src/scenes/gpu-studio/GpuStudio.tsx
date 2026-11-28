@@ -9,19 +9,19 @@ import {
   detectHtmlInCanvas,
   getGpuHostStats,
   paintStats,
+  requestGpuFrame,
   simulateGpuDeviceLoss,
   type GpuHostStats,
   type GpuViewport,
-  type SurfaceFinish,
   type SurfaceFrameContext,
   type SurfacePose,
   type SurfacePresentation,
 } from '@petepetrash/munari/gpu'
+import { SPRING_FISHEYE, SPRING_FLIGHT, createSpring } from '../../behaviors/spring'
+import { composeBehaviors, createLiftBehavior } from '../../behaviors/compose'
 import { fisheyeLensManifest } from './materials/fisheyeLens.material.gen'
 import { flightCardManifest } from './materials/flightCard.material.gen'
-import { foilManifest } from './materials/foil.material.gen'
-import { glassRefractManifest } from './materials/glassRefract.material.gen'
-import { lacquerLtcManifest } from './materials/lacquerLtc.material.gen'
+import { MaterialsPanel } from './gpuStudioMaterials'
 import {
   FISHEYE_PARAMS,
   fisheyeDisplace,
@@ -35,6 +35,7 @@ const CANVAS_ID = 'gpu-studio'
 type StudioTab = 'flight' | 'fisheye' | 'materials'
 
 const FLIGHT_SIZE: readonly [number, number] = [340, 200]
+const FLIGHT_SHADOW = { opacity: 0.34, blur: 16, elevationScale: 0.45 } as const
 const FISHEYE_SIZE: readonly [number, number] = [360, 652]
 const FISHEYE_HEADER_H = 36
 const FISHEYE_ROW_H = 22
@@ -42,33 +43,6 @@ const FISHEYE_ROWS = Array.from({ length: 28 }, (_, i) => ({
   id: `M-${101 + i}`,
   title: `Surface queue item ${i + 1}`,
 }))
-
-const LACQUER_FINISH: SurfaceFinish = {
-  color: '#7d1924',
-  roughness: 0.14,
-  metalness: 0,
-  coat: { amount: 1, roughness: 0.04 },
-  specularIntensity: 0,
-  text: 'lit',
-  lightGain: 1,
-}
-
-const VELVET_FINISH: SurfaceFinish = {
-  color: '#1b2247',
-  roughness: 0.85,
-  metalness: 0,
-  sheen: { amount: 0.9, roughness: 0.35, color: '#6b77d4' },
-  lightGain: 2.5,
-}
-
-const GLASS_FINISH: SurfaceFinish = {
-  color: '#dce8f8',
-  roughness: 0.18,
-  metalness: 0,
-  transmission: { amount: 0.65, thickness: 18, dispersion: 0.25 },
-  coat: { amount: 0.8, roughness: 0.08 },
-  text: 'lit',
-}
 
 export interface GpuStudioHandle {
   readonly stats: () => GpuHostStats & { readonly paints: number }
@@ -78,6 +52,7 @@ export interface GpuStudioHandle {
   readonly setFisheyeFocus: (rowIndex: number | null) => void
   readonly flightCornerPoint: () => { readonly x: number; readonly y: number } | null
   readonly flightActionPoint: () => { readonly x: number; readonly y: number } | null
+  readonly flightShadowSamplePoint: () => { readonly x: number; readonly y: number } | null
   readonly fisheyePoint: (rowIndex: number, target?: 'row' | 'done') => { readonly x: number; readonly y: number } | null
 }
 
@@ -104,26 +79,48 @@ function FlightPanel({ onPresChange, flightRef }: FlightPanelProps) {
   const [count, setCount] = useState(0)
   const [pres, setPres] = useState<SurfacePresentation>('page')
 
-  const flightUniforms = useMemo(
-    () => ({
-      aeroDir: [0.6, -0.8] as const,
-      aeroAmt: lifted ? 18 : 0,
-      aeroReach: 170,
-      gloss: lifted ? 0.5 : 0,
-    }),
-    [lifted],
+  const liftBehavior = useMemo(() => createLiftBehavior({ initialLifted: true, config: SPRING_FLIGHT }), [])
+  const aeroSpring = useMemo(() => createSpring(18, SPRING_FLIGHT), [])
+  const glossSpring = useMemo(() => createSpring(0.5, SPRING_FLIGHT), [])
+  const initialFlightUniforms = useMemo(
+    () => ({ aeroDir: [0.6, -0.8] as const, aeroAmt: 18, aeroReach: 170, gloss: 0.5 }),
+    [],
   )
 
-  const handleFrame = useCallback(
-    (ctx: SurfaceFrameContext) => {
-      if (!ctx.pageRect) return
-      const pose: SurfacePose = lifted
-        ? { ...ctx.basePose, x: ctx.basePose.x + 14, y: ctx.basePose.y + 10, z: 32, rx: -0.04, ry: 0.06 }
-        : ctx.basePose
-      ctx.setPose(pose)
-      flightRef.current = { pose, viewport: ctx.viewport }
-    },
-    [lifted, flightRef],
+  useEffect(() => {
+    liftBehavior.setLifted(lifted)
+    aeroSpring.setTarget(lifted ? 18 : 0)
+    glossSpring.setTarget(lifted ? 0.5 : 0)
+    requestGpuFrame(CANVAS_ID)
+  }, [lifted, liftBehavior, aeroSpring, glossSpring])
+
+  const handleFrame = useMemo(
+    () =>
+      composeBehaviors<typeof initialFlightUniforms>(liftBehavior.behavior, (ctx) => {
+        if (!ctx.pageRect) return false
+        const aeroActive = aeroSpring.step(ctx.dtMs)
+        const glossActive = glossSpring.step(ctx.dtMs)
+        ctx.setUniforms({
+          aeroDir: [0.6, -0.8],
+          aeroAmt: aeroSpring.get().value,
+          aeroReach: 170,
+          gloss: glossSpring.get().value,
+        })
+        const v = liftBehavior.values()
+        flightRef.current = {
+          pose: {
+            ...ctx.basePose,
+            x: ctx.basePose.x + v.x,
+            y: ctx.basePose.y + v.y,
+            z: ctx.basePose.z + v.z,
+            rx: (ctx.basePose.rx ?? 0) + v.rx,
+            ry: (ctx.basePose.ry ?? 0) + v.ry,
+          },
+          viewport: ctx.viewport,
+        }
+        return aeroActive || glossActive
+      }),
+    [liftBehavior, aeroSpring, glossSpring, flightRef],
   )
 
   const handlePres = useCallback(
@@ -154,8 +151,9 @@ function FlightPanel({ onPresChange, flightRef }: FlightPanelProps) {
         inScene={lifted}
         size={FLIGHT_SIZE}
         segments={[12, 12]}
+        shadow={FLIGHT_SHADOW}
         material={flightCardManifest}
-        uniforms={flightUniforms}
+        uniforms={initialFlightUniforms}
         onFrame={handleFrame}
         onPresentationChange={handlePres}
       >
@@ -212,12 +210,21 @@ function FisheyePanel({ onPresChange, focusRowRef, fisheyeRef }: FisheyePanelPro
     return FISHEYE_ROWS.filter((r) => `${r.id} ${r.title}`.toLowerCase().includes(q))
   }, [filter])
 
+  const focusSpring = useMemo(() => createSpring(FISHEYE_SIZE[1] / 2, SPRING_FISHEYE), [])
+  const ampSpring = useMemo(() => createSpring(1, SPRING_FISHEYE), [])
+
   const handleFrame = useCallback(
     (ctx: SurfaceFrameContext) => {
       ctx.setPose(ctx.basePose)
       const activeRow = focusRowRef.current
-      const focusDomY = activeRow !== null ? FISHEYE_HEADER_H + (activeRow + 0.5) * FISHEYE_ROW_H : FISHEYE_SIZE[1] / 2
-      const amp = activeRow !== null ? FISHEYE_PARAMS.amplitude : 1
+      const targetY = activeRow !== null ? FISHEYE_HEADER_H + (activeRow + 0.5) * FISHEYE_ROW_H : FISHEYE_SIZE[1] / 2
+      const targetAmp = activeRow !== null ? FISHEYE_PARAMS.amplitude : 1
+      focusSpring.setTarget(targetY)
+      ampSpring.setTarget(targetAmp)
+      const fActive = focusSpring.step(ctx.dtMs)
+      const aActive = ampSpring.step(ctx.dtMs)
+      const focusDomY = focusSpring.get().value
+      const amp = ampSpring.get().value
       fisheyeRef.current = { pose: ctx.basePose, viewport: ctx.viewport, focusDomY, amp }
 
       const vCount = ctx.geometry.vertexCount
@@ -239,8 +246,9 @@ function FisheyePanel({ onPresChange, focusRowRef, fisheyeRef }: FisheyePanelPro
       })
       ctx.setExtraAttribute(0, slopes)
       ctx.setExtraAttribute(1, lenses)
+      return fActive || aActive
     },
-    [focusRowRef, fisheyeRef],
+    [focusRowRef, fisheyeRef, focusSpring, ampSpring],
   )
 
   return (
@@ -260,7 +268,13 @@ function FisheyePanel({ onPresChange, focusRowRef, fisheyeRef }: FisheyePanelPro
         onFrame={handleFrame}
         onPresentationChange={onPresChange}
       >
-        <div className="gpu-fisheye-panel">
+        <div
+          className="gpu-fisheye-panel"
+          onMouseLeave={() => {
+            focusRowRef.current = null
+            requestGpuFrame(CANVAS_ID)
+          }}
+        >
           <div className="gpu-fisheye-header">
             <input
               data-testid="fisheye-filter"
@@ -277,6 +291,7 @@ function FisheyePanel({ onPresChange, focusRowRef, fisheyeRef }: FisheyePanelPro
               className="gpu-fisheye-row"
               onMouseEnter={() => {
                 focusRowRef.current = i
+                requestGpuFrame(CANVAS_ID)
               }}
               onClick={() => setClickedRow(i)}
             >
@@ -298,91 +313,6 @@ function FisheyePanel({ onPresChange, focusRowRef, fisheyeRef }: FisheyePanelPro
           ))}
         </div>
       </Surface>
-    </div>
-  )
-}
-
-function MaterialsPanel({ onPresChange }: { readonly onPresChange: (p: SurfacePresentation) => void }) {
-  const foilUniforms = useMemo(() => ({ tilt: [0.38, -0.24] as const, intensity: 0.55, phase: 0.35 }), [])
-  const glassUniforms = useMemo(
-    () => ({ tint: [0.72, 0.9, 1.0] as const, amount: 0.78, shift: [0.012, 0.004] as const, highlight: 0.16 }),
-    [],
-  )
-
-  const handleBackdropFrame = useCallback((ctx: SurfaceFrameContext) => {
-    if (!ctx.pageRect) return
-    ctx.setPose({ ...ctx.basePose, z: -12 })
-  }, [])
-
-  const handleGlassFrame = useCallback((ctx: SurfaceFrameContext) => {
-    if (!ctx.pageRect) return
-    ctx.setPose({ ...ctx.basePose, z: 24 })
-  }, [])
-
-  return (
-    <div className="gpu-studio-stage">
-      <div className="gpu-materials-grid">
-        <Surface canvasId={CANVAS_ID} inScene size={[210, 150]} finish={LACQUER_FINISH} pixelSnap onPresentationChange={onPresChange}>
-          <div className="gpu-finish-card" data-testid="finish-lacquer" style={{ color: '#fde8e8' }}>
-            <strong>Lacquer Crimson</strong>
-            <span>pixelSnap + lit text</span>
-          </div>
-        </Surface>
-
-        <Surface canvasId={CANVAS_ID} inScene size={[210, 150]} finish={VELVET_FINISH}>
-          <div className="gpu-finish-card" data-testid="finish-velvet" style={{ color: '#e0e7ff' }}>
-            <strong>Velvet Midnight</strong>
-            <span>Sheen + 2.5x key gain</span>
-          </div>
-        </Surface>
-
-        <Surface canvasId={CANVAS_ID} inScene size={[210, 150]} finish={GLASS_FINISH}>
-          <div className="gpu-finish-card" data-testid="finish-glass" style={{ color: '#0f172a' }}>
-            <strong>Glass Frosted</strong>
-            <span>Frosted glass finish</span>
-          </div>
-        </Surface>
-
-        <Surface canvasId={CANVAS_ID} inScene size={[210, 150]} material={foilManifest} uniforms={foilUniforms}>
-          <div className="gpu-foil-card">
-            <strong>Foil Manifest</strong>
-            <span>0 TypeGPU runtime</span>
-          </div>
-        </Surface>
-
-        <Surface canvasId={CANVAS_ID} inScene size={[210, 150]} material={lacquerLtcManifest}>
-          <div className="gpu-finish-card" data-testid="manifest-lacquer-ltc" style={{ color: '#fde8e8', background: 'transparent' }}>
-            <strong>Lacquer LTC</strong>
-            <span>Heitz 64x64 rgba16float</span>
-          </div>
-        </Surface>
-      </div>
-
-      <div className="gpu-backdrop-stage">
-        <div className="gpu-backdrop-back">
-          <Surface canvasId={CANVAS_ID} inScene size={[210, 120]} onFrame={handleBackdropFrame}>
-            <div className="gpu-backdrop-card" data-testid="backdrop-source">
-              <strong>Backdrop Signal</strong>
-              <span>Pass 1 opaque</span>
-            </div>
-          </Surface>
-        </div>
-        <div className="gpu-backdrop-front">
-          <Surface
-            canvasId={CANVAS_ID}
-            inScene
-            size={[170, 120]}
-            material={glassRefractManifest}
-            uniforms={glassUniforms}
-            onFrame={handleGlassFrame}
-          >
-            <div className="gpu-glass-card" data-testid="backdrop-glass">
-              <strong>Glass Refract</strong>
-              <span>@group(2)</span>
-            </div>
-          </Surface>
-        </div>
-      </div>
     </div>
   )
 }
@@ -426,6 +356,7 @@ export function GpuStudioApp() {
       presentation: () => presRef.current,
       setFisheyeFocus: (row) => {
         fisheyeFocusRef.current = row
+        requestGpuFrame(CANVAS_ID)
       },
       flightCornerPoint: () => {
         const snap = flightRef.current
@@ -438,6 +369,17 @@ export function GpuStudioApp() {
         const off = localOffsetInCard('[data-testid="flight-card-root"]', '[data-testid="flight-action"]', FLIGHT_SIZE)
         if (!off) return null
         return projectSurfaceLocalPoint(snap.pose, off.cx, off.cy, 0, snap.viewport)
+      },
+      flightShadowSamplePoint: () => {
+        const snap = flightRef.current
+        if (!snap) return null
+        return projectSurfaceLocalPoint(
+          { ...snap.pose, z: 0, rx: 0, ry: 0, rz: 0 },
+          FLIGHT_SIZE[0] / 2 + 16,
+          -FLIGHT_SIZE[1] / 2 + 24,
+          -0.5,
+          snap.viewport,
+        )
       },
       fisheyePoint: (rowIndex, target = 'row') => {
         const snap = fisheyeRef.current
@@ -513,7 +455,7 @@ export function GpuStudioApp() {
               fisheyeRef={fisheyeRef}
             />
           )}
-          {tab === 'materials' && <MaterialsPanel onPresChange={setPres} />}
+          {tab === 'materials' && <MaterialsPanel canvasId={CANVAS_ID} onPresChange={setPres} />}
         </div>
       </SurfaceCanvas>
     </div>
