@@ -51,7 +51,7 @@ interface MaterialsPanelProps {
 export function MaterialsPanel({ canvasId, onPresChange }: MaterialsPanelProps) {
   const foilUniforms = useMemo(() => ({ tilt: [0.38, -0.24] as const, intensity: 0.55, phase: 0.35 }), [])
   const glassUniforms = useMemo(
-    () => ({ tint: [0.76, 0.92, 1.0] as const, amount: 0.62, shift: [0.006, 0.002] as const, highlight: 0.22 }),
+    () => ({ tint: [0.88, 0.95, 1.0] as const, amount: 0.34, shift: [0, 0] as const, highlight: 0.24 }),
     [],
   )
   const glassOffsetRef = useRef({ x: 0, y: 0 })
