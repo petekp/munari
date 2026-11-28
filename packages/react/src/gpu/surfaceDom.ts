@@ -11,13 +11,10 @@
 import { useEffect, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import {
   DEFAULT_TIERS,
-  bridgeHover,
   chromeEquals,
   clampScale,
   clampTiers,
-  guardPointerCapture,
   holdMotion,
-  lastPointerPlace,
   maxTier,
   measureSurfaceChrome,
   pixelGridSnap,
@@ -422,6 +419,12 @@ export function isManifestMaterial<T>(mat: GpuMaterial | null): mat is ManifestM
   return Boolean(mat && 'setUniforms' in mat)
 }
 
+let hoverBridge: ((pageNode: HTMLElement) => void) | null = null
+
+export function registerHoverBridge(fn: (pageNode: HTMLElement) => void): void {
+  hoverBridge = fn
+}
+
 export function reparentLiveDom(
   liveNode: HTMLElement | null,
   pageNode: HTMLElement | null,
@@ -438,8 +441,7 @@ export function reparentLiveDom(
     if (!useCapture) {
       state.placeholder?.remove()
       state.placeholder = null
-      const place = lastPointerPlace()
-      if (place) bridgeHover(pageNode, place.x, place.y)
+      hoverBridge?.(pageNode)
       releaseMotion(state.heldMotion)
       state.heldMotion = []
     } else {
@@ -480,7 +482,13 @@ export function makeCaptureRoot(): HTMLDivElement {
   el.className = 'ui-root'
   el.style.display = 'block'
   el.style.backgroundColor = 'transparent'
-  guardPointerCapture(el)
+  el.addEventListener(
+    'gotpointercapture',
+    (e) => {
+      if (e.target instanceof Element) e.target.releasePointerCapture?.(e.pointerId)
+    },
+    true,
+  )
   return el
 }
 
@@ -510,12 +518,13 @@ export function liveRootStyle(size: readonly [number, number] | undefined) {
   return { width: size ? size[0] : undefined, height: size ? size[1] : undefined }
 }
 
-export function resolveSurfaceViewFormat(
+export function resolveSurfaceViewFormat<TUniforms>(
   finish: SurfaceFinish | undefined,
   factory: GpuMaterialFactory | undefined,
+  material?: MaterialManifest<TUniforms>,
 ): 'rgba8unorm' | 'rgba8unorm-srgb' {
   if (finish) return 'rgba8unorm'
-  return factory?.sampleViewFormat ?? 'rgba8unorm'
+  return factory?.sampleViewFormat ?? material?.sampleViewFormat ?? 'rgba8unorm'
 }
 
 export function advanceSurfacePass(params: {

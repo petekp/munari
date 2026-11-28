@@ -2,6 +2,7 @@
   "name": "@munari/core",
   "version": "0.0.0",
   "private": true,
+  "sideEffects": false,
   "type": "module",
   "description": "Internal DOM capture, renderer handoff, input routing, and rendering laws. No runtime dependencies; bundled into the React package.",
   "exports": {

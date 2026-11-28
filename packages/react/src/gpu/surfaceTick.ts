@@ -10,16 +10,12 @@ import {
   type DomTextureSource,
   type SurfaceChrome,
 } from '@munari/core'
-import type { SurfaceFinish } from '../primitives/surface/surfaceFinish'
-import { createManifestMaterial, unlitSurfaceManifest } from './manifest'
 import {
   applyPixelSnap,
   buildWorldAndMvp,
   computeBasePose,
-  isFinishMaterial,
   isManifestMaterial,
   snapSurfacePose,
-  type FinishModule,
   type ShadowModule,
   type SurfaceFrameContext,
   type SurfacePose,
@@ -27,80 +23,65 @@ import {
 } from './surfaceDom'
 import type { Mat4 } from './math'
 import type { ViewportState } from './host'
+import type { ManifestDriver, MaterialManifest } from './manifest'
+import type { GpuEngine } from './gpuEngine'
 import type { SurfaceLighting } from '../primitives/surface/surfaceLight'
 import type { GpuSurfaceShadowHandle, SurfaceShadowOptions } from './surfaceShadow'
-import {
-  deformGpuGeometry,
-  resolveKeyPos,
-  type GpuDrawItem,
-  type GpuGeometry,
-  type GpuMaterial,
-  type GpuMaterialFactory,
-  type GpuPassReceipt,
-  type GpuRenderer,
-  type GpuSurfaceTexture,
+import type {
+  GpuDrawItem,
+  GpuGeometry,
+  GpuMaterial,
+  GpuMaterialFactory,
+  GpuPassReceipt,
+  GpuRenderer,
+  GpuSurfaceTexture,
 } from './webgpu'
 
-export interface ActiveMaterialSlot {
-  readonly isFinish: boolean
-  readonly factory: GpuMaterialFactory | undefined
+export interface GeoMeta {
+  readonly w: number
+  readonly h: number
+  readonly sx: number
+  readonly sy: number
+  readonly bx: number
+  readonly by: number
 }
 
-export interface SyncedMaterialSlot {
-  readonly mat: GpuMaterial | null
-  readonly active: ActiveMaterialSlot | null
-}
-
-/** Builds a finish, custom factory, or default unlit WebGPU material for one Surface. */
-export function buildSurfaceMaterial(
+export function syncSurfaceGeometrySize(
+  engine: Pick<GpuEngine, 'createPlaneGeometry'>,
   renderer: GpuRenderer,
-  finish: SurfaceFinish | undefined,
-  finishMod: FinishModule | null,
-  factory: GpuMaterialFactory | undefined,
-  invalidate: () => void,
-): GpuMaterial | null {
-  if (finish) {
-    return finishMod ? finishMod.createGpuFinishMaterial(renderer, finish, invalidate) : null
+  geoRef: { current: GpuGeometry | null },
+  geoMetaRef: { current: GeoMeta | null },
+  next: GeoMeta,
+): boolean {
+  const curGeo = geoRef.current
+  const prev = geoMetaRef.current
+  if (!curGeo) return false
+  if (prev && prev.w === next.w && prev.h === next.h && prev.sx === next.sx && prev.sy === next.sy && prev.bx === next.bx && prev.by === next.by) {
+    return false
   }
-  if (factory) return factory.create(renderer)
-  return createManifestMaterial(renderer, unlitSurfaceManifest)
+  curGeo.dispose()
+  geoRef.current = engine.createPlaneGeometry(renderer.device, next.w, next.h, next.sx, next.sy, next.bx, next.by)
+  geoMetaRef.current = next
+  return true
 }
 
-/** Reconciles a Surface's material slot on prop/finish/uniform changes without leaking pipelines. */
-export function syncSurfaceMaterialSlot<TUniforms>(params: {
-  readonly renderer: GpuRenderer
-  readonly curMat: GpuMaterial | null
-  readonly active: ActiveMaterialSlot | null
-  readonly finish: SurfaceFinish | undefined
-  readonly finishMod: FinishModule | null
-  readonly effectiveFactory: GpuMaterialFactory | undefined
-  readonly uniforms: TUniforms | undefined
-  readonly invalidate: () => void
-}): SyncedMaterialSlot {
-  const { renderer, curMat, active, finish, finishMod, effectiveFactory, uniforms, invalidate } = params
-  const isFin = Boolean(finish)
-  const kindChanged =
-    !curMat || !active || active.isFinish !== isFin || (!isFin && active.factory !== effectiveFactory)
-  if (!kindChanged && curMat) {
-    if (finish && isFinishMaterial(curMat)) {
-      curMat.updateFinish(finish)
-    } else if (!isFin && uniforms !== undefined && isManifestMaterial<TUniforms>(curMat)) {
-      curMat.setUniforms(uniforms)
-    }
-    invalidate()
-    return { mat: curMat, active }
+export interface ManifestDriverCache<TUniforms> {
+  material: MaterialManifest<TUniforms>
+  driver: ManifestDriver<TUniforms>
+}
+
+export function resolveSurfaceFactory<TUniforms>(
+  engine: GpuEngine,
+  factoryProp: GpuMaterialFactory | undefined,
+  materialProp: MaterialManifest<TUniforms> | undefined,
+  cacheRef: { current: ManifestDriverCache<TUniforms> | null },
+): GpuMaterialFactory | undefined {
+  if (factoryProp) return factoryProp
+  if (!materialProp) return undefined
+  if (cacheRef.current?.material !== materialProp) {
+    cacheRef.current = { material: materialProp, driver: engine.createManifestDriver(materialProp) }
   }
-  curMat?.dispose()
-  const nextMat = buildSurfaceMaterial(renderer, finish, finishMod, effectiveFactory, invalidate)
-  const nextActive: ActiveMaterialSlot | null = nextMat
-    ? { isFinish: isFin, factory: effectiveFactory }
-    : null
-  if (nextMat) {
-    if (uniforms !== undefined && isManifestMaterial<TUniforms>(nextMat)) nextMat.setUniforms(uniforms)
-    void nextMat.ready.then(invalidate, () => {})
-  }
-  invalidate()
-  return { mat: nextMat, active: nextActive }
+  return cacheRef.current.driver.factory
 }
 
 /** Synchronizes a Surface's lazy grounded shadow handle against current options. */
@@ -150,6 +131,7 @@ export interface SurfaceTickInput<TUniforms> {
   readonly setPose: (pose: SurfacePose) => void
   readonly worldMat: Mat4
   readonly invWorldMat: Mat4
+  readonly engine: Pick<GpuEngine, 'deformGpuGeometry' | 'resolveKeyPos'>
   readonly onFrame?: (ctx: SurfaceFrameContext<TUniforms>) => boolean | void
   readonly setFrameClaim: (active: boolean) => void
   readonly onPassComplete: (receipt: GpuPassReceipt) => void
@@ -219,7 +201,7 @@ export function runSurfaceTick<TUniforms>(
       setPose(p)
     },
     snapPose: (x, y, mag) => snapSurfacePose(x, y, size, viewport, src, mag),
-    deform: (place) => deformGpuGeometry(geo, size, place),
+    deform: (place) => input.engine.deformGpuGeometry(geo, size, place),
     setExtraAttribute: (slot, data) => geo.setExtraAttribute(slot, data),
     setUniforms: (values) => {
       if (isManifestMaterial<TUniforms>(mat)) mat.setUniforms(values)
@@ -248,7 +230,7 @@ export function runSurfaceTick<TUniforms>(
   }
 
   if (shadow && !crossingDraws(crossing.phase).page) {
-    const keyPos = resolveKeyPos(viewport, lighting)
+    const keyPos = input.engine.resolveKeyPos(viewport, lighting)
     const shadowItem = shadow.updateDrawItem({
       size,
       radii: chrome.radii,

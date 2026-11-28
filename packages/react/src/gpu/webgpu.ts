@@ -9,7 +9,7 @@
 // module owns device creation & command submission and re-exports geometry types.
 
 import type { BackdropBlurEngine } from './backdropBlur'
-import { createGpuTimestampTimer } from './gpuTiming'
+import type { GpuTimestampTimer } from './gpuTiming'
 import { type Mat4 } from './math'
 import {
   FRAME_UNIFORM_BYTES,
@@ -186,6 +186,15 @@ function popDevScope(device: GPUDevice, pushError: (msg: string) => void): void 
   })
 }
 
+const NOOP_GPU_TIMER: GpuTimestampTimer = {
+  pass1Writes: () => undefined,
+  pass2Writes: () => undefined,
+  resolve() {},
+  readAfterSubmit() {},
+  lastMs: () => null,
+  dispose() {},
+}
+
 export async function createGpuRenderer(
   canvas: HTMLCanvasElement,
   onDeviceLost?: (reason: string) => void,
@@ -199,7 +208,9 @@ export async function createGpuRenderer(
     requiredFeatures: hasTimestampQuery ? ['timestamp-query'] : [],
     requiredLimits: { maxTextureDimension2D },
   })
-  const gpuTimer = createGpuTimestampTimer(device, hasTimestampQuery)
+  const gpuTimer = hasTimestampQuery
+    ? (await import('./gpuTiming')).createGpuTimestampTimer(device, true)
+    : NOOP_GPU_TIMER
   const validationErrors: string[] = []
   const pushValidationError = (msg: string) => {
     if (validationErrors.length >= MAX_VALIDATION_ERRORS) validationErrors.shift()

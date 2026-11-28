@@ -24,8 +24,10 @@ import {
   mat4Multiply,
   mat4PerspectiveZeroToOne,
 } from './math'
-import { createGpuRenderer, resolveFrameContext, type GpuDrawItem, type GpuRenderer } from './webgpu'
-import { GpuHostContext, getOrCreateGpuHost, hostInternals, installPointerGate } from './host'
+import type { GpuEngine } from './gpuEngine'
+import type { GpuDrawItem, GpuRenderer } from './webgpu'
+import { GpuHostContext, getOrCreateGpuHost, hostInternals } from './host'
+import { registerHoverBridge } from './surfaceDom'
 
 // Same 10s guard window as Three SurfaceCanvas (decisions.md #73).
 const REPEATED_LOSS_MS = 10_000
@@ -86,6 +88,7 @@ export function SurfaceCanvas({
     let scheduled = false
     let prevTime = performance.now()
     const frameTail = new Float32Array(24)
+    let loadedEngine: GpuEngine | null = null
     let renderer: GpuRenderer | null = null
     let stopGate = () => {}
 
@@ -111,7 +114,7 @@ export function SurfaceCanvas({
 
     const renderFrame = (explicitDtMs?: number): boolean => {
       if (explicitDtMs === undefined) scheduled = false
-      if (disposed || !renderer) return false
+      if (disposed || !renderer || !loadedEngine) return false
       const now = performance.now()
       const dtMs =
         explicitDtMs !== undefined
@@ -134,7 +137,7 @@ export function SurfaceCanvas({
           else items.push(item)
         }
       }
-      renderer.render(items, resolveFrameContext(host.viewport, host.lighting, elapsedMs, dtMs, frameTail))
+      renderer.render(items, loadedEngine.resolveFrameContext(host.viewport, host.lighting, elapsedMs, dtMs, frameTail))
       host.renderCount += 1
 
       if (explicitDtMs === undefined && frameloopRef.current !== 'manual' && (frameloopRef.current === 'always' || host.workClaims() > 0)) {
@@ -171,6 +174,8 @@ export function SurfaceCanvas({
       cancelAnimationFrame(rafId)
       internal?.setManualStepper(null)
       stopGate()
+      loadedEngine = null
+      internal?.setEngine(null)
       host.renderer = null
       host.canvas = null
       renderer = null
@@ -185,37 +190,51 @@ export function SurfaceCanvas({
       else setMountEpoch((e) => e + 1)
     }
 
-    void createGpuRenderer(canvasEl, handleLoss).then(
-      (r) => {
+    if (!globalThis.navigator?.gpu) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('[munari/gpu] WebGPU unavailable; staying on retained page HTML.')
+      }
+      setDegraded(true)
+      return
+    }
+
+    void import('./gpuEngine')
+      .then(async (engine) => {
+        if (disposed) return
+        registerHoverBridge(engine.bridgeHoverAtLastPointer)
+        const r = await engine.createGpuRenderer(canvasEl, handleLoss)
         if (disposed) {
           r.dispose()
           return
         }
+        loadedEngine = engine
         renderer = r
+        internal?.setEngine(engine)
         host.renderer = r
         host.canvas = canvasEl
         syncViewport()
-        stopGate = installPointerGate(host, canvasEl, pointerMode)
+        stopGate = engine.installPointerGate(host, canvasEl, pointerMode)
         onReadyRef.current?.(r)
         if (internal) {
           for (const fn of internal.readyListeners) fn()
         }
         schedule()
-      },
-      (err) => {
+      })
+      .catch((err) => {
         if (disposed) return
         if (process.env.NODE_ENV !== 'production') {
           console.warn('[munari/gpu] WebGPU unavailable; staying on retained page HTML.', err)
         }
         setDegraded(true)
-      },
-    )
+      })
 
     return () => {
       disposed = true
       cancelPendingRef.current = null
       cancelAnimationFrame(rafId)
       internal?.setManualStepper(null)
+      internal?.setEngine(null)
+      loadedEngine = null
       ro.disconnect()
       window.removeEventListener('scroll', onScroll, true)
       stopGate()

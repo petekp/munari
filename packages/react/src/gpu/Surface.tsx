@@ -34,16 +34,10 @@ import {
   type SurfaceIdentity,
   type SurfaceReadiness,
 } from '@munari/core'
-import { createManifestDriver } from './manifest'
 import { mat4Identity, type Mat4 } from './math'
-import {
-  createGpuSurfaceTexture,
-  createPlaneGeometry,
-  type GpuGeometry,
-  type GpuMaterial,
-  type GpuSurfaceTexture,
-} from './webgpu'
-import { GpuHostContext, getOrCreateGpuHost, type RegisteredSurface } from './host'
+import type { ActiveMaterialSlot } from './gpuEngine'
+import type { GpuGeometry, GpuMaterial, GpuSurfaceTexture } from './webgpu'
+import { GpuHostContext, getOrCreateGpuHost, hostInternals, type RegisteredSurface } from './host'
 import {
   advanceSurfacePass,
   buildSurfaceSlotStyle,
@@ -69,13 +63,7 @@ import {
   type SurfaceProps,
 } from './surfaceDom'
 import type { GpuSurfaceShadowHandle } from './surfaceShadow'
-import {
-  buildSurfaceMaterial,
-  runSurfaceTick,
-  syncSurfaceMaterialSlot,
-  syncSurfaceShadowHandle,
-  type ActiveMaterialSlot,
-} from './surfaceTick'
+import { resolveSurfaceFactory, runSurfaceTick, syncSurfaceGeometrySize, syncSurfaceShadowHandle, type GeoMeta, type ManifestDriverCache } from './surfaceTick'
 
 export type {
   GpuViewport,
@@ -125,10 +113,7 @@ export function Surface<TUniforms = Record<string, never>>({
   const [hasMeasured, setHasMeasured] = useState(false)
   const [slotPinned, setSlotPinned] = useState(false)
   const effectiveSize: readonly [number, number] = size ?? measured
-
-  const manifestDriver = useMemo(() => (materialProp ? createManifestDriver(materialProp) : null), [materialProp])
-  const effectiveFactory = materialFactory ?? manifestDriver?.factory
-  const viewFmt = resolveSurfaceViewFormat(finish, effectiveFactory)
+  const viewFmt = resolveSurfaceViewFormat(finish, materialFactory, materialProp)
 
   const sizeRef = useRef(effectiveSize)
   sizeRef.current = effectiveSize
@@ -167,12 +152,15 @@ export function Surface<TUniforms = Record<string, never>>({
   dockElRef.current = dockEl
   const liveRootRef = useRef(liveRoot)
   liveRootRef.current = liveRoot
-  const factoryRef = useRef(effectiveFactory)
-  factoryRef.current = effectiveFactory
+  const materialFactoryRef = useRef(materialFactory)
+  materialFactoryRef.current = materialFactory
+  const materialPropRef = useRef(materialProp)
+  materialPropRef.current = materialProp
+  const manifestDriverRef = useRef<ManifestDriverCache<TUniforms> | null>(null)
   const segmentsRef = useRef(segments)
   segmentsRef.current = segments
   const prevLiveRef = useRef(live)
-  const geoMetaRef = useRef<{ w: number; h: number; sx: number; sy: number; bx: number; by: number } | null>(null)
+  const geoMetaRef = useRef<GeoMeta | null>(null)
   const activeMatRef = useRef<ActiveMaterialSlot | null>(null)
 
   const sourceRef = useRef<DomTextureSource | null>(null)
@@ -259,20 +247,21 @@ export function Surface<TUniforms = Record<string, never>>({
 
   useLayoutEffect(() => {
     const renderer = host.renderer
-    if (!renderer) return
-    const next = syncSurfaceMaterialSlot({
+    const engine = hostInternals.get(host)?.engine
+    if (!renderer || !engine) return
+    const next = engine.syncSurfaceMaterialSlot({
       renderer,
       curMat: matRef.current,
       active: activeMatRef.current,
       finish,
       finishMod,
-      effectiveFactory,
+      effectiveFactory: resolveSurfaceFactory(engine, materialFactory, materialProp, manifestDriverRef),
       uniforms,
       invalidate: () => host.invalidate(),
     })
     matRef.current = next.mat
     activeMatRef.current = next.active
-  }, [host, finish, finishMod, effectiveFactory, uniforms])
+  }, [host, finish, finishMod, materialFactory, materialProp, uniforms])
 
   useLayoutEffect(() => {
     const renderer = host.renderer
@@ -294,27 +283,29 @@ export function Surface<TUniforms = Record<string, never>>({
     let source: DomTextureSource | null = null
     const setupGpu = () => {
       const renderer = host.renderer
-      if (!renderer || texRef.current) return
+      const engine = hostInternals.get(host)?.engine
+      if (!renderer || !engine || texRef.current) return
       const [w, h] = sizeRef.current
       const [sx, sy] = segmentsRef.current
       const [bx, by] = bleedRef.current
-      texRef.current = createGpuSurfaceTexture(renderer)
-      geoRef.current = createPlaneGeometry(renderer.device, w, h, sx, sy, bx, by)
+      texRef.current = engine.createGpuSurfaceTexture(renderer)
+      geoRef.current = engine.createPlaneGeometry(renderer.device, w, h, sx, sy, bx, by)
       geoMetaRef.current = { w, h, sx, sy, bx, by }
       if (!shadowRef.current && shadowPropRef.current && shadowModRef.current) {
         shadowRef.current = shadowModRef.current.createGpuSurfaceShadow(renderer, shadowPropRef.current)
         void shadowRef.current.ready.then(() => host.invalidate(), () => {})
       }
       if (!matRef.current) {
-        matRef.current = buildSurfaceMaterial(
+        const factory = resolveSurfaceFactory(engine, materialFactoryRef.current, materialPropRef.current, manifestDriverRef)
+        matRef.current = engine.buildSurfaceMaterial(
           renderer,
           finishRef.current,
           finishModRef.current,
-          factoryRef.current,
+          factory,
           () => host.invalidate(),
         )
         activeMatRef.current = matRef.current
-          ? { isFinish: Boolean(finishRef.current), factory: factoryRef.current }
+          ? { isFinish: Boolean(finishRef.current), factory }
           : null
         if (matRef.current) {
           if (uniformsRef.current !== undefined && isManifestMaterial<TUniforms>(matRef.current)) {
@@ -401,7 +392,8 @@ export function Surface<TUniforms = Record<string, never>>({
         const tex = texRef.current
         const geo = geoRef.current
         const mat = matRef.current
-        if (!src || !tex || !geo || !mat || !host.renderer) {
+        const engine = hostInternals.get(host)?.engine
+        if (!src || !tex || !geo || !mat || !host.renderer || !engine) {
           setFrameClaim(false)
           return null
         }
@@ -441,6 +433,7 @@ export function Surface<TUniforms = Record<string, never>>({
           setPose: (p) => { poseRef.current = p },
           worldMat: worldMatRef.current,
           invWorldMat: invWorldMatRef.current,
+          engine,
           onFrame: onFrameRef.current,
           setFrameClaim,
           onPassComplete(receipt) {
@@ -489,24 +482,11 @@ export function Surface<TUniforms = Record<string, never>>({
 
   useLayoutEffect(() => {
     const renderer = host.renderer
-    const curGeo = geoRef.current
-    if (!renderer || !curGeo) return
-    const prev = geoMetaRef.current
-    if (
-      prev &&
-      prev.w === sizeW &&
-      prev.h === sizeH &&
-      prev.sx === segX &&
-      prev.sy === segY &&
-      prev.bx === bleedX &&
-      prev.by === bleedY
-    ) {
-      return
+    const engine = hostInternals.get(host)?.engine
+    if (!renderer || !engine) return
+    if (syncSurfaceGeometrySize(engine, renderer, geoRef, geoMetaRef, { w: sizeW, h: sizeH, sx: segX, sy: segY, bx: bleedX, by: bleedY })) {
+      host.invalidate()
     }
-    curGeo.dispose()
-    geoRef.current = createPlaneGeometry(renderer.device, sizeW, sizeH, segX, segY, bleedX, bleedY)
-    geoMetaRef.current = { w: sizeW, h: sizeH, sx: segX, sy: segY, bx: bleedX, by: bleedY }
-    host.invalidate()
   }, [host, sizeW, sizeH, segX, segY, bleedX, bleedY])
 
   useLayoutEffect(() => {
