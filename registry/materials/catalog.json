@@ -49,6 +49,27 @@
       "manifest": "lacquerLtcManifest",
       "needsBackdrop": false,
       "summary": "Opaque clearcoat lacquer shaded by Heitz 2016 LTC rectangular softbox LUTs."
+    },
+    {
+      "name": "finish-opaque",
+      "file": "finishOpaque",
+      "manifest": "finishOpaqueManifest",
+      "needsBackdrop": false,
+      "summary": "Physical opaque SurfaceFinish shader supporting punctual & LTC softbox lighting, clearcoat, sheen, anisotropy, and relief."
+    },
+    {
+      "name": "finish-layered",
+      "file": "finishLayered",
+      "manifest": "finishLayeredManifest",
+      "needsBackdrop": false,
+      "summary": "Physical opaque SurfaceFinish shader adding Belcour-Barla thin film, Voronoi crackle, crumple, and paper fibers."
+    },
+    {
+      "name": "finish-transmissive",
+      "file": "finishTransmissive",
+      "manifest": "finishTransmissiveManifest",
+      "needsBackdrop": true,
+      "summary": "Physical transmissive glass SurfaceFinish shader with Beer-Lambert tinting, dispersion, and blurred backdrop refraction."
     }
   ],
   "tools": [

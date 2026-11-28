@@ -20,7 +20,6 @@ import {
   crossingDraws,
   crossingFrame,
   crossingPresentation,
-  crossingProgress,
   crossingRequest,
   readinessAtBirth,
   readinessReborn,
@@ -40,7 +39,6 @@ import { mat4Identity, type Mat4 } from './math'
 import {
   createGpuSurfaceTexture,
   createPlaneGeometry,
-  deformGpuGeometry,
   type GpuGeometry,
   type GpuMaterial,
   type GpuRenderer,
@@ -49,10 +47,7 @@ import {
 import { GpuHostContext, getOrCreateGpuHost, type RegisteredSurface } from './host'
 import {
   advanceSurfacePass,
-  applyPixelSnap,
   buildSurfaceSlotStyle,
-  buildWorldAndMvp,
-  computeBasePose,
   disposeSurfaceGpuSlots,
   dockSourceHost,
   isFinishMaterial,
@@ -62,7 +57,6 @@ import {
   reparentLiveDom,
   resolveInitialScale,
   resolveSurfaceViewFormat,
-  snapSurfacePose,
   syncUploadIfNeeded,
   updatePageVisibility,
   useFinishModule,
@@ -71,6 +65,7 @@ import {
   type SurfacePresentation,
   type SurfaceProps,
 } from './surfaceDom'
+import { runSurfaceTick } from './surfaceTick'
 
 export type {
   GpuViewport,
@@ -82,6 +77,19 @@ export type {
 
 let surfaceSeq = 0
 let tokenSeq = 1
+
+function resolvePageSlotSize(
+  size: readonly [number, number] | undefined,
+  slotPinned: boolean,
+  hasMeasured: boolean,
+  measured: readonly [number, number],
+): readonly [number, number] | undefined {
+  return size ?? (slotPinned && hasMeasured ? measured : undefined)
+}
+
+function liveRootStyle(size: readonly [number, number] | undefined) {
+  return { width: size ? size[0] : undefined, height: size ? size[1] : undefined }
+}
 
 export function Surface<TUniforms = Record<string, never>>({
   canvasId = '',
@@ -111,10 +119,10 @@ export function Surface<TUniforms = Record<string, never>>({
   const [captureRoot] = useState(makeCaptureRoot)
 
   const finishMod = useFinishModule(Boolean(finish))
-  const [measured, setMeasured] = useState<readonly [number, number]>(() => [
-    size ? size[0] : 320,
-    size ? size[1] : 180,
-  ])
+  const [size0, size1] = size ?? [320, 180]
+  const [measured, setMeasured] = useState<readonly [number, number]>(() => [size0, size1])
+  const [hasMeasured, setHasMeasured] = useState(false)
+  const [slotPinned, setSlotPinned] = useState(false)
   const effectiveSize: readonly [number, number] = size ?? measured
 
   const manifestDriver = useMemo(() => (materialProp ? createManifestDriver(materialProp) : null), [materialProp])
@@ -214,6 +222,7 @@ export function Surface<TUniforms = Record<string, never>>({
     const pres = crossingPresentation(crossingRef.current.phase)
     const nextPres: SurfacePresentation = pres.gl ? 'scene' : pres.page ? 'page' : 'none'
 
+    setSlotPinned(Boolean(exclusive && !draws.page))
     updatePageVisibility(pageNode, exclusive && !draws.page)
     writeCaptureBodyColor(captureRoot, finishRef.current?.color ?? null, exclusive && draws.page, sourceRef.current)
     reparentLiveDom(liveRootRef.current, pageNode, captureRoot, exclusive, draws, holdStateRef.current, sourceRef.current)
@@ -228,18 +237,22 @@ export function Surface<TUniforms = Record<string, never>>({
 
   const buildMaterialFor = useCallback((renderer: GpuRenderer): GpuMaterial | null => {
     if (finishRef.current) {
-      return finishModRef.current ? finishModRef.current.createGpuFinishMaterial(renderer, finishRef.current) : null
+      return finishModRef.current
+        ? finishModRef.current.createGpuFinishMaterial(renderer, finishRef.current, () => host.invalidate())
+        : null
     }
     if (factoryRef.current) return factoryRef.current.create(renderer)
     return createManifestMaterial(renderer, unlitSurfaceManifest)
-  }, [])
+  }, [host])
 
   useLayoutEffect(() => {
-    if (size || !pageEl) return
-    return observeElementSize(pageEl, (w, h) => {
+    const target = liveRoot ?? pageEl
+    if (size || !target) return
+    return observeElementSize(target, (w, h) => {
+      setHasMeasured(true)
       setMeasured((cur) => (cur[0] === w && cur[1] === h ? cur : [w, h]))
     })
-  }, [pageEl, size])
+  }, [liveRoot, pageEl, size])
 
   useLayoutEffect(() => {
     const renderer = host.renderer
@@ -251,7 +264,7 @@ export function Surface<TUniforms = Record<string, never>>({
       !curMat || !active || active.isFinish !== isFin || (!isFin && active.factory !== effectiveFactory)
     if (!kindChanged && curMat) {
       if (finish && isFinishMaterial(curMat)) {
-        curMat.updateFinish(finish, host.lighting, host.viewport.width, host.viewport.height, host.viewport.cameraZ)
+        curMat.updateFinish(finish)
       } else if (!isFin && uniforms !== undefined && isManifestMaterial<TUniforms>(curMat)) {
         curMat.setUniforms(uniforms)
       }
@@ -264,7 +277,7 @@ export function Surface<TUniforms = Record<string, never>>({
     activeMatRef.current = nextMat ? { isFinish: isFin, factory: effectiveFactory } : null
     if (nextMat) {
       if (uniforms !== undefined && isManifestMaterial<TUniforms>(nextMat)) nextMat.setUniforms(uniforms)
-      void nextMat.ready.then(() => host.invalidate())
+      void nextMat.ready.then(() => host.invalidate(), () => {})
     }
     host.invalidate()
   }, [host, finish, finishMod, effectiveFactory, uniforms, buildMaterialFor])
@@ -298,7 +311,7 @@ export function Surface<TUniforms = Record<string, never>>({
         if (uniformsRef.current !== undefined && isManifestMaterial<TUniforms>(matRef.current)) {
           matRef.current.setUniforms(uniformsRef.current)
         }
-        void matRef.current.ready.then(() => host.invalidate())
+        void matRef.current.ready.then(() => host.invalidate(), () => {})
       }
       host.invalidate()
     }
@@ -380,57 +393,29 @@ export function Surface<TUniforms = Record<string, never>>({
           return null
         }
 
-        if (finishRef.current && isFinishMaterial(mat)) {
-          mat.updateFinish(finishRef.current, host.lighting, viewport.width, viewport.height, viewport.cameraZ)
-        }
-
-        const pageNode = pageElRef.current
-        const pageRect = pageNode ? pageNode.getBoundingClientRect() : null
-        const basePose = computeBasePose(placementRef.current, pageRect, viewport, sizeRef.current)
-        if (placementRef.current === 'match-dom') poseRef.current = basePose
-
-        const progress = crossingRef.current.ramp
-        const easedProgress = crossingProgress(progress)
-        const keepGoing = onFrameRef.current?.({
+        return runSurfaceTick({
           dtMs,
           elapsedMs,
-          progress,
-          easedProgress,
-          phase: crossingRef.current.phase,
-          presentation: presentedRef.current,
-          size: sizeRef.current,
-          chrome: uploadStateRef.current.chrome,
-          geometry: geo,
-          material: mat,
           viewport,
-          pageRect,
-          basePose,
-          setPose: (p) => { poseRef.current = p },
-          snapPose: (x, y, mag) => snapSurfacePose(x, y, sizeRef.current, viewport, src, mag),
-          deform: (place) => deformGpuGeometry(geo, sizeRef.current, place),
-          setExtraAttribute: (slot, data) => geo.setExtraAttribute(slot, data),
-          setUniforms: (values) => {
-            if (isManifestMaterial<TUniforms>(mat)) mat.setUniforms(values)
-          },
-          setCustomUniforms: (data) => mat.writeCustomUniforms(data),
-        })
-        setFrameClaim(keepGoing === true)
-
-        const poseToDraw = applyPixelSnap(poseRef.current, pixelSnapRef.current, sizeRef.current, viewport, src)
-        const mvp = buildWorldAndMvp(poseToDraw, viewport.viewProj, worldMatRef.current, invWorldMatRef.current)
-        const ready = readinessSettled(readinessRef.current)
-        const colorWrite = ready && (crossingRef.current.phase !== 'lifting' || mat.isReady())
-
-        return {
-          geometry: geo,
-          material: mat,
-          view: tex.view(viewFmtRef.current),
-          sampler: tex.sampler,
-          modelWorld: worldMatRef.current,
-          mvp,
+          src,
+          tex,
+          geo,
+          mat,
+          placement: placementRef.current,
+          pageEl: pageElRef.current,
           size: sizeRef.current,
-          radii: uploadStateRef.current.chrome.radii,
-          colorWrite,
+          pixelSnap: pixelSnapRef.current,
+          viewFmt: viewFmtRef.current,
+          chrome: uploadStateRef.current.chrome,
+          crossing: crossingRef.current,
+          presentation: presentedRef.current,
+          ready: readinessSettled(readinessRef.current),
+          pose: poseRef.current,
+          setPose: (p) => { poseRef.current = p },
+          worldMat: worldMatRef.current,
+          invWorldMat: invWorldMatRef.current,
+          onFrame: onFrameRef.current,
+          setFrameClaim,
           onPassComplete(receipt) {
             const nextState = advanceSurfacePass({
               receipt,
@@ -450,7 +435,7 @@ export function Surface<TUniforms = Record<string, never>>({
             syncDomHoldRef.current()
             reconcileWorkClaim()
           },
-        }
+        })
       },
     }
 
@@ -529,14 +514,16 @@ export function Surface<TUniforms = Record<string, never>>({
     dockSourceHost(sourceRef.current, dockEl)
   }, [dockEl])
 
-  const pageSlotStyle = useMemo(() => buildSurfaceSlotStyle(size, bodyColor), [bodyColor, size])
+  const slotSize = resolvePageSlotSize(size, slotPinned, hasMeasured, measured)
+  const pageSlotStyle = useMemo(() => buildSurfaceSlotStyle(slotSize, bodyColor), [bodyColor, slotSize])
+  const rootBoxStyle = useMemo(() => liveRootStyle(size), [size])
 
   if (!exclusive) {
     return (
       <>
         <div ref={setDockEl} style={{ display: 'contents', pointerEvents: 'none' }} />
         {createPortal(
-          <div ref={setLiveRoot} style={{ width: effectiveSize[0], height: effectiveSize[1] }}>
+          <div ref={setLiveRoot} style={rootBoxStyle}>
             {children}
           </div>,
           captureRoot,
@@ -549,7 +536,7 @@ export function Surface<TUniforms = Record<string, never>>({
     <>
       <div ref={setDockEl} style={{ display: 'contents', pointerEvents: 'none' }} />
       <div ref={setPageEl} data-gpu-page-slot="" style={pageSlotStyle}>
-        <div ref={setLiveRoot} style={{ width: size ? size[0] : undefined, height: size ? size[1] : undefined }}>
+        <div ref={setLiveRoot} style={rootBoxStyle}>
           {children}
         </div>
       </div>

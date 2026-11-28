@@ -1,6 +1,8 @@
 // Verifies MaterialManifest contract: explicit @group(0)/@group(1)/@group(2) pipeline layouts,
 // shared host pipeline cache reuse, per-instance uniform isolation, offset pose mapping, and rounded-corner masking.
 import { describe, expect, it, vi } from 'vitest'
+import { resolveFinish } from '../primitives/surface/surfaceFinish'
+import { createGpuFinishMaterial, packFinishUniforms, selectFinishManifestKind } from './finishLookup'
 import { createManifestDriver, createManifestMaterial, unlitSurfaceManifest, type MaterialManifest } from './manifest'
 import { getOrCreateGpuHost, hitPassesSurfaceMask, hostInternals, requestGpuFrame, type RegisteredSurface, type ViewportState } from './host'
 import { loadLtcTable } from './ltc'
@@ -81,6 +83,7 @@ function makeFakeRenderer() {
       }
       return entry
     },
+    prepareBackdropBlur: vi.fn(() => Promise.resolve()),
     onDispose(fn) {
       disposeHooks.push(fn)
     },
@@ -252,6 +255,98 @@ describe('MaterialManifest runtime', () => {
     expect(layoutEntriesLog[0]?.map((e) => e.binding)).toEqual([1, 2, 3])
     expect(bindGroupEntriesLog[0]?.map((e) => e.binding)).toEqual([1, 2, 3])
     expect(samplerOptsLog.map((s) => s.magFilter)).toContain('nearest')
+    renderer.dispose()
+  })
+
+  it('computes exact 15-deg unit rimDir and gates prepareBackdropBlur on needsBackdrop', async () => {
+    const frameCtx = resolveFrameContext(
+      { left: 0, top: 0, width: 1000, height: 600, cameraZ: 800, dpr: 2 },
+      'studio',
+      0,
+      16,
+    )
+    const rimRad = (15 * Math.PI) / 180
+    const across = Math.cos(rimRad) * Math.SQRT1_2
+    expect(frameCtx.tail[12]).toBeCloseTo(-across, 5)
+    expect(frameCtx.tail[11]).toBe(1)
+    expect(frameCtx.tail[12]).toBeCloseTo(-across, 5)
+    expect(frameCtx.tail[13]).toBeCloseTo(across, 5)
+    expect(frameCtx.tail[14]).toBeCloseTo(Math.sin(rimRad), 5)
+    expect(frameCtx.tail[15]).toBe(0)
+
+    const { renderer } = makeFakeRenderer()
+    const opaqueMat = createManifestMaterial(renderer, { ...unlitSurfaceManifest, name: 'no-blur', needsBackdrop: false })
+    await opaqueMat.ready
+    expect(renderer.prepareBackdropBlur).toHaveBeenCalledTimes(0)
+
+    const glassMat = createManifestMaterial(renderer, { ...unlitSurfaceManifest, name: 'needs-blur', needsBackdrop: true })
+    await glassMat.ready
+    expect(renderer.prepareBackdropBlur).toHaveBeenCalledTimes(1)
+    renderer.dispose()
+  })
+
+  it('selects finish manifest variants, packs linear sRGB uniforms, dirty-checks writes, and swaps variants safely', async () => {
+    const opaqueFinish = { color: '#800000', roughness: 0.3 }
+    const layeredFinish = {
+      ...opaqueFinish,
+      film: { amount: 0.5, ior: 1.4, thickness: 380, variation: 0.3, scale: 120 },
+    }
+    const glassFinish = { ...opaqueFinish, transmission: { amount: 1, thickness: 12, dispersion: 0 } }
+
+    expect(selectFinishManifestKind(resolveFinish(opaqueFinish))).toBe('opaque')
+    expect(selectFinishManifestKind(resolveFinish(layeredFinish))).toBe('layered')
+    expect(selectFinishManifestKind(resolveFinish(glassFinish))).toBe('transmissive')
+
+    const packed = packFinishUniforms(resolveFinish(opaqueFinish))
+    expect(packed.bodyColor[0]).toBeCloseTo(((128 / 255 + 0.055) / 1.055) ** 2.4, 5)
+    expect(packed.bodyColor[1]).toBe(0)
+    expect(packed.bodyColor[3]).toBe(1)
+
+    const packedInvalidHex = packFinishUniforms(resolveFinish({ color: '#ff00zz', roughness: 0.3 }))
+    expect(packedInvalidHex.bodyColor).toEqual([1, 1, 1, 1])
+    const packedAlphaHex = packFinishUniforms(resolveFinish({ color: '#800000ff', roughness: 0.3 }))
+    expect(packedAlphaHex.bodyColor[0]).toBeCloseTo(packed.bodyColor[0], 5)
+    expect(packedAlphaHex.bodyColor[1]).toBe(0)
+
+    const { renderer, writes } = makeFakeRenderer()
+    let variantSwaps = 0
+    let resolveSwap!: () => void
+    const swapDone = new Promise<void>((r) => {
+      resolveSwap = r
+    })
+    const handle = createGpuFinishMaterial(renderer, opaqueFinish, () => {
+      variantSwaps++
+      if (variantSwaps >= 2) resolveSwap()
+    })
+    await handle.ready
+    expect(handle.isReady()).toBe(true)
+    expect(handle.needsBackdrop).toBe(false)
+    expect(handle.pipelineFor(true)).not.toBeNull()
+
+    const countAfterReady = writes.length
+    handle.updateFinish({ color: '#800000', roughness: 0.3 })
+    expect(writes.length).toBe(countAfterReady)
+
+    handle.updateFinish({ color: '#800000', roughness: 0.45 })
+    expect(writes.length).toBeGreaterThan(countAfterReady)
+
+    // Switch A -> B -> A while B is still loading: returning to A cancels B so B never replaces A.
+    const countBeforeRace = writes.length
+    handle.updateFinish(glassFinish)
+    handle.updateFinish({ color: '#800000', roughness: 0.6 })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(variantSwaps).toBe(1)
+    expect(handle.needsBackdrop).toBe(false)
+    expect(writes.length).toBeGreaterThan(countBeforeRace)
+
+    const prevPipe = handle.pipelineFor(true)
+    handle.updateFinish(glassFinish)
+    expect(handle.pipelineFor(true)).toBe(prevPipe)
+    await swapDone
+    expect(handle.needsBackdrop).toBe(true)
+    expect(renderer.prepareBackdropBlur).toHaveBeenCalledTimes(2)
+    handle.dispose()
+    expect(handle.isReady()).toBe(false)
     renderer.dispose()
   })
 })

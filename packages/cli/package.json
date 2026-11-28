@@ -13,7 +13,8 @@
     "munari": "./bin/munari.mjs"
   },
   "exports": {
-    "./author": "./src/author.ts"
+    "./author": "./src/author.ts",
+    "./finish-author": "./src/finishAuthor.ts"
   },
   "dependencies": {
     "typegpu": "^0.12.12",

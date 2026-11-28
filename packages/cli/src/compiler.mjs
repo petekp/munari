@@ -311,15 +311,24 @@ function resolveManifestImport(absPath, options) {
   return rawImport ?? '@petepetrash/munari/gpu'
 }
 
-function formatUniformSection(root, writes, uniforms) {
-  if (!uniforms) return { uniformBlock: 'null', valuesTypeName: 'Record<string, never>', helperPrefix: '', uniformBytes: 0 }
+function formatUniformSection(root, writes, uniforms, aliasName) {
+  if (!uniforms) {
+    return {
+      uniformBlock: 'null',
+      valuesTypeDef: 'Record<string, never>',
+      valuesTypeRef: 'Record<string, never>',
+      helperPrefix: '',
+      uniformBytes: 0,
+    }
+  }
   const { schema, initial, sampleValue } = uniforms
   const { byteSize, typeSig, packBody, helperSource } = generatePackSource(schema)
   verifyPackParity(root, writes, schema, sampleValue ?? initial, packBody)
   const plainInitial = serializePlainValue(schema, initial)
   return {
-    uniformBlock: `{\n    byteSize: ${byteSize},\n    initial: ${JSON.stringify(plainInitial)},\n    pack(values: ${typeSig}, view: DataView, base: number): void {\n${packBody}\n    },\n  }`,
-    valuesTypeName: typeSig,
+    uniformBlock: `{\n    byteSize: ${byteSize},\n    initial: ${JSON.stringify(plainInitial)},\n    pack(values: ${aliasName}, view: DataView, base: number): void {\n${packBody}\n    },\n  }`,
+    valuesTypeDef: typeSig,
+    valuesTypeRef: aliasName,
     helperPrefix: helperSource ? `${helperSource}\n\n` : '',
     uniformBytes: d.sizeOf(schema),
   }
@@ -362,7 +371,13 @@ export async function generateMaterialSource(absPath, options = {}) {
   assert.ok(wgsl && wgsl.includes('@group(0)'), `${def.name}: resolved WGSL did not bind @group(0) surfaceLayout`)
   verifyStaticTextureBindings(def, wgsl)
   const { vertexEntry, fragmentEntry } = extractEntryPoints(wgsl)
-  const { uniformBlock, valuesTypeName, helperPrefix, uniformBytes } = formatUniformSection(root, writes, def.uniforms)
+  const aliasName = `${pascalName(def.name)}Uniforms`
+  const { uniformBlock, valuesTypeDef, valuesTypeRef, helperPrefix, uniformBytes } = formatUniformSection(
+    root,
+    writes,
+    def.uniforms,
+    aliasName,
+  )
 
   const sourceHash = computeMaterialSourceHash(readFileSync(absPath, 'utf8'), manifestImport)
   const staticSpecs = def.staticTextures ?? []
@@ -375,9 +390,9 @@ export async function generateMaterialSource(absPath, options = {}) {
   const outPath = absPath.replace(/\.material\.ts$/, '.material.gen.ts')
   const bodyCode = `${importStmt}
 
-${helperPrefix}export type ${pascalName(def.name)}Uniforms = ${valuesTypeName}
+${helperPrefix}export type ${aliasName} = ${valuesTypeDef}
 
-export const ${camelName(def.name)}Manifest: MaterialManifest<${valuesTypeName}> = {
+export const ${camelName(def.name)}Manifest: MaterialManifest<${valuesTypeRef}> = {
   version: 2,
   sourceHash: ${JSON.stringify(sourceHash)},
   name: ${JSON.stringify(def.name)},

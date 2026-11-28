@@ -286,24 +286,24 @@ try {
 
     let keyShiftDiff = null
     let behindLumaDelta = null
-    if (run1.name === 'lacquer-ltc') {
+    if (run1.name === 'lacquer-ltc' || run1.name === 'finish-opaque') {
       const run2 = await page.evaluate(
         (u) => window.__munariOracle.runManifest(u, { x: 388, y: 308, z: 320, brightness: 1, size: [240, 160] }),
         fsUrl,
       )
-      assert.deepEqual(run2.validationErrors, [], 'lacquer-ltc frame 2 validation errors')
+      assert.deepEqual(run2.validationErrors, [], `${run1.name} frame 2 validation errors`)
       const snap2 = await readScreenshotImage(page)
       keyShiftDiff = meanCenterDiff(snap1.patch, snap2.patch)
-      assert.ok(keyShiftDiff > 2, `lacquer-ltc did not respond to position-only key shift (meanAbsDiff=${keyShiftDiff})`)
+      assert.ok(keyShiftDiff > 2, `${run1.name} did not respond to position-only key shift (meanAbsDiff=${keyShiftDiff})`)
 
       const run3 = await page.evaluate(
         (u) => window.__munariOracle.runManifest(u, { x: 128, y: 128, z: -200, brightness: 1, size: [240, 160] }),
         fsUrl,
       )
-      assert.deepEqual(run3.validationErrors, [], 'lacquer-ltc frame 3 validation errors')
+      assert.deepEqual(run3.validationErrors, [], `${run1.name} frame 3 validation errors`)
       const snap3 = await readScreenshotImage(page)
       behindLumaDelta = meanCenterLuma(snap1.patch) - meanCenterLuma(snap3.patch)
-      assert.ok(behindLumaDelta > 2, `lacquer-ltc did not attenuate when key moved behind plane (delta=${behindLumaDelta})`)
+      assert.ok(behindLumaDelta > 2, `${run1.name} did not attenuate when key moved behind plane (delta=${behindLumaDelta})`)
     }
     results.push({
       name: run1.name,

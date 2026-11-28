@@ -52,6 +52,9 @@ describe('munari CLI & Materials registry', () => {
       'tilt-shadow',
       'glass-refract',
       'lacquer-ltc',
+      'finish-opaque',
+      'finish-layered',
+      'finish-transmissive',
     ])
     expect(parsed.materials.find((m) => m.name === 'glass-refract')?.needsBackdrop).toBe(true)
     expect(parsed.tools.map((t) => t.name)).toContain('finishes')

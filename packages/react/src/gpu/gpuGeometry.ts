@@ -105,6 +105,7 @@ export function resolveFrameContext(
   const vh = viewport.height
   const rig = readLightingValues(lighting, vw, vh, viewport.left, viewport.top)
   const rimRad = (rig.rimElev * Math.PI) / 180
+  const across = Math.cos(rimRad) * Math.SQRT1_2
   tail[0] = viewport.cameraZ
   tail[1] = viewport.dpr
   tail[2] = elapsedMs * 0.001
@@ -117,9 +118,9 @@ export function resolveFrameContext(
   tail[9] = rig.keyH
   tail[10] = rig.envIntensity
   tail[11] = rig.rimBrightness
-  tail[12] = -0.35
-  tail[13] = Math.sin(rimRad) + 0.55
-  tail[14] = Math.cos(rimRad)
+  tail[12] = -across
+  tail[13] = across
+  tail[14] = Math.sin(rimRad)
   tail[15] = 0
   tail[16] = 0
   tail[17] = 0
@@ -509,6 +510,7 @@ export interface GpuRenderer {
   readonly frameUniformBuffer: GPUBuffer
   readonly validationErrors: readonly string[]
   getOrCreatePipelines(key: string, build: () => Promise<CachedPipelines>): Promise<CachedPipelines>
+  prepareBackdropBlur(): Promise<void>
   onDispose(fn: () => void): void
   resize(width: number, height: number): void
   generateMipmaps(texture: GPUTexture, mipCount: number): void

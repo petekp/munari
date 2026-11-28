@@ -204,15 +204,19 @@ export function createManifestMaterial<TValues>(
       return { color, warm }
     })
 
+  const pipePromise = hasStatic
+    ? import('./staticTextures')
+        .then(({ resolveStaticGroup1 }) => resolveStaticGroup1(renderer, customBuffer, staticSpecs))
+        .then(async (group1) => {
+          customBindGroup = group1.bindGroup
+          return compilePipelines(group1.layout)
+        })
+    : compilePipelines(customBuffer ? renderer.customBindGroupLayout : null)
+
   const ready = (
-    hasStatic
-      ? import('./staticTextures')
-          .then(({ resolveStaticGroup1 }) => resolveStaticGroup1(renderer, customBuffer, staticSpecs))
-          .then(async (group1) => {
-            customBindGroup = group1.bindGroup
-            return compilePipelines(group1.layout)
-          })
-      : compilePipelines(customBuffer ? renderer.customBindGroupLayout : null)
+    manifest.needsBackdrop
+      ? Promise.all([pipePromise, renderer.prepareBackdropBlur()]).then(([pipes]) => pipes)
+      : pipePromise
   ).then((pipes) => {
     if (disposed) return
     colorPipe = pipes.color

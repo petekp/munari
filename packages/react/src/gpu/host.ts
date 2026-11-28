@@ -6,8 +6,8 @@
 // transforms eye rays cleanly through each rendered surface mesh (decisions.md #33, #39).
 //
 // Ownership: `SurfaceCanvas.tsx` drives ticks and renderer lifecycle on this
-// host; `Surface.tsx` registers/unregisters surfaces; `finishMaterial` reads
-// host viewport & lighting state.
+// host; `Surface.tsx` registers/unregisters surfaces; `finishLookup` delegates
+// finish rendering to compiled manifests.
 
 import { createContext } from 'react'
 import {

@@ -8,6 +8,7 @@
 // Ownership: `./gpuGeometry` owns geometry & surface texture primitives; this
 // module owns device creation & command submission and re-exports geometry types.
 
+import { type BackdropBlurEngine } from './backdropBlur'
 import { type Mat4 } from './math'
 import {
   FRAME_UNIFORM_BYTES,
@@ -246,7 +247,13 @@ export async function createGpuRenderer(
       { binding: 1, visibility: GPU_SHADER_STAGE.FRAGMENT, texture: { sampleType: 'float', viewDimension: '2d' } },
     ],
   })
-  const backdropSampler = device.createSampler({ magFilter: 'linear', minFilter: 'linear' })
+  const backdropSampler = device.createSampler({
+    magFilter: 'linear',
+    minFilter: 'linear',
+    mipmapFilter: 'linear',
+    addressModeU: 'clamp-to-edge',
+    addressModeV: 'clamp-to-edge',
+  })
   const dummyBackdropTex = device.createTexture({
     size: [1, 1],
     format,
@@ -261,32 +268,29 @@ export async function createGpuRenderer(
   })
   const frameRing = createFrameRing(device)
 
-  let backdropTex: GPUTexture | null = null
-  let backdropW = 0
-  let backdropH = 0
-  let cachedBackdropBg: GPUBindGroup | null = null
+  let blurEngine: BackdropBlurEngine | null = null
+  let blurPromise: Promise<void> | null = null
+  let blurFailed = false
 
-  const ensureBackdrop = (w: number, h: number): GPUBindGroup => {
-    const safeW = Math.max(1, w)
-    const safeH = Math.max(1, h)
-    if (!backdropTex || backdropW !== safeW || backdropH !== safeH || !cachedBackdropBg) {
-      backdropTex?.destroy()
-      backdropTex = device.createTexture({
-        size: [safeW, safeH],
-        format,
-        usage: GPU_TEXTURE_USAGE.TEXTURE_BINDING | GPU_TEXTURE_USAGE.COPY_DST,
+  const prepareBackdropBlur = () => {
+    if (blurFailed) return Promise.resolve()
+    blurPromise ??= import('./backdropBlur')
+      .then(({ createBackdropBlur }) =>
+        createBackdropBlur(device, format, backdropBindGroupLayout, backdropSampler),
+      )
+      .then((engine) => {
+        if (intentionallyDisposed) {
+          engine.dispose()
+          return
+        }
+        blurEngine = engine
       })
-      backdropW = safeW
-      backdropH = safeH
-      cachedBackdropBg = device.createBindGroup({
-        layout: backdropBindGroupLayout,
-        entries: [
-          { binding: 0, resource: backdropSampler },
-          { binding: 1, resource: backdropTex.createView() },
-        ],
+      .catch((err) => {
+        blurPromise = null
+        blurFailed = true
+        throw err
       })
-    }
-    return cachedBackdropBg
+    return blurPromise
   }
 
   const mipLayout = device.createBindGroupLayout({
@@ -353,6 +357,7 @@ export async function createGpuRenderer(
       }
       return cached
     },
+    prepareBackdropBlur,
     onDispose(fn) {
       if (intentionallyDisposed) fn()
       else disposeHooks.push(fn)
@@ -440,11 +445,10 @@ export async function createGpuRenderer(
       }
       pass.end()
 
-      if (backdropIndices.length > 0) {
-        const backdropBg = ensureBackdrop(colorTex.width, colorTex.height)
-        if (backdropTex) {
-          encoder.copyTextureToTexture({ texture: colorTex }, { texture: backdropTex }, [colorTex.width, colorTex.height])
-        }
+      // Pass 2 draws all backdrop-reading surfaces against the single post-pass-1
+      // snapshot, so transmissive surfaces behind other transmissive surfaces are excluded.
+      if (backdropIndices.length > 0 && blurEngine) {
+        const backdropBg = blurEngine.encode(encoder, colorTex, colorTex.width, colorTex.height)
         const pass2 = encoder.beginRenderPass({
           colorAttachments: [{ view: colorView, loadOp: 'load', storeOp: 'store' }],
           depthStencilAttachment: {
@@ -482,10 +486,9 @@ export async function createGpuRenderer(
       frameRing.dispose()
       depthTex?.destroy()
       depthTex = null
-      backdropTex?.destroy()
-      backdropTex = null
+      blurEngine?.dispose()
+      blurEngine = null
       dummyBackdropTex.destroy()
-      cachedBackdropBg = null
       device.destroy()
     },
   }

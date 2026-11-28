@@ -92,23 +92,35 @@ export const sampleSurfaceLinear = tgpu.fn([d.vec2f], d.vec4f)((uv) => {
   return d.vec4f(srgbEotf(straight), pm.a)
 })
 
-/** Sample the `@group(2)` canvas backdrop snapshot at screen UV `(0..1, 0..1)`. */
-export const sampleBackdrop = tgpu.fn([d.vec2f], d.vec4f)((screenUv) => {
+/** Sample the `@group(2)` canvas backdrop snapshot at screen UV `(0..1, 0..1)` and explicit mip `lod`. */
+export const sampleBackdropLod = tgpu.fn([d.vec2f, d.f32], d.vec4f)((screenUv, lod) => {
   'use gpu'
   return std.textureSampleLevel(
     backdropLayout.$.tex,
     backdropLayout.$.samp,
     std.clamp(screenUv, d.vec2f(0.0), d.vec2f(1.0)),
-    0.0,
+    lod,
   )
+})
+
+/** Sample `@group(2)` backdrop at explicit mip `lod` and decode premultiplied sRGB to linear RGB + alpha. */
+export const sampleBackdropLinearLod = tgpu.fn([d.vec2f, d.f32], d.vec4f)((screenUv, lod) => {
+  'use gpu'
+  const pm = sampleBackdropLod(screenUv, lod)
+  const straight = std.select(d.vec3f(0.0), pm.rgb.div(std.max(pm.a, 1e-4)), pm.a > 0.002)
+  return d.vec4f(srgbEotf(straight), pm.a)
+})
+
+/** Sample the `@group(2)` canvas backdrop snapshot at screen UV `(0..1, 0..1)`. */
+export const sampleBackdrop = tgpu.fn([d.vec2f], d.vec4f)((screenUv) => {
+  'use gpu'
+  return sampleBackdropLod(screenUv, 0.0)
 })
 
 /** Sample `@group(2)` canvas backdrop and decode premultiplied sRGB into straight linear RGB + alpha. */
 export const sampleBackdropLinear = tgpu.fn([d.vec2f], d.vec4f)((screenUv) => {
   'use gpu'
-  const pm = sampleBackdrop(screenUv)
-  const straight = std.select(d.vec3f(0.0), pm.rgb.div(std.max(pm.a, 1e-4)), pm.a > 0.002)
-  return d.vec4f(srgbEotf(straight), pm.a)
+  return sampleBackdropLinearLod(screenUv, 0.0)
 })
 
 /** Signed-distance rounded-corner mask over logical surface `size` and CSS corner `radii`. */

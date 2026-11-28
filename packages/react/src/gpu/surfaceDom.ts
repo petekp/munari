@@ -2,7 +2,7 @@
 // reparenting, `--munari-body` mirroring, pose mapping, and upload sync.
 //
 // The law: HTML stays alive in React's tree (native inputs, focus, selection,
-// ARIA). Finish shading (`./finishMaterial`) loads dynamically on first finish
+// ARIA). Finish shading (`./finishLookup`) loads dynamically on first finish
 // mount so non-finish pages pay zero shader weight (`decisions.md #79`).
 //
 // Ownership: pure DOM/pose helpers & public Surface prop types live here;
@@ -35,7 +35,7 @@ import {
   type SurfaceReadiness,
 } from '@munari/core'
 import type { SurfaceFinish } from '../primitives/surface/surfaceFinish'
-import type { GpuFinishHandle } from './finishMaterial'
+import type { GpuFinishHandle } from './finishLookup'
 import type { ManifestMaterial, MaterialManifest } from './manifest'
 import {
   mat4FromPositionEulerScale,
@@ -55,14 +55,14 @@ import type { ViewportState } from './host'
 
 // ── lazy finish module loader ─────────────────────────────────────────────
 
-export type FinishModule = typeof import('./finishMaterial')
+export type FinishModule = typeof import('./finishLookup')
 
 let finishModule: FinishModule | null = null
 let finishLoadPromise: Promise<void> | null = null
 const finishListeners = new Set<() => void>()
 
 function loadFinishModule(): void {
-  finishLoadPromise ??= import('./finishMaterial').then(
+  finishLoadPromise ??= import('./finishLookup').then(
     (mod) => {
       finishModule = mod
       for (const listener of [...finishListeners]) listener()
