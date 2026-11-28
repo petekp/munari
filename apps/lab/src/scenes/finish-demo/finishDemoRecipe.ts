@@ -14,7 +14,7 @@
 // the finish values and the library owns the material and lights. This
 // module owns which finish each card wears and where the key stands.
 
-import { createSurfaceLight, type LightPosition, type SurfaceCanvasProps, type SurfaceFinish } from '@petepetrash/munari'
+import { createSurfaceLight, type LightPosition, type SurfaceCanvasProps, type SurfaceFinish } from '@petepetrash/munari/gpu'
 import { finishes } from '../material-finishes/recipe/finishes'
 import { LIGHT_RIGS, type CardTilt, type FinishId, type LightRig, type TextLighting } from '../material-finishes/materialFinishesTuning'
 import type { ContextId } from './FinishDemoContexts'
@@ -77,8 +77,6 @@ export function sizeKeys(rig: LightRig): void {
 export const CANVAS_PROPS = {
   pointerMode: 'surfaces',
   frameloop: 'demand',
-  dpr: [1, 2],
-  gl: { alpha: true, antialias: false, depth: false },
   style: { position: 'fixed', inset: 0, zIndex: 10 },
   lighting: { key: keyLight },
 } as const satisfies Partial<SurfaceCanvasProps>
@@ -111,18 +109,16 @@ const finishName = (card: BenchCard) => `${card.context}Finish`
 const setterName = (card: BenchCard) => `set${card.context[0].toUpperCase()}${card.context.slice(1)}Finish`
 const px = (value: number | null) => String(Math.round(value ?? 0))
 
-/** The imports the listing's code needs. The tilt's parts are this lab's code, built on the public API. */
+/** The imports the listing's code needs. */
 export function importLines(page: PageSetup): readonly CodeLine[] {
   const tilting = page.tilt === 'pointer'
   return [
-  "import { useId, useState } from 'react'",
-  "import { createSurfaceLight, Surface, SurfaceCanvas, useCaptureSupport, type SurfaceFinish } from '@petepetrash/munari'",
-  "import { finishes } from './finishes'  // registry/finishes",
-  tilting
-    ? "import { PointerTracker, RecaptureOnStyle, TiltedFinish } from '../material-finishes/MaterialFinishesSurface'"
-    : "import { RecaptureOnStyle } from '../material-finishes/MaterialFinishesSurface'",
-  "import { bodyOf, inkStyle } from '../finish-demo/finishDemoFinishes'",
-  "import '../material-finishes/materialFinishes.css'",
+    "import { useId, useState } from 'react'",
+    "import { createSurfaceLight, Surface, SurfaceCanvas, supportsCapture, type SurfaceFinish } from '@petepetrash/munari/gpu'",
+    "import { finishes } from './finishes'  // registry/finishes",
+    ...(tilting ? ["import { createPointerTiltBehavior } from './behaviors/compose'  // registry/behaviors"] : []),
+    "import { bodyOf, inkStyle } from '../finish-demo/finishDemoFinishes'",
+    "import '../material-finishes/materialFinishes.css'",
   ]
 }
 
@@ -137,17 +133,12 @@ function lightLines(page: PageSetup, key: LightPosition): readonly CodeLine[] {
   ]
 }
 
-function canvasCloseLines(page: PageSetup): readonly CodeLine[] {
-  if (page.tilt !== 'pointer') return ['  />']
-  return ['  >', '    {/* Tilts each TiltedFinish toward the pointer; flat under reduced motion */}', '    <PointerTracker />', '  </SurfaceCanvas>']
-}
-
 /** The key light, the canvas, and each card's finish state. */
 export function setupLines(cards: readonly BenchCard[], page: PageSetup, key: LightPosition): readonly CodeLine[] {
   return [
     ...lightLines(page, key),
     '',
-    'const supported = useCaptureSupport()',
+    'const supported = supportsCapture()',
     'const canvasId = useId()',
     ...cards.map((card) => `const [${finishName(card)}, ${setterName(card)}] = useState<SurfaceFinish>(finishes['${card.preset}'])`),
     '',
@@ -156,12 +147,9 @@ export function setupLines(cards: readonly BenchCard[], page: PageSetup, key: Li
     '    id={canvasId}',
     `    pointerMode="${CANVAS_PROPS.pointerMode}"`,
     `    frameloop="${CANVAS_PROPS.frameloop}"`,
-    `    dpr={[${CANVAS_PROPS.dpr.join(', ')}]}`,
-    `    gl={{ alpha: ${CANVAS_PROPS.gl.alpha}, antialias: ${CANVAS_PROPS.gl.antialias}, depth: ${CANVAS_PROPS.gl.depth} }}`,
     '    lighting={{ key: keyLight }}',
-    '    onCreated={({ gl }) => gl.setClearAlpha(0)}',
     `    style={{ position: '${CANVAS_PROPS.style.position}', inset: ${CANVAS_PROPS.style.inset}, zIndex: ${CANVAS_PROPS.style.zIndex} }}`,
-    ...canvasCloseLines(page),
+    '  />',
     ')}',
   ]
 }
@@ -169,21 +157,14 @@ export function setupLines(cards: readonly BenchCard[], page: PageSetup, key: Li
 /** One card's Surface, with the props cardProps gives it. */
 export function cardLines(card: BenchCard, page: PageSetup, content: string): readonly CodeLine[] {
   const props = cardProps(card, page)
+  const tiltProp = page.tilt === 'pointer' ? ' onFrame={tiltHandler}' : ''
   return [
     // The page shows its HTML copy by passing false, whatever the support.
-    `<Surface.Root canvasId={canvasId} inScene={${props.inScene ? 'supported' : 'false'}} finish={{ ...${finishName(card)}, text: '${page.text}' }}>`,
-    '  <Surface.HTML>',
-    `    <div className="${props.className}" style={inkStyle(bodyOf(${finishName(card)}))}>`,
-    `      <RecaptureOnStyle style={inkStyle(bodyOf(${finishName(card)}))} />`,
-    `      <${content} />`,
-    '    </div>',
-    '  </Surface.HTML>',
-    '  <Surface.Scene>',
-    page.tilt === 'pointer'
-      ? '    <Surface.Mesh placement="match-dom" geometry={<planeGeometry args={[1, 1]} />} material={<TiltedFinish />} />'
-      : '    <Surface.Mesh placement="match-dom" />',
-    '  </Surface.Scene>',
-    '</Surface.Root>',
+    `<Surface canvasId={canvasId} inScene={${props.inScene ? 'supported' : 'false'}} finish={{ ...${finishName(card)}, text: '${page.text}' }}${tiltProp}>`,
+    `  <div className="${props.className}" style={inkStyle(bodyOf(${finishName(card)}))}>`,
+    `    <${content} />`,
+    '  </div>',
+    '</Surface>',
   ]
 }
 

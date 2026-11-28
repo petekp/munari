@@ -40,7 +40,15 @@ const shade = tgpu.fn([SurfaceFragmentIn], d.vec4f)((ctx) => {
   const dist = std.min(std.max(dBox.x, dBox.y), 0.0) + std.length(std.max(dBox, d.vec2f(0.0))) - rad
   const edgeW = std.max(u.edgeWidth, d.f32(0.0))
   const bevelT = std.select(d.f32(0.0), std.smoothstep(-edgeW, d.f32(0.0), dist), edgeW > 0.1)
-  const bevelDir = std.normalize(d.vec2f(std.dpdx(dist), -std.dpdy(dist)).add(d.vec2f(1e-5, 0.0)))
+  const outCorner = std.max(dBox, d.vec2f(0.0))
+  const sideX = std.select(d.f32(0.0), std.sign(point.x), dBox.x >= dBox.y)
+  const sideY = std.select(d.f32(0.0), std.sign(point.y), dBox.y > dBox.x)
+  const rawGrad = std.select(
+    d.vec2f(sideX, sideY),
+    outCorner.mul(std.sign(point)),
+    outCorner.x > 0.0 && outCorner.y > 0.0,
+  )
+  const bevelDir = std.normalize(rawGrad.add(d.vec2f(1e-5, 0.0)))
 
   const peelFreq = d.f32(6.28318) / std.max(u.peelScale, d.f32(1.0))
   const peelX = std.cos(point.x * peelFreq) * std.sin(point.y * peelFreq)

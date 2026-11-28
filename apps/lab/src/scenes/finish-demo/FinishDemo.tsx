@@ -206,7 +206,7 @@ function BenchCode({ cards, card, page, tab, onTab }: BenchCodeProps) {
       </div>
       <p className="fd-note">
         {tab === 'apply'
-          ? 'Give the canvas the key light, then give each piece of UI a Surface.Root with its own finish. Its content paints var(--munari-body).'
+          ? 'Give the canvas the key light, then give each piece of UI a Surface with its own finish. Its content paints var(--munari-body).'
           : `The writes that bring the ${contextOf(card.context).label.toLowerCase()} from its tuned finish to what is on screen. Drag the light or move a slider and this updates.`}
       </p>
       <CodeListing lines={lines} />

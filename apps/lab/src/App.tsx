@@ -1,31 +1,16 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
-import { useThree } from '@react-three/fiber'
-import { Environment, OrbitControls } from '@react-three/drei'
-import { ContactShadows } from './lib/ContactShadows'
-import {
-  FocusScene,
-  SurfaceCanvas,
-  useCaptureSupport,
-} from '@petepetrash/munari'
-import { captureEngine, paintStats } from '@petepetrash/munari/advanced'
+import { detectHtmlInCanvas, paintStats, supportsCapture } from '@petepetrash/munari/gpu'
 import { showChrome, showShell } from './bareMode'
 import { HomeApp } from './scenes/home/Home'
-import { SurfaceProviderProbe } from './lib/surfaceProvider'
 import { SceneNav } from './components/SceneNav'
 import { BROWSER_GUIDE, DEMOS, demoFor, type DemoId } from './components/sceneCatalog'
 import { SceneBoundary } from './components/SceneBoundary'
 import { revealSite } from './components/siteOpening'
-import { sceneUrl } from './captureMode'
+import { CAPTURE_MODE, sceneUrl } from './captureMode'
 import { DEMO_PAGES } from './demoPages'
 
-// A home visit must not fetch or evaluate every lab. Keep Home eager; each
-// other scene loads only in its own frame, with the same page and R3F roots.
-const Workspace = lazy(() => import('./scenes/workspace/Workspace').then(m => ({ default: m.Workspace })))
-const WorkspaceHud = lazy(() => import('./scenes/workspace/Workspace').then(m => ({ default: m.WorkspaceHud })))
-const Glass = lazy(() => import('./scenes/glass/Glass').then(m => ({ default: m.Glass })))
-const GlassTweakPanel = lazy(() => import('./scenes/glass/GlassTweaks').then(m => ({ default: m.GlassTweakPanel })))
-const Explode = lazy(() => import('./scenes/explode/Explode').then(m => ({ default: m.Explode })))
-const ExplodeHud = lazy(() => import('./scenes/explode/Explode').then(m => ({ default: m.ExplodeHud })))
+// Shared Three.js/R3F room stage loaded lazily so `/gpu` pages fetch zero Three.js.
+const ThreeRoomStage = lazy(() => import('./ThreeRoomStage').then(m => ({ default: m.ThreeRoomStage })))
 const FisheyeApp = lazy(() => import('./scenes/fisheye/Fisheye').then(m => ({ default: m.FisheyeApp })))
 const SliderApp = lazy(() => import('./scenes/slider/Slider').then(m => ({ default: m.SliderApp })))
 const VeilApp = lazy(() => import('./scenes/veil/Veil').then(m => ({ default: m.VeilApp })))
@@ -90,21 +75,6 @@ const LAB_SCENES = [
 type SceneId = 'home' | DemoId | (typeof LAB_SCENES)[number]
 const SCENES: readonly SceneId[] = ['home', ...DEMOS.map((demo) => demo.id), ...LAB_SCENES]
 
-
-// Clicking a canvas normally moves focus to <body>, which would blur
-// whatever hidden form field a Surface has focused — killing native typing.
-// Preventing mousedown's default suppresses that focus change (drags and
-// clicks still work).
-function KeepDomFocus() {
-  const gl = useThree((s) => s.gl)
-  useEffect(() => {
-    const el = gl.domElement
-    const noSteal = (e: MouseEvent) => e.preventDefault()
-    el.addEventListener('mousedown', noSteal)
-    return () => el.removeEventListener('mousedown', noSteal)
-  }, [gl])
-  return null
-}
 
 // `?scene=glass` opens that scene directly. Not a router — just enough
 // of one that a scene can be linked, reloaded into, and screenshotted
@@ -176,55 +146,6 @@ function pageSceneFor(scene: SceneId) {
   return null
 }
 
-/** Everything inside the shared 3D room: the mounted scene, and the
- *  furniture that scene wants standing in it. */
-function Room({ scene }: { scene: SceneId }) {
-  return (
-    <>
-      {/* The `city` preset's own HDR, served from this app. As a preset it
-          came from a CDN inside this Suspense boundary, so nothing in the
-          room mounted until that fetch landed — 11.8s on a cold cache. */}
-      <Environment files="/hdri/potsdamer_platz_1k.hdr" />
-      {scene === 'glass' && <Glass />}
-      {scene === 'explode' && <Explode />}
-      {scene === 'workspace' && <Workspace />}
-      {/* The inspector's plates are unlit sheets on a light table, and
-       * a contact shadow under them would be scene furniture pretending
-       * to be paint — in the one scene whose subject IS which paint is
-       * whose. */}
-      {scene !== 'explode' && scene !== 'glass' && (
-        <ContactShadows position={[0, -0.15, 0]} opacity={0.5} blur={2.2} scale={20} />
-      )}
-      {/* Glass frames itself. It is the one scene that claims to be a
-          PAGE rather than a room, so it owns its camera outright and
-          the shared rig has to get out of the way — not merely be
-          disabled. A disabled OrbitControls still runs `update()` every
-          frame while damping is on, and that call rebuilds the camera's
-          position from the controls' own spherical state, which would
-          silently undo the scene's framing on frame one. The floor
-          shadow goes for the same reason: it is a room's furniture. */}
-      {scene !== 'glass' && (
-        <OrbitControls
-          makeDefault
-          enableDamping
-          target={[0, 1.4, 0]}
-          maxPolarAngle={Math.PI / 2.05}
-          minDistance={3}
-          maxDistance={16}
-        />
-      )}
-    </>
-  )
-}
-
-/** The mounted scene's own control panel, on a chromed page. */
-function SceneHud({ scene }: { scene: SceneId }) {
-  if (scene === 'workspace') return <WorkspaceHud />
-  if (scene === 'explode') return <ExplodeHud />
-  if (scene === 'glass') return <GlassTweakPanel />
-  return null
-}
-
 const SITE_TITLES = {
   home: 'Munari · Live HTML in 3D',
   style: 'Style guide · Munari',
@@ -277,7 +198,7 @@ function renderSitePage(scene: SceneId) {
 }
 
 export default function App() {
-  const unsupported = !useCaptureSupport()
+  const unsupported = !supportsCapture()
   const [scene, setScene] = useState(readScene)
   const [, setSearch] = useState(() => window.location.search)
 
@@ -319,7 +240,10 @@ export default function App() {
       stats: paintStats,
       // Which engine actually answered, for the per-engine browser gates.
       // The URL says what was asked for; this says what was installed.
-      engine: () => captureEngine().name,
+      engine: () => {
+        if (!supportsCapture()) return 'none'
+        return CAPTURE_MODE !== 'snapdom' && detectHtmlInCanvas().drawElementImage ? 'native' : 'snapdom'
+      },
     }
   }, [])
 
@@ -431,31 +355,14 @@ export default function App() {
 
   return (
     <SceneBoundary key={scene} scene={scene}>
-      <div className="app">
-        <SurfaceProviderProbe value="lab">
-          <SurfaceCanvas
-            frameloop={domSurfaceDemandProbe ? 'demand' : 'always'}
-            shadows
-            camera={{ position: [0, 2.5, 9], fov: 45 }}
-            dpr={[1, 2]}
-            onCreated={(state) => {
-              // Dev diagnostics: lets automation inspect the scene graph.
-              window.__r3f = state
-            }}
-          >
-            <KeepDomFocus />
-            <FocusScene>
-              <Suspense fallback={null}>
-                <Room scene={scene} />
-              </Suspense>
-            </FocusScene>
-          </SurfaceCanvas>
-        </SurfaceProviderProbe>
-
-        {notice}
-
-        {showChrome && <Suspense fallback={null}><SceneHud scene={scene} /></Suspense>}
-      </div>
+      <Suspense fallback={null}>
+        <ThreeRoomStage
+          scene={scene}
+          demand={domSurfaceDemandProbe}
+          showChrome={showChrome}
+          notice={notice}
+        />
+      </Suspense>
     </SceneBoundary>
   )
 }

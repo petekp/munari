@@ -1,6 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { supportsCapture } from '@petepetrash/munari'
+import { supportsCapture } from '@petepetrash/munari/gpu'
 // The library's own stylesheet first — it is all mechanism, and shadcn.css
 // below is this app's answer to what it asks for.
 import '@petepetrash/munari/style.css'
@@ -9,7 +9,6 @@ import './components/system/tokens.css'
 import './app.css'
 import App from './App'
 import { CAPTURE_MODE } from './captureMode'
-import { observeSurfaceSources } from './lib/surfaceFrames'
 
 // Installed BEFORE the first render, and awaited: a Surface keeps the engine
 // active when its source is built. In default `auto` mode, `@zumer/snapdom` is
@@ -23,8 +22,6 @@ if (CAPTURE_MODE === 'snapdom' || (CAPTURE_MODE === 'auto' && !supportsCapture()
     isolatedTextInputs: '[data-munari-capture-region]',
   })
 }
-
-observeSurfaceSources()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

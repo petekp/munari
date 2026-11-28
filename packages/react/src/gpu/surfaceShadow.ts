@@ -332,6 +332,9 @@ export function createGpuSurfaceShadow(
     },
     updateDrawItem(params) {
       if (disposed || !readyState || !params.view || opts.opacity <= 0) return null
+      const elevFade = Math.min(1, Math.max(0, params.pose.z / 16))
+      const effOpacity = opts.opacity * elevFade
+      if (effOpacity <= 0.002) return null
       const proj = computeShadowProjection(params.size, params.pose, params.keyPos, opts)
       if (!proj.visible) return null
       const geoSig = proj.verts.map((v) => v.toFixed(3)).join(',')
@@ -344,7 +347,7 @@ export function createGpuSurfaceShadow(
         }
         geo.updatePositions()
       }
-      const uniSig = `${params.radii.join(',')}|${proj.quadHalf[0].toFixed(2)},${proj.quadHalf[1].toFixed(2)}|${proj.sigma.toFixed(2)}|${opts.spread}|${opts.opacity}|${opts.color.join(',')}`
+      const uniSig = `${params.radii.join(',')}|${proj.quadHalf[0].toFixed(2)},${proj.quadHalf[1].toFixed(2)}|${proj.sigma.toFixed(2)}|${opts.spread}|${effOpacity.toFixed(3)}|${opts.color.join(',')}`
       if (uniSig !== lastUniSig) {
         lastUniSig = uniSig
         uniformScratch.set(params.radii, 0)
@@ -354,7 +357,7 @@ export function createGpuSurfaceShadow(
         uniformScratch[7] = proj.cardHalf[1]
         uniformScratch[8] = proj.sigma
         uniformScratch[9] = opts.spread
-        uniformScratch[10] = opts.opacity
+        uniformScratch[10] = effOpacity
         uniformScratch[11] = 0
         uniformScratch[12] = opts.color[0]
         uniformScratch[13] = opts.color[1]

@@ -18,10 +18,11 @@ import {
   type SurfacePresentation,
 } from '@petepetrash/munari/gpu'
 import { SPRING_FISHEYE, SPRING_FLIGHT, createSpring } from '../../behaviors/spring'
-import { composeBehaviors, createLiftBehavior } from '../../behaviors/compose'
+import { createLiftBehavior } from '../../behaviors/compose'
 import { fisheyeLensManifest } from './materials/fisheyeLens.material.gen'
 import { flightCardManifest } from './materials/flightCard.material.gen'
 import { MaterialsPanel } from './gpuStudioMaterials'
+import { GeniePanel, type GenieDebugSnapshot } from './gpuStudioGenie'
 import {
   FISHEYE_PARAMS,
   fisheyeDisplace,
@@ -32,7 +33,7 @@ import {
 import './gpuStudio.css'
 
 const CANVAS_ID = 'gpu-studio'
-type StudioTab = 'flight' | 'fisheye' | 'materials'
+type StudioTab = 'flight' | 'fisheye' | 'materials' | 'genie'
 
 const FLIGHT_SIZE: readonly [number, number] = [340, 200]
 const FLIGHT_SHADOW = { opacity: 0.34, blur: 16, elevationScale: 0.45 } as const
@@ -54,6 +55,9 @@ export interface GpuStudioHandle {
   readonly flightActionPoint: () => { readonly x: number; readonly y: number } | null
   readonly flightShadowSamplePoint: () => { readonly x: number; readonly y: number } | null
   readonly fisheyePoint: (rowIndex: number, target?: 'row' | 'done') => { readonly x: number; readonly y: number } | null
+  readonly fisheyeState: () => { readonly focusDomY: number; readonly amp: number } | null
+  readonly genieState: () => GenieDebugSnapshot | null
+  readonly toggleGenie: () => void
 }
 
 declare global {
@@ -64,7 +68,7 @@ declare global {
 
 function readInitialTab(): StudioTab {
   const q = new URLSearchParams(window.location.search).get('tab')
-  if (q === 'fisheye' || q === 'materials') return q
+  if (q === 'fisheye' || q === 'materials' || q === 'genie') return q
   return 'flight'
 }
 
@@ -75,9 +79,15 @@ interface FlightPanelProps {
 
 function FlightPanel({ onPresChange, flightRef }: FlightPanelProps) {
   const [lifted, setLifted] = useState(true)
+  const [inScene, setInScene] = useState(true)
   const [note, setNote] = useState('Check Gate B14')
   const [count, setCount] = useState(0)
   const [pres, setPres] = useState<SurfacePresentation>('page')
+
+  const liftedRef = useRef(lifted)
+  liftedRef.current = lifted
+  const inSceneRef = useRef(inScene)
+  inSceneRef.current = inScene
 
   const liftBehavior = useMemo(() => createLiftBehavior({ initialLifted: true, config: SPRING_FLIGHT }), [])
   const aeroSpring = useMemo(() => createSpring(18, SPRING_FLIGHT), [])
@@ -88,38 +98,54 @@ function FlightPanel({ onPresChange, flightRef }: FlightPanelProps) {
   )
 
   useEffect(() => {
-    liftBehavior.setLifted(lifted)
-    aeroSpring.setTarget(lifted ? 18 : 0)
-    glossSpring.setTarget(lifted ? 0.5 : 0)
+    if (lifted) {
+      if (!inSceneRef.current) {
+        liftBehavior.snapLifted(false)
+        aeroSpring.snap(0)
+        glossSpring.snap(0)
+        setInScene(true)
+      }
+      liftBehavior.setLifted(true)
+      aeroSpring.setTarget(18)
+      glossSpring.setTarget(0.5)
+    } else {
+      liftBehavior.setLifted(false)
+      aeroSpring.setTarget(0)
+      glossSpring.setTarget(0)
+    }
     requestGpuFrame(CANVAS_ID)
   }, [lifted, liftBehavior, aeroSpring, glossSpring])
 
   const handleFrame = useMemo(
-    () =>
-      composeBehaviors<typeof initialFlightUniforms>(liftBehavior.behavior, (ctx) => {
-        if (!ctx.pageRect) return false
-        const aeroActive = aeroSpring.step(ctx.dtMs)
-        const glossActive = glossSpring.step(ctx.dtMs)
-        ctx.setUniforms({
-          aeroDir: [0.6, -0.8],
-          aeroAmt: aeroSpring.get().value,
-          aeroReach: 170,
-          gloss: glossSpring.get().value,
-        })
-        const v = liftBehavior.values()
-        flightRef.current = {
-          pose: {
-            ...ctx.basePose,
-            x: ctx.basePose.x + v.x,
-            y: ctx.basePose.y + v.y,
-            z: ctx.basePose.z + v.z,
-            rx: (ctx.basePose.rx ?? 0) + v.rx,
-            ry: (ctx.basePose.ry ?? 0) + v.ry,
-          },
-          viewport: ctx.viewport,
-        }
-        return aeroActive || glossActive
-      }),
+    () => (ctx: SurfaceFrameContext<typeof initialFlightUniforms>) => {
+      if (!ctx.pageRect) return false
+      const liftActive = liftBehavior.behavior(ctx)
+      const aeroActive = aeroSpring.step(ctx.dtMs)
+      const glossActive = glossSpring.step(ctx.dtMs)
+      ctx.setUniforms({
+        aeroDir: [0.6, -0.8],
+        aeroAmt: aeroSpring.get().value,
+        aeroReach: 170,
+        gloss: glossSpring.get().value,
+      })
+      const v = liftBehavior.values()
+      flightRef.current = {
+        pose: {
+          ...ctx.basePose,
+          x: ctx.basePose.x + v.x,
+          y: ctx.basePose.y + v.y,
+          z: ctx.basePose.z + v.z,
+          rx: (ctx.basePose.rx ?? 0) + v.rx,
+          ry: (ctx.basePose.ry ?? 0) + v.ry,
+        },
+        viewport: ctx.viewport,
+      }
+      const anyActive = liftActive || aeroActive || glossActive
+      if (!liftedRef.current && inSceneRef.current && !anyActive) {
+        queueMicrotask(() => setInScene(false))
+      }
+      return anyActive
+    },
     [liftBehavior, aeroSpring, glossSpring, flightRef],
   )
 
@@ -148,7 +174,7 @@ function FlightPanel({ onPresChange, flightRef }: FlightPanelProps) {
 
       <Surface
         canvasId={CANVAS_ID}
-        inScene={lifted}
+        inScene={inScene}
         size={FLIGHT_SIZE}
         segments={[12, 12]}
         shadow={FLIGHT_SHADOW}
@@ -228,12 +254,14 @@ function FisheyePanel({ onPresChange, focusRowRef, fisheyeRef }: FisheyePanelPro
       fisheyeRef.current = { pose: ctx.basePose, viewport: ctx.viewport, focusDomY, amp }
 
       const vCount = ctx.geometry.vertexCount
-      if (!slopeRef.current || slopeRef.current.length !== vCount) {
-        slopeRef.current = new Float32Array(vCount)
-        lensRef.current = new Float32Array(vCount)
+      let slopes = slopeRef.current
+      let lenses = lensRef.current
+      if (!slopes || !lenses || slopes.length !== vCount) {
+        slopes = new Float32Array(vCount)
+        lenses = new Float32Array(vCount)
+        slopeRef.current = slopes
+        lensRef.current = lenses
       }
-      const slopes = slopeRef.current
-      const lenses = lensRef.current!
       const h = FISHEYE_SIZE[1]
       ctx.deform((lx, ly, i) => {
         const domY = h / 2 - ly
@@ -242,7 +270,7 @@ function FisheyePanel({ onPresChange, focusRowRef, fisheyeRef }: FisheyePanelPro
         const warpedX = fisheyeDisplaceX(lx, domY, focusDomY, amp, FISHEYE_PARAMS)
         slopes[i] = (scale - 1) * Math.sign(focusDomY - domY || 1) * 0.45
         lenses[i] = Math.max(0, (scale - 1) / Math.max(0.01, FISHEYE_PARAMS.amplitude - 1)) * 0.5
-        return { x: warpedX, y: h / 2 - warpedDomY, z: lenses[i]! * 18 }
+        return { x: warpedX, y: h / 2 - warpedDomY, z: lenses[i] * 18 }
       })
       ctx.setExtraAttribute(0, slopes)
       ctx.setExtraAttribute(1, lenses)
@@ -259,15 +287,16 @@ function FisheyePanel({ onPresChange, focusRowRef, fisheyeRef }: FisheyePanelPro
         <span data-testid="fisheye-visible-count">rows: {filtered.length}</span>
       </div>
 
-      <Surface
-        canvasId={CANVAS_ID}
-        inScene
-        size={FISHEYE_SIZE}
-        segments={[2, 48]}
-        material={fisheyeLensManifest}
-        onFrame={handleFrame}
-        onPresentationChange={onPresChange}
-      >
+      <div className="gpu-fisheye-wrap">
+        <Surface
+          canvasId={CANVAS_ID}
+          inScene
+          size={FISHEYE_SIZE}
+          segments={[2, 48]}
+          material={fisheyeLensManifest}
+          onFrame={handleFrame}
+          onPresentationChange={onPresChange}
+        >
         <div
           className="gpu-fisheye-panel"
           onMouseLeave={() => {
@@ -312,7 +341,8 @@ function FisheyePanel({ onPresChange, focusRowRef, fisheyeRef }: FisheyePanelPro
             </div>
           ))}
         </div>
-      </Surface>
+        </Surface>
+      </div>
     </div>
   )
 }
@@ -342,6 +372,8 @@ export function GpuStudioApp() {
     focusDomY: number
     amp: number
   } | null>(null)
+  const genieDebugRef = useRef<(() => GenieDebugSnapshot) | null>(null)
+  const genieToggleRef = useRef<(() => void) | null>(null)
   const presRef = useRef<SurfacePresentation>(pres)
   presRef.current = pres
 
@@ -392,6 +424,12 @@ export function GpuStudioApp() {
         const warpedX = fisheyeDisplaceX(baseX, domY, snap.focusDomY, snap.amp, FISHEYE_PARAMS)
         return projectSurfaceLocalPoint(snap.pose, warpedX, FISHEYE_SIZE[1] / 2 - warpedDomY, 0, snap.viewport)
       },
+      fisheyeState: () => {
+        const snap = fisheyeRef.current
+        return snap ? { focusDomY: snap.focusDomY, amp: snap.amp } : null
+      },
+      genieState: () => genieDebugRef.current?.() ?? null,
+      toggleGenie: () => genieToggleRef.current?.(),
     }
     return () => {
       delete window.__gpuStudio
@@ -417,7 +455,7 @@ export function GpuStudioApp() {
             </div>
 
             <div className="gpu-studio-tabs">
-              {(['flight', 'fisheye', 'materials'] as const).map((t) => (
+              {(['flight', 'fisheye', 'materials', 'genie'] as const).map((t) => (
                 <button
                   key={t}
                   type="button"
@@ -456,6 +494,14 @@ export function GpuStudioApp() {
             />
           )}
           {tab === 'materials' && <MaterialsPanel canvasId={CANVAS_ID} onPresChange={setPres} />}
+          {tab === 'genie' && (
+            <GeniePanel
+              canvasId={CANVAS_ID}
+              onPresChange={setPres}
+              debugRef={genieDebugRef}
+              toggleRef={genieToggleRef}
+            />
+          )}
         </div>
       </SurfaceCanvas>
     </div>

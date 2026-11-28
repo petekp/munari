@@ -160,6 +160,7 @@ export function createSurfaceLight(options: SurfaceLightOptions = {}): SurfaceLi
         changed()
       }, { signal })
       window.addEventListener('pointermove', (event) => {
+        if (!event.isTrusted) return
         // SAFETY: includes only compares; a pointer type outside the list answers false.
         if (!pointerTypes.includes(event.pointerType as PointerKind)) return
         pointer = { x: event.clientX, y: event.clientY }

@@ -1,10 +1,11 @@
 // Materials & backdrop gallery panel for Munari GPU Studio — extracted from
-// `GpuStudio.tsx` so finish cards, custom manifests, `bleed` glow, and pass-2
-// backdrop refraction live in a clean leaf panel.
+// `GpuStudio.tsx` so finish cards, custom manifests, `bleed` glow, and
+// pointer-draggable pass-2 backdrop refraction live in a clean leaf panel.
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, type PointerEvent } from 'react'
 import {
   Surface,
+  requestGpuFrame,
   type SurfaceFinish,
   type SurfaceFrameContext,
   type SurfacePresentation,
@@ -34,10 +35,11 @@ const VELVET_FINISH: SurfaceFinish = {
 
 const GLASS_FINISH: SurfaceFinish = {
   color: '#dce8f8',
-  roughness: 0.18,
+  roughness: 0.12,
   metalness: 0,
-  transmission: { amount: 0.65, thickness: 18, dispersion: 0.25 },
-  coat: { amount: 0.8, roughness: 0.08 },
+  transmission: { amount: 0.76, thickness: 26, dispersion: 0.45 },
+  coat: { amount: 0.9, roughness: 0.06 },
+  edge: { width: 16, rimColor: null },
   text: 'lit',
 }
 
@@ -49,9 +51,13 @@ interface MaterialsPanelProps {
 export function MaterialsPanel({ canvasId, onPresChange }: MaterialsPanelProps) {
   const foilUniforms = useMemo(() => ({ tilt: [0.38, -0.24] as const, intensity: 0.55, phase: 0.35 }), [])
   const glassUniforms = useMemo(
-    () => ({ tint: [0.72, 0.9, 1.0] as const, amount: 0.78, shift: [0.012, 0.004] as const, highlight: 0.16 }),
+    () => ({ tint: [0.76, 0.92, 1.0] as const, amount: 0.62, shift: [0.006, 0.002] as const, highlight: 0.22 }),
     [],
   )
+  const glassOffsetRef = useRef({ x: 0, y: 0 })
+  const perspScaleRef = useRef(1)
+  const lastTrustedRef = useRef<{ x: number; y: number; pointerId: number } | null>(null)
+  const dragRef = useRef<{ id: number; startX: number; startY: number; ox: number; oy: number } | null>(null)
 
   const handleBackdropFrame = useCallback((ctx: SurfaceFrameContext) => {
     if (!ctx.pageRect) return
@@ -60,7 +66,55 @@ export function MaterialsPanel({ canvasId, onPresChange }: MaterialsPanelProps) 
 
   const handleGlassFrame = useCallback((ctx: SurfaceFrameContext) => {
     if (!ctx.pageRect) return
-    ctx.setPose({ ...ctx.basePose, z: 24 })
+    const cz = ctx.viewport.cameraZ
+    perspScaleRef.current = cz > 24 ? (cz - 24) / cz : 1
+    const off = glassOffsetRef.current
+    ctx.setPose({ ...ctx.basePose, x: ctx.basePose.x + off.x, y: ctx.basePose.y - off.y, z: 24 })
+  }, [])
+
+  useEffect(() => {
+    const onDown = (ev: globalThis.PointerEvent) => {
+      if (!ev.isTrusted) return
+      lastTrustedRef.current = { x: ev.clientX, y: ev.clientY, pointerId: ev.pointerId }
+    }
+    const onMove = (ev: globalThis.PointerEvent) => {
+      if (!ev.isTrusted) return
+      lastTrustedRef.current = { x: ev.clientX, y: ev.clientY, pointerId: ev.pointerId }
+      const drag = dragRef.current
+      if (!drag || ev.pointerId !== drag.id) return
+      const scale = perspScaleRef.current
+      glassOffsetRef.current = {
+        x: Math.max(-140, Math.min(80, drag.ox + (ev.clientX - drag.startX) / scale)),
+        y: Math.max(-60, Math.min(60, drag.oy + (ev.clientY - drag.startY) / scale)),
+      }
+      requestGpuFrame(canvasId)
+    }
+    const onUp = (ev: globalThis.PointerEvent) => {
+      if (!ev.isTrusted) return
+      if (dragRef.current?.id === ev.pointerId) dragRef.current = null
+    }
+    window.addEventListener('pointerdown', onDown, { capture: true, passive: true })
+    window.addEventListener('pointermove', onMove, { capture: true, passive: true })
+    window.addEventListener('pointerup', onUp, { capture: true })
+    window.addEventListener('pointercancel', onUp, { capture: true })
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('pointermove', onMove, true)
+      window.removeEventListener('pointerup', onUp, true)
+      window.removeEventListener('pointercancel', onUp, true)
+    }
+  }, [canvasId])
+
+  const onGlassDown = useCallback((e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    const start = lastTrustedRef.current
+    dragRef.current = {
+      id: start?.pointerId ?? e.pointerId,
+      startX: start?.x ?? e.clientX,
+      startY: start?.y ?? e.clientY,
+      ox: glassOffsetRef.current.x,
+      oy: glassOffsetRef.current.y,
+    }
   }, [])
 
   return (
@@ -95,7 +149,7 @@ export function MaterialsPanel({ canvasId, onPresChange }: MaterialsPanelProps) 
         </Surface>
 
         <Surface canvasId={canvasId} inScene size={[210, 150]} material={lacquerLtcManifest}>
-          <div className="gpu-finish-card" data-testid="manifest-lacquer-ltc" style={{ color: '#fde8e8', background: 'transparent' }}>
+          <div className="gpu-finish-card" data-testid="manifest-lacquer-ltc" style={{ color: '#fde8e8', background: '#7d1924' }}>
             <strong>Lacquer LTC</strong>
             <span>Heitz 64x64 rgba16float</span>
           </div>
@@ -114,6 +168,7 @@ export function MaterialsPanel({ canvasId, onPresChange }: MaterialsPanelProps) 
           <Surface canvasId={canvasId} inScene size={[210, 120]} onFrame={handleBackdropFrame}>
             <div className="gpu-backdrop-card" data-testid="backdrop-source">
               <strong>Backdrop Signal</strong>
+              <span className="gpu-backdrop-target" aria-hidden />
               <span>Pass 1 opaque</span>
             </div>
           </Surface>
@@ -127,9 +182,13 @@ export function MaterialsPanel({ canvasId, onPresChange }: MaterialsPanelProps) 
             uniforms={glassUniforms}
             onFrame={handleGlassFrame}
           >
-            <div className="gpu-glass-card" data-testid="backdrop-glass">
+            <div
+              className="gpu-glass-card"
+              data-testid="backdrop-glass"
+              onPointerDown={onGlassDown}
+            >
               <strong>Glass Refract</strong>
-              <span>@group(2)</span>
+              <span>Drag to bend stripes</span>
             </div>
           </Surface>
         </div>

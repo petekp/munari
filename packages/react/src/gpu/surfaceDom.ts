@@ -253,12 +253,17 @@ export function writeCaptureBodyColor(
   captureRoot: HTMLElement,
   color: string | null,
   shownAsPage: boolean,
-  source: DomTextureSource | null,
+  source: { repaint(): void } | null,
+  hasFinish = false,
 ): void {
   const next = color === null ? '' : shownAsPage ? color : 'transparent'
-  if (captureRoot.style.getPropertyValue('--munari-body') === next) return
+  const nextBg = hasFinish && !shownAsPage ? 'transparent' : ''
+  const bodySame = captureRoot.style.getPropertyValue('--munari-body') === next
+  const bgSame = captureRoot.style.backgroundColor === nextBg
+  if (bodySame && bgSame) return
   if (next === '') captureRoot.style.removeProperty('--munari-body')
   else captureRoot.style.setProperty('--munari-body', next)
+  if (!bgSame) captureRoot.style.backgroundColor = nextBg
   source?.repaint()
 }
 
@@ -494,6 +499,19 @@ export function buildSurfaceSlotStyle(
   }
   if (bodyColor !== null) base['--munari-body'] = bodyColor
   return base
+}
+
+export function resolvePageSlotSize(
+  size: readonly [number, number] | undefined,
+  slotPinned: boolean,
+  hasMeasured: boolean,
+  measured: readonly [number, number],
+): readonly [number, number] | undefined {
+  return size ?? (slotPinned && hasMeasured ? measured : undefined)
+}
+
+export function liveRootStyle(size: readonly [number, number] | undefined) {
+  return { width: size ? size[0] : undefined, height: size ? size[1] : undefined }
 }
 
 export function resolveSurfaceViewFormat(

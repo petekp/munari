@@ -8,7 +8,7 @@
 //      published entries — `@petepetrash/munari`, `/advanced` and
 //      `/snapdom`. @munari/core and relative reach-arounds are both
 //      violations.
-import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { basename, dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -191,6 +191,46 @@ describe('the hourglass', () => {
         }),
       ).toEqual([])
     }
+  })
+
+  it('gpu lab routes and shell keep Three.js and @react-three out of static closure', () => {
+    const forbidden = new Set(['three', '@petepetrash/munari', '@petepetrash/munari/advanced'])
+    const entries = [
+      'apps/lab/src/main.tsx',
+      'apps/lab/src/App.tsx',
+      'apps/lab/src/scenes/finish-demo/FinishDemo.tsx',
+      'apps/lab/src/scenes/gpu-studio/GpuStudio.tsx',
+    ].map((p) => join(ROOT, p))
+    const resolveRel = (from: string, spec: string): string | null => {
+      if (!spec.startsWith('.')) return null
+      const base = resolve(dirname(from), spec)
+      for (const cand of [base, `${base}.ts`, `${base}.tsx`, join(base, 'index.ts'), join(base, 'index.tsx')]) {
+        if (existsSync(cand) && statSync(cand).isFile()) return cand
+      }
+      return null
+    }
+    const queue = [...entries]
+    const seen = new Set<string>()
+    const hits: string[] = []
+    while (queue.length > 0) {
+      const file = queue.pop()!
+      if (seen.has(file)) continue
+      seen.add(file)
+      const parsed = parseSync(file, readFileSync(file, 'utf8'))
+      const visit = (spec: string) => {
+        if (forbidden.has(spec) || spec.startsWith('three/') || spec.startsWith('@react-three/')) {
+          hits.push(`${file.slice(ROOT.length + 1)} imports ${spec}`)
+        }
+        const next = resolveRel(file, spec)
+        if (next && !seen.has(next)) queue.push(next)
+      }
+      new Visitor({
+        ImportDeclaration: (n) => { if (n.importKind !== 'type') visit(n.source.value) },
+        ExportNamedDeclaration: (n) => { if (n.source && n.exportKind !== 'type') visit(n.source.value) },
+        ExportAllDeclaration: (n) => { visit(n.source.value) },
+      }).visit(parsed.program)
+    }
+    expect(hits).toEqual([])
   })
 })
 

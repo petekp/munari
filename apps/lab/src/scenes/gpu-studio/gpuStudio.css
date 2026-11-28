@@ -277,6 +277,7 @@
 }
 
 .gpu-backdrop-card {
+  position: relative;
   width: 210px;
   height: 120px;
   border-radius: 12px;
@@ -284,9 +285,31 @@
   color: #ffffff;
   padding: 14px;
   box-sizing: border-box;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+}
+
+.gpu-backdrop-card > strong,
+.gpu-backdrop-card > span:not(.gpu-backdrop-target) {
+  position: relative;
+  z-index: 1;
+}
+
+.gpu-backdrop-target {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 116px;
+  background: repeating-linear-gradient(
+    -35deg,
+    #e85d04 0 18px,
+    #f8fafc 18px 24px,
+    #0f172a 24px 30px
+  );
+  opacity: 0.94;
 }
 
 .ui-root:has([data-testid='backdrop-glass']),
@@ -299,11 +322,95 @@
   height: 120px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.55);
   color: #0f172a;
   padding: 12px;
   box-sizing: border-box;
+  cursor: grab;
+  user-select: none;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+}
+
+.gpu-glass-card:active {
+  cursor: grabbing;
+}
+
+.gpu-fisheye-wrap {
+  padding-top: 56px;
+}
+
+/* ── Genie warp ── */
+.gpu-genie-desk {
+  position: relative;
+  width: 440px;
+  height: 410px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  box-sizing: border-box;
+}
+
+.gpu-genie-window {
+  width: 340px;
+  height: 220px;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid rgba(22, 27, 38, 0.14);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
+  padding: 16px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.gpu-genie-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.gpu-genie-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.gpu-genie-dock-row {
+  width: 340px;
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 16px;
+  box-sizing: border-box;
+}
+
+.gpu-genie-dock {
+  width: 84px;
+  height: 54px;
+  border-radius: 12px;
+  border: 1px solid rgba(22, 27, 38, 0.2);
+  background: rgba(255, 255, 255, 0.85);
+  color: #161b26;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+}
+
+.gpu-genie-dock[aria-pressed='true'] {
+  background: #161b26;
+  color: #ffffff;
 }

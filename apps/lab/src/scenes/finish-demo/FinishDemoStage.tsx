@@ -1,47 +1,90 @@
-// Finish stage — the page's one SurfaceCanvas, the draggable key light, and
-// the cards that wear their finishes.
+// Finish stage — the page's one WebGPU SurfaceCanvas, the draggable key light,
+// and the cards that wear their finishes (`@petepetrash/munari/gpu`, zero Three.js).
 //
-// The law: each card's Surface.Root takes its own finish, so cards with
-// different finishes share the canvas, and the canvas lights them all with
-// one key. The key is a createSurfaceLight handle: dragging it redraws the
-// canvas and moves the handle with no React render. While the key follows the
-// pointer, the canvas is lit by a second handle made with `follow: 'pointer'`
-// and the drag handle is hidden; with tilt on, each card bends toward the
-// pointer. Neither renders React on a pointer move. Each card's ink follows
-// its own body color, so its text stays legible while the color is tuned.
+// The law: each card's `Surface` takes its own fluid omitted-`size` layout box
+// and its own `finish`, so cards share one canvas and one key light. Dragging the
+// key handle redraws the canvas without React re-renders. When pointer tilt is
+// enabled, `createPointerTiltBehavior` drives each card's pose with analytic
+// springs (`apps/lab/src/behaviors/compose.ts`) and wakes the demand canvas via
+// `requestGpuFrame`, turning both geometry and compiled finish normals together.
 //
-// Ownership: the library owns the material and lights. This module mounts
-// the canvas and gives each card the props the code listing prints
-// (finishDemoRecipe).
+// Ownership: `@petepetrash/munari/gpu` owns WebGPU finishes & device lifecycle;
+// this module owns stage setup, the key light handle, and card props.
 
-import { createContext, useContext, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
-import { Surface, SurfaceCanvas, useCaptureSupport, type LightPosition, type SurfaceCanvasId, type SurfaceLight } from '@petepetrash/munari'
-import { FinishMesh, PointerTracker, RecaptureOnStyle } from '../material-finishes/MaterialFinishesSurface'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from 'react'
+import {
+  Surface,
+  SurfaceCanvas,
+  getGpuHostStats,
+  requestGpuFrame,
+  supportsCapture,
+  type GpuHostStats,
+  type LightPosition,
+  type SurfaceFrameContext,
+  type SurfaceLight,
+} from '@petepetrash/munari/gpu'
+
+declare global {
+  interface Window {
+    __finishDemoStats?: () => GpuHostStats
+  }
+}
+import { createPointerTiltBehavior } from '../../behaviors/compose'
+import { SPRING_SNAPPY } from '../../behaviors/spring'
 import { bodyOf, inkStyle } from './finishDemoFinishes'
 import { CANVAS_PROPS, cardProps, keyLight, POINTER_LIGHTING, type BenchCard, type PageSetup } from './finishDemoRecipe'
 import '../material-finishes/materialFinishes.css'
 import './finishDemo.css'
 
-// The material-finishes scene's arrow-key step for its light handle, as a
-// fraction of the viewport.
+// The arrow-key step for the draggable key light handle, as a fraction of viewport.
 const KEY_STEP = 0.02
+// Six-degree max tilt matching the original bench reach.
+const MAX_TILT_RAD = (6 * Math.PI) / 180
+const TILT_REACH_PX = 420
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
+
+interface PagePointerState {
+  position: { readonly x: number; readonly y: number } | null
+}
+
+const pagePointer: PagePointerState = { position: null }
 
 function keyDelta(key: string): readonly [number, number] | null {
   switch (key) {
-    case 'ArrowLeft': return [-KEY_STEP, 0]
-    case 'ArrowRight': return [KEY_STEP, 0]
-    case 'ArrowUp': return [0, -KEY_STEP]
-    case 'ArrowDown': return [0, KEY_STEP]
-    default: return null
+    case 'ArrowLeft':
+      return [-KEY_STEP, 0]
+    case 'ArrowRight':
+      return [KEY_STEP, 0]
+    case 'ArrowUp':
+      return [0, -KEY_STEP]
+    case 'ArrowDown':
+      return [0, KEY_STEP]
+    default:
+      return null
   }
 }
 
 /** Stand the key over a client point, kept inside the viewport. */
 export function moveKey(x: number, y: number): void {
-  keyLight.set({ x: Math.min(Math.max(x, 0), window.innerWidth), y: Math.min(Math.max(y, 0), window.innerHeight) })
+  keyLight.set({
+    x: Math.min(Math.max(x, 0), window.innerWidth),
+    y: Math.min(Math.max(y, 0), window.innerHeight),
+  })
 }
 
-/** The key's position, re-rendering the caller on each move: for readouts such as the code listing. */
+/** The key's position, re-rendering the caller on each move for code listings. */
 export function useKeyPosition(light: SurfaceLight): LightPosition {
   const [position, setPosition] = useState(light.get)
   useEffect(() => light.subscribe(setPosition), [light])
@@ -52,9 +95,9 @@ export type PageGround = 'light' | 'dark'
 
 // ── stage ──────────────────────────────────────────────────────────────
 
-const StageContext = createContext<SurfaceCanvasId | null>(null)
+const StageContext = createContext<string | null>(null)
 
-function useStageCanvas(): SurfaceCanvasId {
+function useStageCanvas(): string {
   const canvasId = useContext(StageContext)
   if (!canvasId) throw new Error('A finished card needs a FinishStage around it')
   return canvasId
@@ -105,18 +148,22 @@ function LightHandle() {
 interface FinishStageProps {
   readonly ground: PageGround
   readonly className: string
-  /** Show the cards as page HTML instead of on Surfaces. */
   readonly pageHtml: boolean
   readonly followsPointer: boolean
   readonly tilts: boolean
   readonly onReady?: () => void
-  /** The page, given whether the cards are drawn on Surfaces. */
   readonly children: (inScene: boolean) => ReactNode
 }
 
 export function FinishStage({ ground, className, pageHtml, followsPointer, tilts, onReady, children }: FinishStageProps) {
-  const supported = useCaptureSupport()
+  const supported = useMemo(() => supportsCapture(), [])
   const canvasId = useId()
+  useEffect(() => {
+    window.__finishDemoStats = () => getGpuHostStats(canvasId)
+    return () => {
+      delete window.__finishDemoStats
+    }
+  }, [canvasId])
   useEffect(() => {
     let alive = true
     void (document.fonts?.ready ?? Promise.resolve()).then(() => {
@@ -126,14 +173,46 @@ export function FinishStage({ ground, className, pageHtml, followsPointer, tilts
       alive = false
     }
   }, [onReady])
+
+  useEffect(() => {
+    if (!tilts) {
+      pagePointer.position = null
+      requestGpuFrame(canvasId)
+      return
+    }
+    const reduced = window.matchMedia?.(REDUCED_MOTION)
+    const update = (pos: PagePointerState['position']) => {
+      pagePointer.position = reduced?.matches ? null : pos
+      requestGpuFrame(canvasId)
+    }
+    const onMove = (event: globalThis.PointerEvent) => {
+      if (!event.isTrusted) return
+      update({ x: event.clientX, y: event.clientY })
+    }
+    const onLeave = () => update(null)
+    window.addEventListener('pointermove', onMove, { passive: true })
+    document.documentElement.addEventListener('pointerleave', onLeave)
+    reduced?.addEventListener('change', onLeave)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      document.documentElement.removeEventListener('pointerleave', onLeave)
+      reduced?.removeEventListener('change', onLeave)
+      pagePointer.position = null
+    }
+  }, [tilts, canvasId])
+
   const inScene = supported && !pageHtml
 
   return (
     <div className={`fd-page ${className}`} data-page-ground={ground}>
       {supported && (
-        <SurfaceCanvas id={canvasId} {...CANVAS_PROPS} lighting={followsPointer ? POINTER_LIGHTING : CANVAS_PROPS.lighting} onCreated={({ gl }) => gl.setClearAlpha(0)}>
-          {tilts && <PointerTracker />}
-        </SurfaceCanvas>
+        <SurfaceCanvas
+          id={canvasId}
+          pointerMode={CANVAS_PROPS.pointerMode}
+          frameloop={CANVAS_PROPS.frameloop}
+          lighting={followsPointer ? POINTER_LIGHTING : CANVAS_PROPS.lighting}
+          style={CANVAS_PROPS.style}
+        />
       )}
       <StageContext value={canvasId}>{children(inScene)}</StageContext>
       {inScene && !followsPointer && <LightHandle />}
@@ -149,22 +228,44 @@ interface FinishedCardProps {
   readonly children: ReactNode
 }
 
-/** A piece of UI wearing its own finish, with exactly the props cardProps gives it. */
+/** A fluid omitted-size UI card wearing its own compiled WebGPU finish. */
 export function FinishedCard({ card, page, children }: FinishedCardProps) {
   const canvasId = useStageCanvas()
   const props = cardProps(card, page)
   const ink = inkStyle(bodyOf(card.finish))
+  const tilt = useMemo(() => createPointerTiltBehavior(MAX_TILT_RAD, SPRING_SNAPPY), [])
+  const tiltsRef = useRef(page.tilt === 'pointer')
+  tiltsRef.current = page.tilt === 'pointer'
+
+  useEffect(() => {
+    if (page.tilt !== 'pointer') {
+      tilt.reset()
+      requestGpuFrame(canvasId)
+    }
+  }, [page.tilt, tilt, canvasId])
+
+  const onFrame = useCallback(
+    (ctx: SurfaceFrameContext) => {
+      const ptr = tiltsRef.current ? pagePointer.position : null
+      if (ptr && ctx.pageRect) {
+        const cx = ctx.pageRect.left + ctx.pageRect.width / 2
+        const cy = ctx.pageRect.top + ctx.pageRect.height / 2
+        const nx = Math.max(-1, Math.min(1, (ptr.x - cx) / TILT_REACH_PX))
+        const ny = Math.max(-1, Math.min(1, (cy - ptr.y) / TILT_REACH_PX))
+        tilt.setPointer(nx, ny)
+      } else {
+        tilt.reset()
+      }
+      return tilt.behavior(ctx)
+    },
+    [tilt],
+  )
+
   return (
-    <Surface.Root canvasId={canvasId} inScene={props.inScene} finish={props.finish}>
-      <Surface.HTML>
-        <div className={props.className} style={ink}>
-          <RecaptureOnStyle style={ink} />
-          {children}
-        </div>
-      </Surface.HTML>
-      <Surface.Scene>
-        <FinishMesh tilt={page.tilt} />
-      </Surface.Scene>
-    </Surface.Root>
+    <Surface canvasId={canvasId} inScene={props.inScene} finish={props.finish} onFrame={onFrame}>
+      <div className={props.className} style={ink}>
+        {children}
+      </div>
+    </Surface>
   )
 }

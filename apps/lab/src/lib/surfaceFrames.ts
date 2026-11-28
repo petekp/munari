@@ -17,8 +17,11 @@ export interface LabSurfaceFrame {
 }
 
 const sources = new WeakMap<HTMLCanvasElement, DomTextureSource>()
+let observed = false
 
 export function observeSurfaceSources() {
+  if (observed) return
+  observed = true
   const engine = captureEngine()
   setCaptureEngine({
     ...engine,

@@ -12,7 +12,7 @@
 // Ownership: this module holds the live values and their listeners; the
 // library owns the lights, environments and material.
 
-import { createSurfaceLight, type SurfaceFinish, type SurfaceLighting } from '@petepetrash/munari'
+import { createSurfaceLight, type SurfaceFinish, type SurfaceLighting } from '@petepetrash/munari/gpu'
 import { finishes, type FinishPreset } from './recipe/finishes'
 
 export type FinishId = FinishPreset

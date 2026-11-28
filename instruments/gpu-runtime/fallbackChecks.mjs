@@ -87,6 +87,7 @@ export async function checkNoNativeCaptureWithSnapdom(ctx) {
       const count = await page.$eval('[data-testid="flight-count"]', (el) => el.textContent)
       assert.equal(note, 'Check Gate B14 + snapdom')
       assert.equal(count, 'clicks: 1')
+      await page.waitForFunction(() => (window.__gpuStudio?.stats().workClaims ?? 1) === 0, { timeout: 10_000 })
       await ctx.sleep(200)
       const s0 = await page.evaluate(() => window.__gpuStudio.stats())
       await ctx.sleep(500)

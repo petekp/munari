@@ -51,11 +51,13 @@ import {
   disposeSurfaceGpuSlots,
   dockSourceHost,
   isManifestMaterial,
+  liveRootStyle,
   makeCaptureRoot,
   observeElementSize,
   reparentLiveDom,
   resolveBleed,
   resolveInitialScale,
+  resolvePageSlotSize,
   resolveSurfaceViewFormat,
   syncUploadIfNeeded,
   updatePageVisibility,
@@ -85,19 +87,6 @@ export type {
 
 let surfaceSeq = 0
 let tokenSeq = 1
-
-function resolvePageSlotSize(
-  size: readonly [number, number] | undefined,
-  slotPinned: boolean,
-  hasMeasured: boolean,
-  measured: readonly [number, number],
-): readonly [number, number] | undefined {
-  return size ?? (slotPinned && hasMeasured ? measured : undefined)
-}
-
-function liveRootStyle(size: readonly [number, number] | undefined) {
-  return { width: size ? size[0] : undefined, height: size ? size[1] : undefined }
-}
 
 export function Surface<TUniforms = Record<string, never>>({
   canvasId = '',
@@ -243,7 +232,8 @@ export function Surface<TUniforms = Record<string, never>>({
 
     setSlotPinned(Boolean(exclusive && !draws.page))
     updatePageVisibility(pageNode, exclusive && !draws.page)
-    writeCaptureBodyColor(captureRoot, finishRef.current?.color ?? null, exclusive && draws.page, sourceRef.current)
+    const fin = finishRef.current
+    writeCaptureBodyColor(captureRoot, fin?.color ?? null, exclusive && draws.page, sourceRef.current, Boolean(fin))
     reparentLiveDom(liveRootRef.current, pageNode, captureRoot, exclusive, draws, holdStateRef.current, sourceRef.current)
 
     if (nextPres !== presentedRef.current) {
@@ -253,6 +243,11 @@ export function Surface<TUniforms = Record<string, never>>({
   }, [captureRoot, exclusive])
   const syncDomHoldRef = useRef(syncDomHold)
   syncDomHoldRef.current = syncDomHold
+
+  useLayoutEffect(() => {
+    const shownAsPage = exclusive && crossingDraws(crossingRef.current.phase).page
+    writeCaptureBodyColor(captureRoot, finish?.color ?? null, shownAsPage, sourceRef.current, Boolean(finish))
+  }, [captureRoot, finish, exclusive])
 
   useLayoutEffect(() => {
     const target = liveRoot ?? pageEl
