@@ -3,7 +3,13 @@
 //
 // Ownership: `@petepetrash/munari/gpu` (`Surface.tsx` delegates `tick()` here).
 
-import { crossingProgress, type CrossingState, type DomTextureSource, type SurfaceChrome } from '@munari/core'
+import {
+  crossingDraws,
+  crossingProgress,
+  type CrossingState,
+  type DomTextureSource,
+  type SurfaceChrome,
+} from '@munari/core'
 import type { SurfaceFinish } from '../primitives/surface/surfaceFinish'
 import { createManifestMaterial, unlitSurfaceManifest } from './manifest'
 import {
@@ -241,11 +247,12 @@ export function runSurfaceTick<TUniforms>(
     onPassComplete,
   }
 
-  if (shadow) {
+  if (shadow && !crossingDraws(crossing.phase).page) {
     const keyPos = resolveKeyPos(viewport, lighting)
     const shadowItem = shadow.updateDrawItem({
       size,
       radii: chrome.radii,
+      shadowLayers: chrome.shadow,
       pose: poseToDraw,
       keyPos,
       viewProj: viewport.viewProj,

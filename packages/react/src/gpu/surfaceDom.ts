@@ -254,16 +254,11 @@ export function writeCaptureBodyColor(
   color: string | null,
   shownAsPage: boolean,
   source: { repaint(): void } | null,
-  hasFinish = false,
 ): void {
   const next = color === null ? '' : shownAsPage ? color : 'transparent'
-  const nextBg = hasFinish && !shownAsPage ? 'transparent' : ''
-  const bodySame = captureRoot.style.getPropertyValue('--munari-body') === next
-  const bgSame = captureRoot.style.backgroundColor === nextBg
-  if (bodySame && bgSame) return
+  if (captureRoot.style.getPropertyValue('--munari-body') === next) return
   if (next === '') captureRoot.style.removeProperty('--munari-body')
   else captureRoot.style.setProperty('--munari-body', next)
-  if (!bgSame) captureRoot.style.backgroundColor = nextBg
   source?.repaint()
 }
 
@@ -484,6 +479,7 @@ export function makeCaptureRoot(): HTMLDivElement {
   const el = document.createElement('div')
   el.className = 'ui-root'
   el.style.display = 'block'
+  el.style.backgroundColor = 'transparent'
   guardPointerCapture(el)
   return el
 }

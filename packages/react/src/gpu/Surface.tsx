@@ -232,8 +232,7 @@ export function Surface<TUniforms = Record<string, never>>({
 
     setSlotPinned(Boolean(exclusive && !draws.page))
     updatePageVisibility(pageNode, exclusive && !draws.page)
-    const fin = finishRef.current
-    writeCaptureBodyColor(captureRoot, fin?.color ?? null, exclusive && draws.page, sourceRef.current, Boolean(fin))
+    writeCaptureBodyColor(captureRoot, finishRef.current?.color ?? null, exclusive && draws.page, sourceRef.current)
     reparentLiveDom(liveRootRef.current, pageNode, captureRoot, exclusive, draws, holdStateRef.current, sourceRef.current)
 
     if (nextPres !== presentedRef.current) {
@@ -246,7 +245,7 @@ export function Surface<TUniforms = Record<string, never>>({
 
   useLayoutEffect(() => {
     const shownAsPage = exclusive && crossingDraws(crossingRef.current.phase).page
-    writeCaptureBodyColor(captureRoot, finish?.color ?? null, shownAsPage, sourceRef.current, Boolean(finish))
+    writeCaptureBodyColor(captureRoot, finish?.color ?? null, shownAsPage, sourceRef.current)
   }, [captureRoot, finish, exclusive])
 
   useLayoutEffect(() => {

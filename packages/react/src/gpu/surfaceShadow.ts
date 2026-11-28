@@ -8,9 +8,9 @@
 //
 // Ownership: `@petepetrash/munari/gpu`.
 
+import type { SurfaceShadowLayer } from '@munari/core'
 import {
   GPU_BUFFER_USAGE,
-  SURFACE_WGSL_COMMON,
   createPlaneGeometry,
   type GpuDrawItem,
   type GpuGeometry,
@@ -41,6 +41,7 @@ export interface GpuSurfaceShadowHandle {
   updateDrawItem(params: {
     readonly size: readonly [number, number]
     readonly radii: readonly [number, number, number, number]
+    readonly shadowLayers?: readonly SurfaceShadowLayer[]
     readonly pose: SurfacePose
     readonly keyPos: readonly [number, number, number]
     readonly viewProj: Mat4
@@ -52,13 +53,12 @@ export interface GpuSurfaceShadowHandle {
   dispose(): void
 }
 
-const SHADOW_UNIFORM_BYTES = 64
+const MAX_SHADOW_LAYERS = 4
+const SHADOW_UNIFORM_BYTES = 176
 const SHADOW_Z = -0.5
 const GPU_COLOR_WRITE_ALL = 0xf
 
-const SHADOW_WGSL =
-  SURFACE_WGSL_COMMON +
-  /* wgsl */ `
+const SHADOW_WGSL = /* wgsl */ `
 struct FrameUniforms {
   mvp: mat4x4f,
   modelWorld: mat4x4f,
@@ -76,8 +76,9 @@ struct FrameUniforms {
 struct ShadowUniforms {
   radii: vec4f,
   halfs: vec4f,
-  params: vec4f,
-  color: vec4f,
+  info: vec4f,
+  layerGeom: array<vec4f, 4>,
+  layerColor: array<vec4f, 4>,
 };
 
 @group(0) @binding(0) var<uniform> frame: FrameUniforms;
@@ -98,33 +99,45 @@ fn vsMain(@location(0) position: vec3f, @location(1) uv: vec2f) -> VsOut {
   return out;
 }
 
+fn erfA(x: f32) -> f32 {
+  let a = abs(x);
+  let t = 1.0 / (1.0 + 0.3275911 * a);
+  let poly = ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t;
+  return sign(x) * (1.0 - poly * exp(-a * a));
+}
+
 @fragment
 fn fsMain(@location(0) uv: vec2f) -> @location(0) vec4f {
-  let p = (uv * 2.0 - 1.0) * u.halfs.xy;
-  let halfC = max(u.halfs.zw + vec2f(u.params.y), vec2f(1.0));
-  let leftR = select(u.radii.w, u.radii.x, p.y > 0.0);
-  let rightR = select(u.radii.z, u.radii.y, p.y > 0.0);
-  let r = min(max(select(rightR, leftR, p.x < 0.0), 0.0), min(halfC.x, halfC.y));
-  let q = abs(p) - halfC + vec2f(r);
-  let sd = min(max(q.x, q.y), 0.0) + length(max(q, vec2f(0.0))) - r;
-  let sigma = max(u.params.x, 0.5);
-  let cov = 0.5 - 0.5 * tanh(sd * 0.85 / sigma);
-  let alpha = clamp(cov * u.params.z, 0.0, 1.0);
-  if (alpha < 0.002) {
+  let baseP = (uv * 2.0 - 1.0) * u.halfs.xy;
+  let layerCount = u32(clamp(u.info.x + 0.5, 0.0, 4.0));
+  var acc = vec4f(0.0);
+  for (var i = 0u; i < layerCount; i = i + 1u) {
+    let g = u.layerGeom[i];
+    let col = u.layerColor[i];
+    let p = baseP - g.xy;
+    let halfC = max(u.halfs.zw + vec2f(g.w), vec2f(1.0));
+    let leftR = select(u.radii.w, u.radii.x, p.y > 0.0);
+    let rightR = select(u.radii.z, u.radii.y, p.y > 0.0);
+    let r = min(max(select(rightR, leftR, p.x < 0.0), 0.0), min(halfC.x, halfC.y));
+    let q = abs(p) - halfC + vec2f(r);
+    let sd = min(max(q.x, q.y), 0.0) + length(max(q, vec2f(0.0))) - r;
+    let cov = clamp(0.5 * (1.0 - erfA(sd / max(1.41421356 * g.z, 0.35))), 0.0, 1.0);
+    let a = clamp(cov * col.a, 0.0, 1.0);
+    acc = vec4f(acc.rgb + (1.0 - acc.a) * (col.rgb * a), acc.a + (1.0 - acc.a) * a);
+  }
+  if (acc.a < 0.002) {
     discard;
   }
-  let enc = srgbOetf(clamp(u.color.rgb, vec3f(0.0), vec3f(1.0)));
-  return vec4f(enc * alpha, alpha);
+  return acc;
 }
 `
 
-function hexToLinear(hex: string): readonly [number, number, number] {
+function hexToSrgb(hex: string): readonly [number, number, number] {
   const raw = hex.startsWith('#') ? hex.slice(1).trim() : hex.trim()
-  if (!/^([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(raw)) return [0.003, 0.005, 0.01]
+  if (!/^([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(raw)) return [0.035, 0.051, 0.086]
   const hex6 = raw.length === 3 ? raw.replace(/(.)/g, '$1$1') : raw.length === 8 ? raw.slice(0, 6) : raw
   const num = Number.parseInt(hex6, 16)
-  const eotf = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
-  return [eotf(((num >> 16) & 255) / 255), eotf(((num >> 8) & 255) / 255), eotf((num & 255) / 255)]
+  return [((num >> 16) & 255) / 255, ((num >> 8) & 255) / 255, (num & 255) / 255]
 }
 
 function normalizeOptions(options: boolean | SurfaceShadowOptions) {
@@ -134,7 +147,7 @@ function normalizeOptions(options: boolean | SurfaceShadowOptions) {
     blur: Math.max(0.5, obj.blur ?? 14),
     spread: obj.spread ?? 0,
     elevationScale: Math.max(0, obj.elevationScale ?? 0.35),
-    color: hexToLinear(obj.color ?? '#090d16'),
+    color: hexToSrgb(obj.color ?? '#090d16'),
   }
 }
 
@@ -144,6 +157,7 @@ export function computeShadowProjection(
   pose: SurfacePose,
   keyPos: readonly [number, number, number],
   options: { readonly blur: number; readonly spread: number; readonly elevationScale: number },
+  extraMargin = 0,
 ): ShadowProjection {
   const world = new Float32Array(16)
   mat4FromPositionEulerScale(
@@ -195,7 +209,7 @@ export function computeShadowProjection(
 
   const altitude = Math.max(0, pose.z)
   const sigma = Math.max(0.5, options.blur + altitude * options.elevationScale)
-  const margin = Math.max(4, sigma * 2.5 + Math.max(0, options.spread))
+  const margin = Math.max(4, sigma * 3 + Math.max(0, options.spread), extraMargin)
   const qhx = lu + margin
   const qhy = lv + margin
 
@@ -331,11 +345,40 @@ export function createGpuSurfaceShadow(
       lastUniSig = ''
     },
     updateDrawItem(params) {
-      if (disposed || !readyState || !params.view || opts.opacity <= 0) return null
-      const elevFade = Math.min(1, Math.max(0, params.pose.z / 16))
-      const effOpacity = opts.opacity * elevFade
-      if (effOpacity <= 0.002) return null
-      const proj = computeShadowProjection(params.size, params.pose, params.keyPos, opts)
+      if (disposed || !readyState || !params.view) return null
+      const alt = Math.max(0, params.pose.z)
+      const t = Math.min(1, alt / 20)
+      const elevFade = t * t * (3 - 2 * t)
+      const castAlpha = opts.opacity * elevFade
+      const cssLayers = params.shadowLayers ?? []
+      const geomVals: number[] = []
+      const colVals: number[] = []
+      let maxReach = 0
+      let layerCount = 0
+
+      const pushLayer = (ox: number, oy: number, sigma: number, spread: number, r: number, g: number, b: number, a: number) => {
+        if (layerCount >= MAX_SHADOW_LAYERS || a <= 0.002) return
+        geomVals.push(ox, oy, sigma, spread)
+        colVals.push(r, g, b, a)
+        maxReach = Math.max(maxReach, Math.hypot(ox, oy) + 3 * sigma + Math.max(0, spread))
+        layerCount += 1
+      }
+
+      const maxCss = castAlpha > 0.002 ? MAX_SHADOW_LAYERS - 1 : MAX_SHADOW_LAYERS
+      for (let i = 0; i < cssLayers.length && i < maxCss; i++) {
+        const l = cssLayers[i]!
+        const sigma = Math.max(0.25, l.blur * 0.5 + 0.17 * alt)
+        const spread = l.spread / (1 + alt / 140)
+        const alpha = l.color[3] / (1 + alt / 210)
+        pushLayer(l.x, -l.y, sigma, spread, l.color[0], l.color[1], l.color[2], alpha)
+      }
+      if (castAlpha > 0.002) {
+        const castSigma = Math.max(0.5, opts.blur + alt * opts.elevationScale)
+        pushLayer(0, 0, castSigma, opts.spread, opts.color[0], opts.color[1], opts.color[2], castAlpha)
+      }
+      if (layerCount === 0) return null
+
+      const proj = computeShadowProjection(params.size, params.pose, params.keyPos, opts, maxReach)
       if (!proj.visible) return null
       const geoSig = proj.verts.map((v) => v.toFixed(3)).join(',')
       if (geoSig !== lastGeoSig) {
@@ -347,22 +390,18 @@ export function createGpuSurfaceShadow(
         }
         geo.updatePositions()
       }
-      const uniSig = `${params.radii.join(',')}|${proj.quadHalf[0].toFixed(2)},${proj.quadHalf[1].toFixed(2)}|${proj.sigma.toFixed(2)}|${opts.spread}|${effOpacity.toFixed(3)}|${opts.color.join(',')}`
+      const uniSig = `${params.radii.join(',')}|${proj.quadHalf[0].toFixed(2)},${proj.quadHalf[1].toFixed(2)}|${layerCount}|${geomVals.map((v) => v.toFixed(2)).join(',')}|${colVals.map((v) => v.toFixed(3)).join(',')}`
       if (uniSig !== lastUniSig) {
         lastUniSig = uniSig
+        uniformScratch.fill(0)
         uniformScratch.set(params.radii, 0)
         uniformScratch[4] = proj.quadHalf[0]
         uniformScratch[5] = proj.quadHalf[1]
         uniformScratch[6] = proj.cardHalf[0]
         uniformScratch[7] = proj.cardHalf[1]
-        uniformScratch[8] = proj.sigma
-        uniformScratch[9] = opts.spread
-        uniformScratch[10] = effOpacity
-        uniformScratch[11] = 0
-        uniformScratch[12] = opts.color[0]
-        uniformScratch[13] = opts.color[1]
-        uniformScratch[14] = opts.color[2]
-        uniformScratch[15] = 1
+        uniformScratch[8] = layerCount
+        uniformScratch.set(geomVals, 12)
+        uniformScratch.set(colVals, 28)
         renderer.device.queue.writeBuffer(uniformBuf, 0, uniformScratch)
       }
       return {
