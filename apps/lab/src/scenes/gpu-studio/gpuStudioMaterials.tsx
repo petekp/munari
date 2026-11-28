@@ -35,11 +35,11 @@ const VELVET_FINISH: SurfaceFinish = {
 
 const GLASS_FINISH: SurfaceFinish = {
   color: '#dce8f8',
-  roughness: 0.12,
-  metalness: 0,
-  transmission: { amount: 0.76, thickness: 26, dispersion: 0.45 },
-  coat: { amount: 0.9, roughness: 0.06 },
-  edge: { width: 16, rimColor: null },
+  roughness: 0.46,
+  ior: 1.52,
+  transmission: { amount: 0.96, thickness: 18, dispersion: 0 },
+  edge: { width: 8, rimColor: null },
+  environment: 'gradient',
   text: 'lit',
 }
 
@@ -149,7 +149,7 @@ export function MaterialsPanel({ canvasId, onPresChange }: MaterialsPanelProps) 
         </Surface>
 
         <Surface canvasId={canvasId} inScene size={[210, 150]} material={lacquerLtcManifest}>
-          <div className="gpu-finish-card" data-testid="manifest-lacquer-ltc" style={{ color: '#fde8e8', background: '#7d1924' }}>
+          <div className="gpu-finish-card" data-testid="manifest-lacquer-ltc" style={{ color: '#fde8e8', background: 'transparent' }}>
             <strong>Lacquer LTC</strong>
             <span>Heitz 64x64 rgba16float</span>
           </div>
