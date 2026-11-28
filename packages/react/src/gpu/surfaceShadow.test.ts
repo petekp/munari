@@ -28,5 +28,17 @@ describe('computeShadowProjection', () => {
     const centerY = (lifted.verts[1] + lifted.verts[3] + lifted.verts[5] + lifted.verts[7]) * 0.25
     expect(centerX).toBeGreaterThan(5)
     expect(centerY).toBeLessThan(-4)
+
+    const scaledFlat = computeShadowProjection([340, 200], { x: 0, y: 0, z: 0, sx: 1.2, sy: 0.85 }, [0, 0, 750], opts)
+    const scaledJustLifted = computeShadowProjection(
+      [340, 200],
+      { x: 0, y: 0, z: 0.02, sx: 1.2, sy: 0.85 },
+      [0, 0, 750],
+      opts,
+    )
+    expect(scaledFlat.cardHalf[0]).toBeCloseTo(scaledJustLifted.cardHalf[0], 0)
+    expect(scaledFlat.cardHalf[1]).toBeCloseTo(scaledJustLifted.cardHalf[1], 0)
+    expect(scaledFlat.quadHalf[0]).toBeCloseTo(scaledJustLifted.quadHalf[0], 0)
+    expect(scaledFlat.quadHalf[1]).toBeCloseTo(scaledJustLifted.quadHalf[1], 0)
   })
 })

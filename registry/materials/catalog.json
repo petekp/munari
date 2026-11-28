@@ -5,6 +5,7 @@
       "name": "flight-card",
       "file": "flightCard",
       "manifest": "flightCardManifest",
+      "runtime": "gpu",
       "needsBackdrop": false,
       "summary": "Aerodynamic lift bend, specular gloss sweep, and surface curvature shading for cards in motion."
     },
@@ -12,6 +13,7 @@
       "name": "fisheye-lens",
       "file": "fisheyeLens",
       "manifest": "fisheyeLensManifest",
+      "runtime": "gpu",
       "needsBackdrop": false,
       "summary": "Vertex-warped magnifying lens shading reading auto-inferred @location(2) aSlope and @location(3) aLens."
     },
@@ -19,6 +21,7 @@
       "name": "foil",
       "file": "foil",
       "manifest": "foilManifest",
+      "runtime": "gpu",
       "needsBackdrop": false,
       "summary": "Thin-film iridescent rainbow foil sweep driven by pointer tilt and phase shift."
     },
@@ -26,6 +29,7 @@
       "name": "vignette",
       "file": "vignette",
       "manifest": "vignetteManifest",
+      "runtime": "gpu",
       "needsBackdrop": false,
       "summary": "Smooth radial edge vignette and subtle focal glow preserving premultiplied alpha."
     },
@@ -33,6 +37,7 @@
       "name": "bleed-glow",
       "file": "bleedGlow",
       "manifest": "bleedGlowManifest",
+      "runtime": "gpu",
       "needsBackdrop": false,
       "summary": "In-plane rounded optical halo spanning the bleed apron via frame.uvRect while keeping the card crisp."
     },
@@ -40,6 +45,7 @@
       "name": "tilt-shadow",
       "file": "tiltShadow",
       "manifest": "tiltShadowManifest",
+      "runtime": "gpu",
       "needsBackdrop": false,
       "summary": "Directional bevel and warm/cool tilt lighting across DOM cards."
     },
@@ -47,13 +53,15 @@
       "name": "glass-refract",
       "file": "glassRefract",
       "manifest": "glassRefractManifest",
+      "runtime": "gpu",
       "needsBackdrop": true,
-      "summary": "Refractive frosted glass sampling the two-pass @group(2) canvas backdrop with Fresnel highlight."
+      "summary": "Optical C1 beveled glass sampling the two-pass @group(2) canvas backdrop with Snell dispersion."
     },
     {
       "name": "lacquer-ltc",
       "file": "lacquerLtc",
       "manifest": "lacquerLtcManifest",
+      "runtime": "gpu",
       "needsBackdrop": false,
       "summary": "Opaque clearcoat lacquer shaded by Heitz 2016 LTC rectangular softbox LUTs."
     },
@@ -61,6 +69,7 @@
       "name": "finish-opaque",
       "file": "finishOpaque",
       "manifest": "finishOpaqueManifest",
+      "runtime": "gpu",
       "needsBackdrop": false,
       "summary": "Physical opaque SurfaceFinish shader supporting punctual & LTC softbox lighting, clearcoat, sheen, anisotropy, and relief."
     },
@@ -68,6 +77,7 @@
       "name": "finish-layered",
       "file": "finishLayered",
       "manifest": "finishLayeredManifest",
+      "runtime": "gpu",
       "needsBackdrop": false,
       "summary": "Physical opaque SurfaceFinish shader adding Belcour-Barla thin film, Voronoi crackle, crumple, and paper fibers."
     },
@@ -75,6 +85,7 @@
       "name": "finish-transmissive",
       "file": "finishTransmissive",
       "manifest": "finishTransmissiveManifest",
+      "runtime": "gpu",
       "needsBackdrop": true,
       "summary": "Physical transmissive glass SurfaceFinish shader with Beer-Lambert tinting, dispersion, and blurred backdrop refraction."
     }
@@ -83,24 +94,28 @@
     {
       "name": "finishes",
       "sourceDir": "finishes",
+      "runtime": "shared",
       "files": ["finishes.ts"],
       "summary": "Seventeen tuned SurfaceFinish presets with contrasting text colors."
     },
     {
       "name": "behaviors",
       "sourceDir": "behaviors",
+      "runtime": "gpu",
       "files": ["spring.ts", "compose.ts"],
       "summary": "Closed-form analytic springs and composable Surface onFrame behaviors."
     },
     {
       "name": "glass",
       "sourceDir": "glass",
+      "runtime": "three",
       "files": ["glassSdf.tsx", "glassSdfNodes.ts"],
       "summary": "Screen-space glass SDF compositor (Three/TSL)."
     },
     {
       "name": "focus-orbit",
       "sourceDir": "focus-orbit",
+      "runtime": "three",
       "files": ["FocusOrbitRig.tsx", "arcLayout.ts", "cameraPose.ts"],
       "summary": "Workspace cylindrical arc layout and focus orbit camera rig."
     }

@@ -118,7 +118,8 @@ fn fsMain(@location(0) uv: vec2f) -> @location(0) vec4f {
     let halfC = max(u.halfs.zw + vec2f(g.w), vec2f(1.0));
     let leftR = select(u.radii.w, u.radii.x, p.y > 0.0);
     let rightR = select(u.radii.z, u.radii.y, p.y > 0.0);
-    let r = min(max(select(rightR, leftR, p.x < 0.0), 0.0), min(halfC.x, halfC.y));
+    let cornerR = max(select(rightR, leftR, p.x < 0.0), 0.0);
+    let r = min(select(0.0, max(cornerR + g.w, 0.0), cornerR > 0.001), min(halfC.x, halfC.y));
     let q = abs(p) - halfC + vec2f(r);
     let sd = min(max(q.x, q.y), 0.0) + length(max(q, vec2f(0.0))) - r;
     let cov = clamp(0.5 * (1.0 - erfA(sd / max(1.41421356 * g.z, 0.35))), 0.0, 1.0);
@@ -159,6 +160,35 @@ export function computeShadowProjection(
   options: { readonly blur: number; readonly spread: number; readonly elevationScale: number },
   extraMargin = 0,
 ): ShadowProjection {
+  const hw = size[0] * 0.5
+  const hh = size[1] * 0.5
+  const altitude = Math.max(0, pose.z)
+  const sigma = Math.max(0.5, options.blur + altitude * options.elevationScale)
+  const margin = Math.max(4, sigma * 3 + Math.max(0, options.spread), extraMargin)
+
+  if (Math.abs(pose.z) <= 0.01 && Math.abs(pose.rx ?? 0) < 1e-4 && Math.abs(pose.ry ?? 0) < 1e-4 && Math.abs(pose.rz ?? 0) < 1e-4) {
+    const shw = hw * Math.abs(pose.sx ?? 1)
+    const shh = hh * Math.abs(pose.sy ?? 1)
+    const qhx = shw + margin
+    const qhy = shh + margin
+    return {
+      verts: [
+        pose.x - qhx,
+        pose.y + qhy,
+        pose.x + qhx,
+        pose.y + qhy,
+        pose.x - qhx,
+        pose.y - qhy,
+        pose.x + qhx,
+        pose.y - qhy,
+      ],
+      cardHalf: [shw, shh],
+      quadHalf: [qhx, qhy],
+      sigma,
+      visible: true,
+    }
+  }
+
   const world = new Float32Array(16)
   mat4FromPositionEulerScale(
     pose.x,
@@ -172,8 +202,6 @@ export function computeShadowProjection(
     pose.sz ?? 1,
     world,
   )
-  const hw = size[0] * 0.5
-  const hh = size[1] * 0.5
   const lx = [-hw, hw, hw, -hw] as const
   const ly = [hh, hh, -hh, -hh] as const
   const px = [0, 0, 0, 0]
@@ -207,9 +235,6 @@ export function computeShadowProjection(
   evx /= lv
   evy /= lv
 
-  const altitude = Math.max(0, pose.z)
-  const sigma = Math.max(0.5, options.blur + altitude * options.elevationScale)
-  const margin = Math.max(4, sigma * 3 + Math.max(0, options.spread), extraMargin)
   const qhx = lu + margin
   const qhy = lv + margin
 

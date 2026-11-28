@@ -9,7 +9,16 @@ export type { SurfaceShadowOptions } from './gpu/surfaceShadow'
 export { SurfaceCanvas, type SurfaceCanvasProps } from './gpu/SurfaceCanvas'
 export { createManifestDriver, unlitSurfaceManifest, type ManifestAttribute, type ManifestDriver, type ManifestMaterial, type ManifestStaticTexture, type ManifestStaticTextureData, type ManifestUniformSpec, type MaterialManifest } from './gpu/manifest'
 export { loadLtcTable } from './gpu/ltc'
-export { getGpuHostStats, requestGpuFrame, simulateGpuDeviceLoss, type GpuHostStats } from './gpu/host'
+export {
+  getGpuHostStats,
+  requestGpuFrame,
+  settleGpuFrames,
+  simulateGpuDeviceLoss,
+  stepGpuFrame,
+  type GpuHostStats,
+  type GpuSettleResult,
+  type GpuStepResult,
+} from './gpu/host'
 export { supportsCapture } from './primitives/surface/surfaceSupport'
 export type { DeformedPoint, GpuGeometry, GpuMaterial, GpuMaterialFactory, GpuRenderer } from './gpu/webgpu'
 export { createSurfaceLight, type KeyLight, type LightPosition, type PointerKind, type SurfaceLight, type SurfaceLightOptions, type SurfaceLighting } from './primitives/surface/surfaceLight'

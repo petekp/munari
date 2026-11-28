@@ -407,6 +407,11 @@ export function Surface<TUniforms = Record<string, never>>({
         }
 
         syncUploadIfNeeded(src, tex, resolutionRef.current, liveRootRef.current, uploadStateRef.current)
+        if (crossingRef.current.phase === 'landing') {
+          crossingRef.current = crossingFrame(crossingRef.current, { presented: 1, required: 1, contentCurrent: true }, dtMs)
+          syncDomHoldRef.current()
+          reconcileWorkClaim()
+        }
         if (!crossingDraws(crossingRef.current.phase).gl) {
           setFrameClaim(false)
           return null

@@ -1,5 +1,5 @@
 // Subcommand dispatcher for the public `munari` CLI:
-// `init`, `list`, `add`, `compile`, and `check`.
+// `init`, `list`, `add`, `compile`, `check`, and `info`.
 //
 // The law: registry presets copy editable source files into the caller's repo
 // with no hidden upstream dependency; AOT material compilation emits zero-dep
@@ -110,11 +110,11 @@ function runList(args) {
   console.log('Materials:')
   for (const m of catalog.materials) {
     const badge = m.needsBackdrop ? ' [backdrop]' : ''
-    console.log(`  ${m.name.padEnd(16)} ${m.summary}${badge}`)
+    console.log(`  ${m.name.padEnd(20)} [${m.runtime}] ${m.summary}${badge}`)
   }
   console.log('\nTools & Finishes:')
   for (const t of catalog.tools ?? []) {
-    console.log(`  ${t.name.padEnd(16)} ${t.summary}`)
+    console.log(`  ${t.name.padEnd(20)} [${t.runtime}] ${t.summary}`)
   }
 }
 
@@ -267,14 +267,35 @@ async function runInfo(args) {
   } catch {
     catalog = null
   }
+  const skillCandidate = path.resolve(import.meta.dirname, '..', 'SKILL.md')
   const info = {
     cliVersion: pkg.version,
     manifestVersion: 2,
     compilerAbi: getCompilerAbi(),
+    skillPath: existsSync(skillCandidate) ? skillCandidate : null,
     config: cfg,
+    clock: {
+      frameloopModes: ['demand', 'always', 'manual'],
+      stepGpuFrame: 'stepGpuFrame(canvasId, dtMs) -> advances manual host and camera.zw [timeSec, dtSec]',
+      settleGpuFrames: 'settleGpuFrames(canvasId, { dtMs, maxSteps }) -> settles until workClaims === 0',
+    },
     frameUniforms: {
       byteSize: 256,
       fields: ['mvp', 'modelWorld', 'size', 'viewport', 'radii', 'camera', 'keyPos', 'keySize', 'rimDir', 'uvRect', '_r1'],
+      fieldTypes: {
+        mvp: 'mat4x4f',
+        modelWorld: 'mat4x4f',
+        size: 'vec2f',
+        viewport: 'vec2f',
+        radii: 'vec4f',
+        camera: 'vec4f',
+        keyPos: 'vec4f',
+        keySize: 'vec4f',
+        rimDir: 'vec4f',
+        uvRect: 'vec4f',
+      },
+      cameraLayout: ['cameraZ', 'dpr', 'timeSec', 'dtSec'],
+      radiiOrder: ['topLeft', 'topRight', 'bottomRight', 'bottomLeft'],
     },
     bindGroups: {
       group0: 'SurfaceFrameUniforms (256B dynamic) + DOM sampler + DOM texture',
@@ -282,7 +303,10 @@ async function runInfo(args) {
       group2: 'Backdrop sampler + texture when needsBackdrop is true',
     },
     catalog: catalog
-      ? { materials: catalog.materials.map((m) => m.name), tools: (catalog.tools ?? []).map((t) => t.name) }
+      ? {
+          materials: catalog.materials.map((m) => ({ name: m.name, runtime: m.runtime, needsBackdrop: m.needsBackdrop })),
+          tools: (catalog.tools ?? []).map((t) => ({ name: t.name, runtime: t.runtime })),
+        }
       : null,
     localMaterials,
   }

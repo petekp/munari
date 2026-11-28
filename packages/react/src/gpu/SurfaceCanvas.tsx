@@ -32,7 +32,7 @@ const REPEATED_LOSS_MS = 10_000
 
 export interface SurfaceCanvasProps {
   readonly id?: string
-  readonly frameloop?: 'demand' | 'always'
+  readonly frameloop?: 'demand' | 'always' | 'manual'
   readonly pointerMode?: 'scene' | 'surfaces'
   readonly fov?: number
   readonly lighting?: SurfaceLighting
@@ -59,6 +59,7 @@ export function SurfaceCanvas({
   const [mountEpoch, setMountEpoch] = useState(0)
   const [degraded, setDegraded] = useState(false)
   const lastLossMsRef = useRef<number | null>(null)
+  const cancelPendingRef = useRef<(() => void) | null>(null)
   const frameloopRef = useRef(frameloop)
   frameloopRef.current = frameloop
   const fovRef = useRef(fov)
@@ -84,7 +85,6 @@ export function SurfaceCanvas({
     let rafId = 0
     let scheduled = false
     let prevTime = performance.now()
-    const startTime = prevTime
     const frameTail = new Float32Array(24)
     let renderer: GpuRenderer | null = null
     let stopGate = () => {}
@@ -109,40 +109,53 @@ export function SurfaceCanvas({
       renderer?.resize(width * dpr, height * dpr)
     }
 
-    const renderFrame = () => {
-      scheduled = false
-      if (disposed || !renderer) return
+    const renderFrame = (explicitDtMs?: number): boolean => {
+      if (explicitDtMs === undefined) scheduled = false
+      if (disposed || !renderer) return false
       const now = performance.now()
-      const dtMs = Math.min(now - prevTime, 1000 / 30)
-      prevTime = now
+      const dtMs =
+        explicitDtMs !== undefined
+          ? Number.isFinite(explicitDtMs)
+            ? Math.max(0, explicitDtMs)
+            : 0
+          : Math.max(0, Math.min(now - prevTime, 1000 / 30))
+      if (explicitDtMs === undefined) prevTime = now
+      const elapsedMs = host.elapsedMs + dtMs
+      host.elapsedMs = elapsedMs
       syncViewport()
 
       const internal = hostInternals.get(host)
       const items: GpuDrawItem[] = []
       if (internal) {
         for (const surface of internal.surfaces.values()) {
-          const item = surface.tick(dtMs, now - startTime, host.viewport)
+          const item = surface.tick(dtMs, elapsedMs, host.viewport)
           if (!item) continue
           if ('length' in item) items.push(...item)
           else items.push(item)
         }
       }
-      renderer.render(items, resolveFrameContext(host.viewport, host.lighting, now - startTime, dtMs, frameTail))
+      renderer.render(items, resolveFrameContext(host.viewport, host.lighting, elapsedMs, dtMs, frameTail))
       host.renderCount += 1
 
-      if (frameloopRef.current === 'always' || host.workClaims() > 0) {
+      if (explicitDtMs === undefined && frameloopRef.current !== 'manual' && (frameloopRef.current === 'always' || host.workClaims() > 0)) {
         schedule()
       }
+      return true
     }
 
     const schedule = () => {
-      if (disposed || scheduled || !renderer) return
+      if (disposed || scheduled || !renderer || frameloopRef.current === 'manual') return
       scheduled = true
-      rafId = requestAnimationFrame(renderFrame)
+      rafId = requestAnimationFrame(() => renderFrame())
     }
 
     const internal = hostInternals.get(host)
     internal?.setScheduler(schedule, schedule)
+    internal?.setManualStepper((dtMs) => (frameloopRef.current === 'manual' ? renderFrame(dtMs) : false))
+    cancelPendingRef.current = () => {
+      cancelAnimationFrame(rafId)
+      scheduled = false
+    }
 
     const ro = new ResizeObserver(() => {
       syncViewport()
@@ -156,6 +169,7 @@ export function SurfaceCanvas({
       if (disposed) return
       disposed = true
       cancelAnimationFrame(rafId)
+      internal?.setManualStepper(null)
       stopGate()
       host.renderer = null
       host.canvas = null
@@ -199,7 +213,9 @@ export function SurfaceCanvas({
 
     return () => {
       disposed = true
+      cancelPendingRef.current = null
       cancelAnimationFrame(rafId)
+      internal?.setManualStepper(null)
       ro.disconnect()
       window.removeEventListener('scroll', onScroll, true)
       stopGate()
@@ -210,6 +226,10 @@ export function SurfaceCanvas({
   }, [canvasEl, degraded, host, mountEpoch, pointerMode])
 
   useEffect(() => {
+    if (frameloop === 'manual') {
+      cancelPendingRef.current?.()
+      return
+    }
     host.invalidate()
   }, [host, frameloop, fov])
 

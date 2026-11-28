@@ -62,6 +62,7 @@ export interface GpuHost {
   lighting: SurfaceLighting
   readonly viewport: ViewportState
   renderCount: number
+  elapsedMs: number
   registerSurface(surface: RegisteredSurface): () => void
   claimWork(): () => void
   workClaims(): number
@@ -73,7 +74,9 @@ export interface GpuHost {
 export interface HostInternal {
   readonly surfaces: Map<string, RegisteredSurface>
   readonly readyListeners: Set<() => void>
+  manualStepper: ((dtMs: number) => boolean) | null
   setScheduler(invalidateFn: () => void, claimFn: () => void): void
+  setManualStepper(fn: ((dtMs: number) => boolean) | null): void
 }
 
 const hosts = new Map<string, GpuHost>()
@@ -114,6 +117,7 @@ function createHost(id: string): GpuHost {
     lighting: 'studio',
     viewport,
     renderCount: 0,
+    elapsedMs: 0,
     registerSurface(surface) {
       surfaces.set(surface.id, surface)
       host.invalidate()
@@ -146,14 +150,19 @@ function createHost(id: string): GpuHost {
     getRenderCount: () => host.renderCount,
   }
 
-  hostInternals.set(host, {
+  const internal: HostInternal = {
     surfaces,
     readyListeners,
+    manualStepper: null,
     setScheduler(invalidateFn, claimFn) {
       onInvalidate = invalidateFn
       onClaimChange = claimFn
     },
-  })
+    setManualStepper(fn) {
+      internal.manualStepper = fn
+    },
+  }
+  hostInternals.set(host, internal)
   return host
 }
 
@@ -169,12 +178,32 @@ export function getOrCreateGpuHost(id = ''): GpuHost {
 export interface GpuHostStats {
   readonly renderCount: number
   readonly workClaims: number
+  readonly elapsedMs: number
+}
+
+export interface GpuStepResult {
+  readonly stepped: boolean
+  readonly renderCount: number
+  readonly elapsedMs: number
+  readonly workClaims: number
+}
+
+export interface GpuSettleResult {
+  readonly steps: number
+  readonly settled: boolean
+  readonly renderCount: number
+  readonly elapsedMs: number
+  readonly workClaims: number
 }
 
 /** Frame and work counters for a mounted `@petepetrash/munari/gpu` host. */
 export function getGpuHostStats(canvasId = ''): GpuHostStats {
   const host = hosts.get(canvasId)
-  return { renderCount: host?.renderCount ?? 0, workClaims: host?.workClaims() ?? 0 }
+  return {
+    renderCount: host?.renderCount ?? 0,
+    workClaims: host?.workClaims() ?? 0,
+    elapsedMs: host?.elapsedMs ?? 0,
+  }
 }
 
 /** Triggers a test device loss on a mounted `canvasId` host; returns false if none is active. */
@@ -188,6 +217,57 @@ export function simulateGpuDeviceLoss(canvasId = ''): boolean {
 /** Schedules a render frame for an idle `demand` host (e.g. when external state wakes `onFrame`). */
 export function requestGpuFrame(canvasId = ''): void {
   hosts.get(canvasId)?.invalidate()
+}
+
+function finiteNonNegative(value: number | undefined, fallback: number): number {
+  return value !== undefined && Number.isFinite(value) ? Math.max(0, value) : fallback
+}
+
+function finiteMaxSteps(value: number | undefined): number {
+  return value !== undefined && Number.isFinite(value) ? Math.max(1, Math.floor(value)) : 240
+}
+
+function buildSettleResult(steps: number, settled: boolean, host?: GpuHost): GpuSettleResult {
+  return {
+    steps,
+    settled,
+    renderCount: host?.renderCount ?? 0,
+    elapsedMs: host?.elapsedMs ?? 0,
+    workClaims: host?.workClaims() ?? 0,
+  }
+}
+
+/** Advances a `frameloop="manual"` host synchronously by `dtMs` milliseconds. */
+export function stepGpuFrame(canvasId = '', dtMs = 1000 / 60): GpuStepResult {
+  const host = hosts.get(canvasId)
+  const internal = host ? hostInternals.get(host) : undefined
+  const stepped = Boolean(internal?.manualStepper?.(finiteNonNegative(dtMs, 0)))
+  return {
+    stepped,
+    renderCount: host?.renderCount ?? 0,
+    elapsedMs: host?.elapsedMs ?? 0,
+    workClaims: host?.workClaims() ?? 0,
+  }
+}
+
+/** Repeatedly steps a `frameloop="manual"` host until all work claims settle or `maxSteps` is hit. */
+export function settleGpuFrames(
+  canvasId = '',
+  options?: { readonly dtMs?: number; readonly maxSteps?: number },
+): GpuSettleResult {
+  const host = hosts.get(canvasId)
+  const stepper = host ? hostInternals.get(host)?.manualStepper : undefined
+  if (!host || !stepper) return buildSettleResult(0, false, host)
+  const dtMs = finiteNonNegative(options?.dtMs, 16)
+  const maxSteps = finiteMaxSteps(options?.maxSteps)
+  let steps = 0
+  let lastOk = false
+  do {
+    lastOk = stepper(dtMs)
+    if (!lastOk) break
+    steps += 1
+  } while (steps < maxSteps && host.workClaims() > 0)
+  return buildSettleResult(steps, steps > 0 && lastOk && host.workClaims() === 0, host)
 }
 
 export const GpuHostContext = createContext<GpuHost | null>(null)

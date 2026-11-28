@@ -41,8 +41,8 @@ describe('munari CLI & Materials registry', () => {
     expect(status).toBe(0)
     // SAFETY: `munari list --json` prints `{ materials, tools }` matching catalog.json.
     const parsed = JSON.parse(stdout) as {
-      materials: { name: string; needsBackdrop: boolean }[]
-      tools: { name: string }[]
+      materials: { name: string; needsBackdrop: boolean; runtime: string }[]
+      tools: { name: string; runtime: string }[]
     }
     expect(parsed.materials.map((m) => m.name)).toEqual([
       'flight-card',
@@ -57,7 +57,11 @@ describe('munari CLI & Materials registry', () => {
       'finish-layered',
       'finish-transmissive',
     ])
+    expect(parsed.materials.every((m) => ['gpu', 'three', 'shared'].includes(m.runtime))).toBe(true)
+    expect(parsed.tools.every((t) => ['gpu', 'three', 'shared'].includes(t.runtime))).toBe(true)
     expect(parsed.materials.find((m) => m.name === 'glass-refract')?.needsBackdrop).toBe(true)
+    expect(parsed.tools.find((t) => t.name === 'behaviors')?.runtime).toBe('gpu')
+    expect(parsed.tools.find((t) => t.name === 'glass')?.runtime).toBe('three')
     expect(parsed.tools.map((t) => t.name)).toContain('finishes')
   })
 
@@ -302,13 +306,22 @@ export default defineGpuMaterial({ name: 'stacked-card', shades: [tint, boost] }
     const info = JSON.parse(infoRes.stdout) as {
       manifestVersion: number
       compilerAbi: string
+      skillPath: string | null
+      clock: { frameloopModes: string[]; stepGpuFrame: string; settleGpuFrames: string }
       frameUniforms: { byteSize: number }
-      catalog: { materials: string[] }
+      catalog: {
+        materials: { name: string; runtime: string }[]
+        tools: { name: string; runtime: string }[]
+      }
     }
     expect(info.manifestVersion).toBe(2)
     expect(info.compilerAbi).toMatch(/^v2\.1-[0-9a-f]{16}$/)
     expect(info.frameUniforms.byteSize).toBe(256)
-    expect(info.catalog.materials).toContain('lacquer-ltc')
+    expect(info.clock.frameloopModes).toEqual(['demand', 'always', 'manual'])
+    expect(info.skillPath).toBeTruthy()
+    expect(info.skillPath !== null && existsSync(info.skillPath)).toBe(true)
+    expect(info.catalog.materials.find((m) => m.name === 'lacquer-ltc')?.runtime).toBe('gpu')
+    expect(info.catalog.tools.find((t) => t.name === 'finishes')?.runtime).toBe('shared')
 
     const customDir = makeTempWorkspace()
     symlinkSync(join(ROOT, 'node_modules'), join(customDir, 'node_modules'), 'dir')
@@ -339,5 +352,37 @@ export default defineGpuMaterial({ name: 'bad-static', staticTextures: LTC_STATI
     expect(badStaticCompile.stderr).toContain('WGSL missing @group(1) @binding(2)')
 
     expect(runCli(ROOT, ['check', '--deep', 'registry/materials/lacquerLtc.material.ts']).status).toBe(0)
+  })
+
+  it('ships a concise SKILL.md whose cited symbols and CLI subcommands exist', () => {
+    const skillPath = join(ROOT, 'packages', 'cli', 'SKILL.md')
+    expect(existsSync(skillPath)).toBe(true)
+    const skillText = readFileSync(skillPath, 'utf8')
+    expect(skillText).toMatch(/^---\r?\nname: .+\r?\ndescription: .+\r?\n---/)
+    const lines = skillText.trimEnd().split('\n')
+    expect(lines.length).toBeLessThanOrEqual(150)
+
+    const gpuSrc = readFileSync(join(ROOT, 'packages', 'react', 'src', 'gpu.ts'), 'utf8')
+    for (const sym of [
+      'SurfaceCanvas',
+      'Surface',
+      'createSurfaceLight',
+      'supportsCapture',
+      'detectHtmlInCanvas',
+      'paintStats',
+      'requestGpuFrame',
+      'getGpuHostStats',
+      'stepGpuFrame',
+      'settleGpuFrames',
+    ]) {
+      expect(skillText).toContain(sym)
+      expect(gpuSrc).toContain(sym)
+    }
+
+    const cliSrc = readFileSync(join(ROOT, 'packages', 'cli', 'src', 'cli.mjs'), 'utf8')
+    for (const cmd of ['init', 'list', 'add', 'compile', 'check', 'info']) {
+      expect(skillText).toContain(`munari ${cmd}`)
+      expect(cliSrc).toContain(`'${cmd}'`)
+    }
   })
 })

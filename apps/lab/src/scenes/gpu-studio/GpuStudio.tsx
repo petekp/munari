@@ -10,8 +10,12 @@ import {
   getGpuHostStats,
   paintStats,
   requestGpuFrame,
+  settleGpuFrames,
   simulateGpuDeviceLoss,
+  stepGpuFrame,
   type GpuHostStats,
+  type GpuSettleResult,
+  type GpuStepResult,
   type GpuViewport,
   type SurfaceFrameContext,
   type SurfacePose,
@@ -58,6 +62,8 @@ export interface GpuStudioHandle {
   readonly fisheyeState: () => { readonly focusDomY: number; readonly amp: number } | null
   readonly genieState: () => GenieDebugSnapshot | null
   readonly toggleGenie: () => void
+  readonly step: (dtMs?: number) => GpuStepResult
+  readonly settle: (options?: { readonly dtMs?: number; readonly maxSteps?: number }) => GpuSettleResult
 }
 
 declare global {
@@ -70,6 +76,10 @@ function readInitialTab(): StudioTab {
   const q = new URLSearchParams(window.location.search).get('tab')
   if (q === 'fisheye' || q === 'materials' || q === 'genie') return q
   return 'flight'
+}
+
+function readInitialFrameloop(): 'demand' | 'manual' {
+  return new URLSearchParams(window.location.search).get('frameloop') === 'manual' ? 'manual' : 'demand'
 }
 
 interface FlightPanelProps {
@@ -359,6 +369,7 @@ function localOffsetInCard(panelSelector: string, childSelector: string, size: r
 }
 
 export function GpuStudioApp() {
+  const [frameloop] = useState(readInitialFrameloop)
   const [tab, setTab] = useState<StudioTab>(readInitialTab)
   const [pres, setPres] = useState<SurfacePresentation>('page')
   const [stats, setStats] = useState<GpuHostStats>(() => getGpuHostStats(CANVAS_ID))
@@ -430,6 +441,8 @@ export function GpuStudioApp() {
       },
       genieState: () => genieDebugRef.current?.() ?? null,
       toggleGenie: () => genieToggleRef.current?.(),
+      step: (dtMs) => stepGpuFrame(CANVAS_ID, dtMs),
+      settle: (options) => settleGpuFrames(CANVAS_ID, options),
     }
     return () => {
       delete window.__gpuStudio
@@ -442,7 +455,7 @@ export function GpuStudioApp() {
     <div className="gpu-studio-root">
       <SurfaceCanvas
         id={CANVAS_ID}
-        frameloop="demand"
+        frameloop={frameloop}
         pointerMode="surfaces"
         lighting={light}
         style={{ width: '100%', minHeight: '100vh' }}
