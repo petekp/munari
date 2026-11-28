@@ -2,7 +2,7 @@
 
 Architecture, milestones, and lab migration plan for `@petepetrash/munari/gpu`, copyable `registry/` modules, and the `@petepetrash/munari-cli` toolchain.
 
-> **Status note:** **M0** (`edb501c`), **M0.5** (`c43913a`), **M1**, **M2**, **M3** (`6fd00ad`), **M4** (`cbc99cc`), and **M5** are **Complete**; Wave 2 lab scenes remain queued below. Do not infer unbuilt runtime APIs from future notes (`AGENTS.md`).
+> **Status note:** **M0** (`edb501c`), **M0.5** (`c43913a`), **M1**, **M2**, **M3** (`6fd00ad`), **M4** (`cbc99cc`), **M5** (`29620c4`), **Payload Optimization** (`2bbecf5`), and **Wave 2 Clean Migrations** (`Slider`, `Fisheye`, `Tear-off planner`) are **Complete**. Do not infer unbuilt runtime APIs from future notes (`AGENTS.md`).
 
 ---
 
@@ -44,6 +44,11 @@ Munari brings a **Core Animation-like layer model** to retained web DOM while ke
 
 ## Lab demo refactoring plan (`apps/lab`)
 
-- **Wave 1 (M4 priority):** `gpu-studio` (Fisheye & Flight upgraded to analytic spring behaviors + M1/M2 finishes) -> standalone `Flight` -> `finish-demo` -> `Genie` warp.
-- **Wave 2 (M4/M5 follow-through):** `Genie` full filmstrip/gesture -> `Tear-off planner` -> `Postcard` -> `Selection` -> `Plume` -> `Slider`.
+- **Wave 1 (M4 — Complete):** `gpu-studio` (Fisheye & Flight upgraded to analytic spring behaviors + M1/M2 finishes) -> `finish-demo` -> `Genie` warp.
+- **Wave 2 Clean Migrations (Complete on `@petepetrash/munari/gpu`, zero Three.js):**
+  - `Slider` (`sliderLens.material.gen.ts` + UV-change-guarded post-render `syncHover()` in `gpuPointerGate.ts`): `gate:slider-drag` (`8/8` trials) + `gate:gpu-wave2` (`0` Three modules, `0` idle renders).
+  - `Fisheye` (`fisheyeLens.material.gen.ts`): `gate:fisheye-pointer` (`11/11` trials incl. live fixed-point hover & click) + `gate:gpu-wave2` (`0` Three modules, `0` idle renders).
+  - `Tear-off planner` (`tearPlannerSheet.material.gen.ts` with `@builtin(front_facing)` + `tearPlannerDropShadow.material.gen.ts`): `gate:gpu-wave2` (`0` Three modules, `0` idle renders, live DOM input carried to Tuesday on tear).
+- **Remaining on Three.js (`.`) for conformance-gate / primitive coverage:**
+  - `Selection`, `Postcard`, `Plume`, `Genie`, standalone `Flight`: retained on `.` / `@react-three/fiber` because they back ~15 Three.js-coupled acceptance gates (`window.__r3f`, `capture-cost`, `api-all-demos/gestures`, `postcard*`, `plume`, `genie-drain/*`, `lab-interactions`) or require `/gpu` primitives not yet built (custom quad-grid buffers, offscreen transition atlas, video `FrameSurface`).
 - **Stay on Three.js (`.`) permanently (true 3D camera/meshes/volumetrics):** `light`, `marble-hand`, `knobs`, `logo`, `review-notes`, `cutaway-prototype`, `distortion-wave`, `glass`.

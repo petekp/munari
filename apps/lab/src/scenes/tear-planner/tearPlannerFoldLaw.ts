@@ -20,7 +20,10 @@
 // Coordinates are page CSS pixels: origin at the sheet's top-left, +x
 // right, +y down, z toward the viewer.
 
-import type { SurfaceDeformPoint } from '@petepetrash/munari'
+import type { DeformedPoint } from '@petepetrash/munari/gpu'
+
+/** Centre-to-centre pitch of the perforation holes, in page px (1.5 mm at 4 px/mm). */
+export const HOLE_PITCH_PX = 6
 
 /** A roll: crease line n·x = s0, radius r. */
 export interface Fold {
@@ -101,7 +104,7 @@ export function solveFold(
 }
 
 /** Where material point (x, y) of the sheet sits under `fold`. */
-export function foldPoint(x: number, y: number, fold: Fold | null): SurfaceDeformPoint {
+export function foldPoint(x: number, y: number, fold: Fold | null): DeformedPoint {
   if (!fold) return { x, y, z: 0 }
   const { nx, ny, r } = fold
   const d = x * nx + y * ny - fold.s0

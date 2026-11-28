@@ -23,6 +23,7 @@
     "gate:gpu": "node instruments/gpu-runtime/run.mjs",
     "gate:gpu-film": "node instruments/gpu-film/run.mjs",
     "gate:gpu-wave1": "node instruments/gpu-wave1/run.mjs",
+    "gate:gpu-wave2": "node instruments/gpu-wave2/run.mjs",
     "film:gpu": "node instruments/gpu-film/run.mjs",
     "gate:oracle": "node instruments/gpu-oracle/run.mjs",
     "probe:finish-parity": "node instruments/gpu-finish-parity/run.mjs",

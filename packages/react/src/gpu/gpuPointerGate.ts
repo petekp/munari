@@ -23,6 +23,7 @@ import {
   trackFocusModality,
   trackPointerPlace,
   trackWheel,
+  type ForwardPointerSample,
 } from '@munari/core'
 import { rayFromNdc, raycastIndexedMesh, type RayHit } from './math'
 import { hostInternals, type GpuHost, type RegisteredSurface } from './host'
@@ -30,6 +31,11 @@ import { hostInternals, type GpuHost, type RegisteredSurface } from './host'
 interface SurfaceHitResult {
   readonly surface: RegisteredSurface
   readonly hit: RayHit
+}
+
+export interface GpuPointerGateHandle {
+  readonly dispose: () => void
+  readonly syncHover: () => void
 }
 
 export function bridgeHoverAtLastPointer(pageNode: HTMLElement): void {
@@ -124,7 +130,11 @@ function canvasIsTopmostAt(canvas: HTMLCanvasElement, x: number, y: number): boo
   return top === canvas || (top instanceof Node && canvas.contains(top))
 }
 
-export function installPointerGate(host: GpuHost, canvas: HTMLCanvasElement, pointerMode: 'scene' | 'surfaces'): () => void {
+export function installPointerGate(
+  host: GpuHost,
+  canvas: HTMLCanvasElement,
+  pointerMode: 'scene' | 'surfaces',
+): GpuPointerGateHandle {
   const stopDrag = trackDrag()
   const stopWheel = trackWheel()
   const stopFocus = trackFocusModality()
@@ -132,6 +142,7 @@ export function installPointerGate(host: GpuHost, canvas: HTMLCanvasElement, poi
 
   const claims = new Map<number, RegisteredSurface>()
   let hovered: RegisteredSurface | null = null
+  let lastHover: { readonly surface: RegisteredSurface; readonly u: number; readonly v: number } | null = null
   let suppressedClick: { readonly x: number; readonly y: number; readonly until: number } | null = null
 
   const setSolid = (solid: boolean) => {
@@ -141,15 +152,49 @@ export function installPointerGate(host: GpuHost, canvas: HTMLCanvasElement, poi
   }
   setSolid(false)
 
-  const deliver = (
+  const deliverSample = (
     surface: RegisteredSurface,
     u: number,
     v: number,
     kind: 'down' | 'up' | 'move' | 'cancel',
-    sample: PointerEvent,
+    sample: ForwardPointerSample,
   ) => {
     const el = surface.element()
-    if (el) forwardPointer(el, u, v, kind, pointerSampleOf(sample))
+    if (el) forwardPointer(el, u, v, kind, sample)
+  }
+
+  const applyHoverHit = (
+    topmostHit: SurfaceHitResult | null,
+    sample: ForwardPointerSample,
+    force: boolean,
+  ) => {
+    if (!force) {
+      if (!topmostHit && !hovered) return
+      if (
+        topmostHit &&
+        hovered === topmostHit.surface &&
+        lastHover &&
+        Math.abs(lastHover.u - topmostHit.hit.u) < 1e-4 &&
+        Math.abs(lastHover.v - topmostHit.hit.v) < 1e-4
+      ) {
+        return
+      }
+    }
+    if (hovered && hovered !== topmostHit?.surface) {
+      const prevEl = hovered.element()
+      if (prevEl) clearPointerState(prevEl)
+      hovered = null
+    }
+    if (topmostHit) {
+      setSolid(true)
+      hovered = topmostHit.surface
+      lastHover = { surface: topmostHit.surface, u: topmostHit.hit.u, v: topmostHit.hit.v }
+      deliverSample(topmostHit.surface, topmostHit.hit.u, topmostHit.hit.v, 'move', sample)
+      updateCanvasCursor(canvas, topmostHit)
+    } else {
+      lastHover = null
+      setSolid(false)
+    }
   }
 
   const onMove = (e: PointerEvent) => {
@@ -159,7 +204,7 @@ export function installPointerGate(host: GpuHost, canvas: HTMLCanvasElement, poi
     if (claimed) {
       setSolid(true)
       if (hitResult && hitResult.surface === claimed) {
-        deliver(claimed, hitResult.hit.u, hitResult.hit.v, 'move', e)
+        deliverSample(claimed, hitResult.hit.u, hitResult.hit.v, 'move', pointerSampleOf(e))
         updateCanvasCursor(canvas, hitResult)
       }
       e.preventDefault()
@@ -167,19 +212,21 @@ export function installPointerGate(host: GpuHost, canvas: HTMLCanvasElement, poi
       return
     }
     const topmostHit = hitResult && canvasIsTopmostAt(canvas, e.clientX, e.clientY) ? hitResult : null
-    if (hovered && hovered !== topmostHit?.surface) {
-      const prevEl = hovered.element()
-      if (prevEl) clearPointerState(prevEl)
-      hovered = null
+    applyHoverHit(topmostHit, pointerSampleOf(e), true)
+  }
+
+  const syncHover = () => {
+    if (claims.size > 0) return
+    const place = lastPointerPlace()
+    if (!place) return
+    const rect = canvas.getBoundingClientRect()
+    if (place.x < rect.left || place.x > rect.right || place.y < rect.top || place.y > rect.bottom) {
+      applyHoverHit(null, place.sample, false)
+      return
     }
-    if (topmostHit) {
-      setSolid(true)
-      hovered = topmostHit.surface
-      deliver(topmostHit.surface, topmostHit.hit.u, topmostHit.hit.v, 'move', e)
-      updateCanvasCursor(canvas, topmostHit)
-    } else {
-      setSolid(false)
-    }
+    const hitResult = raycastSurfaces(host, place.x, place.y)
+    const topmostHit = hitResult && canvasIsTopmostAt(canvas, place.x, place.y) ? hitResult : null
+    applyHoverHit(topmostHit, place.sample, false)
   }
 
   const onDown = (e: PointerEvent) => {
@@ -192,7 +239,7 @@ export function installPointerGate(host: GpuHost, canvas: HTMLCanvasElement, poi
     e.preventDefault()
     e.stopImmediatePropagation()
     hovered = hitResult.surface
-    deliver(hitResult.surface, hitResult.hit.u, hitResult.hit.v, 'down', e)
+    deliverSample(hitResult.surface, hitResult.hit.u, hitResult.hit.v, 'down', pointerSampleOf(e))
     updateCanvasCursor(canvas, hitResult)
   }
 
@@ -213,6 +260,7 @@ export function installPointerGate(host: GpuHost, canvas: HTMLCanvasElement, poi
       forwardPointer(el, 0, 0, 'cancel', pointerSampleOf(e))
       clearPointerState(el)
       hovered = null
+      lastHover = null
       setSolid(false)
     }
     e.preventDefault()
@@ -253,16 +301,19 @@ export function installPointerGate(host: GpuHost, canvas: HTMLCanvasElement, poi
   document.addEventListener('click', onClick, true)
   document.addEventListener('wheel', onWheel, { capture: true, passive: false })
 
-  return () => {
-    document.removeEventListener('pointermove', onMove, true)
-    document.removeEventListener('pointerdown', onDown, true)
-    document.removeEventListener('pointerup', onUpOrCancel, true)
-    document.removeEventListener('pointercancel', onUpOrCancel, true)
-    document.removeEventListener('click', onClick, true)
-    document.removeEventListener('wheel', onWheel, true)
-    stopDrag()
-    stopWheel()
-    stopFocus()
-    stopPlace()
+  return {
+    syncHover,
+    dispose() {
+      document.removeEventListener('pointermove', onMove, true)
+      document.removeEventListener('pointerdown', onDown, true)
+      document.removeEventListener('pointerup', onUpOrCancel, true)
+      document.removeEventListener('pointercancel', onUpOrCancel, true)
+      document.removeEventListener('click', onClick, true)
+      document.removeEventListener('wheel', onWheel, true)
+      stopDrag()
+      stopWheel()
+      stopFocus()
+      stopPlace()
+    },
   }
 }

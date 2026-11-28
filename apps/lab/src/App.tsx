@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react'
-import { detectHtmlInCanvas, paintStats, supportsCapture } from '@petepetrash/munari/gpu'
+import { detectHtmlInCanvas, getGpuHostStats, paintStats, supportsCapture } from '@petepetrash/munari/gpu'
 import { showChrome, showShell } from './bareMode'
 import { HomeApp } from './scenes/home/Home'
 import { SceneNav } from './components/SceneNav'
@@ -238,6 +238,7 @@ export default function App() {
   useEffect(() => {
     window.__munari = {
       stats: paintStats,
+      gpuStats: getGpuHostStats,
       // Which engine actually answered, for the per-engine browser gates.
       // The URL says what was asked for; this says what was installed.
       engine: () => {

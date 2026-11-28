@@ -90,7 +90,7 @@ export function SurfaceCanvas({
     const frameTail = new Float32Array(24)
     let loadedEngine: GpuEngine | null = null
     let renderer: GpuRenderer | null = null
-    let stopGate = () => {}
+    let gate: { readonly dispose: () => void; readonly syncHover: () => void } | null = null
 
     const syncViewport = () => {
       const rect = canvasEl.getBoundingClientRect()
@@ -139,6 +139,7 @@ export function SurfaceCanvas({
       }
       renderer.render(items, loadedEngine.resolveFrameContext(host.viewport, host.lighting, elapsedMs, dtMs, frameTail))
       host.renderCount += 1
+      gate?.syncHover()
 
       if (explicitDtMs === undefined && frameloopRef.current !== 'manual' && (frameloopRef.current === 'always' || host.workClaims() > 0)) {
         schedule()
@@ -173,7 +174,8 @@ export function SurfaceCanvas({
       disposed = true
       cancelAnimationFrame(rafId)
       internal?.setManualStepper(null)
-      stopGate()
+      gate?.dispose()
+      gate = null
       loadedEngine = null
       internal?.setEngine(null)
       host.renderer = null
@@ -213,7 +215,7 @@ export function SurfaceCanvas({
         host.renderer = r
         host.canvas = canvasEl
         syncViewport()
-        stopGate = engine.installPointerGate(host, canvasEl, pointerMode)
+        gate = engine.installPointerGate(host, canvasEl, pointerMode)
         onReadyRef.current?.(r)
         if (internal) {
           for (const fn of internal.readyListeners) fn()
@@ -237,7 +239,8 @@ export function SurfaceCanvas({
       loadedEngine = null
       ro.disconnect()
       window.removeEventListener('scroll', onScroll, true)
-      stopGate()
+      gate?.dispose()
+      gate = null
       host.renderer = null
       host.canvas = null
       renderer?.dispose()

@@ -5,8 +5,7 @@
 // One mutable object, stepped once per rendered frame by whichever sheet
 // rig draws first, so both rigs read the same fold in the same frame: the
 // sheet on top deforms by it and the sheet beneath shades by it.
-import { foldPoint, solveFold, type Fold } from './tearPlannerFoldLaw'
-import { HOLE_PITCH_PX } from './tearPlannerNodes'
+import { HOLE_PITCH_PX, foldPoint, solveFold, type Fold } from './tearPlannerFoldLaw'
 
 export type SheetMode = 'rest' | 'hover' | 'drag' | 'settle' | 'auto' | 'fall'
 
